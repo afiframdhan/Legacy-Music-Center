@@ -13,20 +13,26 @@
   <!-- FULLCALENDAR LIB -->
   <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 
+  <!-- SUPABASE SDK v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-  const SUPABASE_URL = 'https://qjenqmxbkvonajdzceyn.supabase.co/rest/v1/';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqZW5xbXhia3ZvbmFqZHpjZXluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3NTg0MDMsImV4cCI6MjEwNTMzNDQwM30.6sc5jfmg8zrxh2d9Uu6Ga1_X_rnxVKFQ9Xz7okgiRnE';
-  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  
+  <script>
+    // 1. URL domain utama proyek tanpa /rest/v1/
+    const SUPABASE_URL = 'https://qjenqmxbkvonajdzceyn.supabase.co';
+    
+    // 2. Kunci Anon Public Anda
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqZW5xbXhia3ZvbmFqZHpjZXluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3NTg0MDMsImV4cCI6MjEwNTMzNDQwM30.6sc5jfmg8zrxh2d9Uu6Ga1_X_rnxVKFQ9Xz7okgiRnE';
+    
+    // 3. Gunakan nama variabel _supabase agar tidak bentrok dengan library
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // Contoh Ambil Data (Gantikan fungsi google.script.run)
-  async function loadData() {
-    const { data, error } = await supabase.from('nama_tabel').select('*');
-    if (error) console.error(error);
-    else console.log(data); // Data langsung didapat secara instan!
-  }
-  loadData();
-</script>
+    // Contoh Fungsi Ambil Data
+    async function loadData() {
+      const { data, error } = await _supabase.from('nama_tabel').select('*');
+      if (error) console.error('Error Supabase:', error.message);
+      else console.log('Data Supabase:', data);
+    }
+  </script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
