@@ -1199,20 +1199,23 @@ function deleteSiswa(nama) {
     lock.waitLock(20000);
     const sheet = ss.getSheetByName('Siswa'); 
     const data = sheet.getDataRange().getValues();
-    const targetName = String(nama || '').trim().toLowerCase();
-    
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0] || '').trim().toLowerCase() === targetName) {
+      if (String(data[i][0]).trim().toLowerCase() === String(nama).trim().toLowerCase()) {
+        const namaSiswa = String(data[i][0] || '').trim();
+        const currentStatus = String(data[i][6] || '').trim();
+        if (currentStatus.toLowerCase() !== 'keluar' || !studentMovementExists(namaSiswa, 'Keluar')) {
+          addStudentMovement(namaSiswa, 'Keluar', new Date(), data[i][6] || 'Aktif', 'Keluar', data[i][8] || 'Gitar', data[i][9] || '', 'Data siswa dihapus oleh admin');
+        }
+        const jadwalTerhapus = deleteRowsByStudentName_('Jadwal', 2, namaSiswa);
+        deleteRowsByStudentName_('JadwalPengganti', 3, namaSiswa);
         sheet.deleteRow(i + 1);
-        return { success: true, message: 'Data siswa berhasil dihapus.' };
+        SpreadsheetApp.flush();
+        return { success: true, message: 'Siswa berhasil dihapus' + (jadwalTerhapus ? ' beserta jadwal pelajarannya.' : '.') };
       }
     }
     return { success: false, message: 'Siswa tidak ditemukan.' };
-  } catch (e) {
-    return { success: false, message: 'Gagal menghapus siswa: ' + e.toString() };
-  } finally {
-    try { lock.releaseLock(); } catch (ignore) {}
-  }
+  } catch(e) { return { success: false, message: e.toString() }; }
+  finally { try { lock.releaseLock(); } catch (ignore) {} }
 }
 
 function deleteRowsByStudentName_(sheetName, studentColumn, namaSiswa) {
