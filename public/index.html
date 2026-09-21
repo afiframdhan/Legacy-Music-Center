@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Legacy Music Center - Portal</title>
+  <script>
+    (function() {
+      try {
+        const preference = localStorage.getItem('legacyThemePreference') || 'auto';
+        const dark = preference === 'dark' || (preference === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (ignore) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+  <!-- FULLCALENDAR LIB -->
+  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body onload="initApp()">
+
+  <!-- LOGIN VIEW -->
+  <div id="loginView">
+    <div class="login-card">
+      <div class="brand">
+        <div class="logo"><img src="https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT" alt="Logo"></div>
+        <h1>Legacy Music Center</h1>
+        <p>Academy Portal</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" id="tabSiswa" onclick="setLoginType('siswa')">Siswa</button>
+        <button class="tab" id="tabGuru" onclick="setLoginType('guru')">Guru</button>
+        <button class="tab" id="tabAdmin" onclick="setLoginType('admin')">Admin</button>
+      </div>
+
+      <div id="loginError" class="error-msg"></div>
+
+      <form onsubmit="return handleLogin(event)">
+        <label id="loginIdLabel">Nama Siswa</label>
+        <input id="loginUsername" required placeholder="Masukkan Nama Siswa">
+        <label>Password</label>
+        <input id="loginPassword" type="password" required placeholder="Masukkan password">
+        <button class="login-btn" id="loginBtn" type="submit">Login</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- APP VIEW -->
+  <div id="appView">
+    <div class="header">
+      <div class="header-left-group">
+        <button class="menu-toggle-btn" onclick="toggleSidebar()">☰</button>
+        <div class="header-title">
+          <img class="header-brand-logo" src="https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT" alt="Logo Legacy Music Center">
+          <span>Legacy Music Center</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="notification-center" id="notificationCenter">
+          <button type="button" class="notification-button" id="notificationButton" onclick="toggleNotificationPanel(event)" aria-label="Buka notifikasi">🔔<span id="notificationBadge" class="notification-badge">0</span></button>
+          <div id="notificationPanel" class="notification-panel">
+            <div class="notification-head"><strong>Notifikasi</strong><div class="notification-head-actions"><button type="button" onclick="markAllNotificationsRead(event)">Tandai sudah dibaca</button><button type="button" class="notification-close" onclick="toggleNotificationPanel(event)" aria-label="Tutup notifikasi">×</button></div></div>
+            <div id="notificationList" class="notification-list"></div>
+          </div>
+        </div>
+        <div class="user-info">
+          <div class="user-info-name" id="userName">User</div>
+          <div id="userRole" style="color:#64748b;">Role</div>
+        </div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+      </div>
+    </div>
+    
+    <div class="container">
+      <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+      <div class="sidebar" id="sidebarMenu">
+        <ul class="nav-menu" id="navMenu"></ul>
+        <div class="sidebar-footer">
+          <a class="nav-link" id="navProfilLink" onclick="switchTab('section-profil')">
+            <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <span>Profil Saya</span>
+          </a>
+        </div>
+      </div>
+      
+      <div class="content">
+        <div class="alert alert-success" id="alertSuccess"></div>
+        <div class="alert alert-danger" id="alertDanger"></div>
+        
+        <!-- DASHBOARD ADMIN / GURU -->
+        <div class="content-section" id="dashboard-guru">
+          <div class="dashboard-layout">
+            <div class="main-dash-left">
+              <div class="welcome-banner">
+                <img id="dashGuruBannerImg" src="" class="user-banner-avatar" style="display:none;">
+                <div id="dashGuruBannerInitials" class="user-banner-initial">A</div>
+                <div class="banner-text">
+                  <div style="font-size:12px; color:#64748b; font-weight:600;">Selamat Datang,</div>
+                  <h2 id="dashGuruNama">User</h2>
+                  <div class="banner-meta">
+                    <div>📧 <span id="dashGuruEmail">-</span></div>
+                    <div id="dashGuruSpesialisMeta">🎓 Spesialis: <span id="dashGuruInstrumen" style="font-weight:700; color:#F15A24;">-</span></div>
+                    <div>📅 <span id="dashCurrentDate">-</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CARD STATS -->
+              <div class="stats-row-guru">
+                <div class="stat-card-siswa">
+                  <div class="stat-card-info">
+                    <div class="stat-card-title">Total Siswa</div>
+                    <div class="stat-card-val" id="statTotalSiswaAll">0</div>
+                  </div>
+                  <div>👥</div>
+                </div>
+                <div class="stat-card-siswa">
+                  <div class="stat-card-info">
+                    <div class="stat-card-title">Siswa Aktif</div>
+                    <div class="stat-card-val" id="statSiswaAktif">0</div>
+                  </div>
+                  <div>✅</div>
+                </div>
+                <div class="stat-card-siswa">
+                  <div class="stat-card-info">
+                    <div class="stat-card-title">Siswa Cuti</div>
+                    <div class="stat-card-val" id="statSiswaCuti">0</div>
+                  </div>
+                  <div>⏸️</div>
+                </div>
+                <div class="stat-card-siswa">
+                  <div class="stat-card-info">
+                    <div class="stat-card-title" id="statFourthTitle">Siswa Keluar</div>
+                    <div class="stat-card-val" id="statFourthVal">0</div>
+                  </div>
+                  <div>🔴</div>
+                </div>
+              </div>
+
+              <!-- FILTER GURU KHUSUS ADMIN DI BERANDA -->
+              <div class="widget-box" id="adminFilterGuruBox" style="display:none; background:#fff8f6; border-color:#ffd8bf;">
+                <div class="form-group" style="margin:0;">
+                  <label style="color:#F15A24; font-weight:700;">🔍 Filter Tampilan Data Berdasarkan Guru:</label>
+                  <select id="adminSelectGuruFilter" onchange="filterAdminByGuru()">
+                    <option value="">-- Tampilkan Semua Guru & Siswa --</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- JADWAL MENGAJAR HARI INI (GURU/ADMIN) -->
+              <div class="widget-box collapsible-widget" id="dashboardTodayScheduleWidget">
+                <div class="widget-header">
+                  <div class="widget-title">
+                    <span style="font-size:18px;">📅</span> 
+                    <span>Jadwal Mengajar Hari Ini</span>
+                  </div>
+                  <div class="widget-header-actions"><a class="widget-link" onclick="switchTab('section-jadwal')">Lihat Semua ➔</a><button type="button" class="widget-collapse-btn" data-collapse-button="dashboardTodayScheduleWidget" onclick="toggleDashboardWidget('dashboardTodayScheduleWidget')" aria-label="Minimize">−</button></div>
+                </div>
+                <div class="today-schedule-container collapsible-content" id="todayScheduleList"></div>
+              </div>
+
+              <!-- DAFTAR SISWA TERBARU (MAKSIMAL 3) -->
+              <div class="widget-box collapsible-widget" id="dashboardLatestStudentsWidget">
+                <div class="widget-header">
+                  <div class="widget-title">👥 Daftar Siswa Terbaru</div>
+                  <div class="widget-header-actions"><a class="widget-link" onclick="switchTab('section-siswa')">Lihat Semua →</a><button type="button" class="widget-collapse-btn" data-collapse-button="dashboardLatestStudentsWidget" onclick="toggleDashboardWidget('dashboardLatestStudentsWidget')" aria-label="Minimize">−</button></div>
+                </div>
+                <div class="responsive-table collapsible-content dashboard-student-table">
+                  <table>
+                    <thead><tr><th>No</th><th>Nama Siswa</th><th>Kelas/Instrumen</th><th>Guru Pengajar</th><th>Grade</th><th>Status</th></tr></thead>
+                    <tbody id="dashSiswaPreviewBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="main-dash-left-right-wrapper" style="width:100%;">
+              <!-- WIDGET GURU: KELAS BERIKUTNYA -->
+              <div class="widget-box" id="guruNextClassWidgetBox" style="display:none; background: linear-gradient(135deg, #fff7ed, #fff); border-color:#ffd8bf;">
+                <div class="widget-header">
+                  <div class="widget-title" style="color:#c2410c;">📅 Kelas Berikutnya</div>
+                </div>
+                <div id="nextClassWidgetGuru">
+                  <div style="font-size:13px; color:#64748b;">Tidak ada jadwal terdekat hari ini.</div>
+                </div>
+              </div>
+
+              <!-- WIDGET ADMIN: KELAS SEDANG BERLANGSUNG -->
+              <div class="widget-box" id="adminOngoingClassWidgetBox" style="display:none; background: linear-gradient(135deg, #fff7ed, #fff); border-color:#ffd8bf;">
+                <div class="widget-header">
+                  <div class="widget-title" style="color:#c2410c;">🔴 Kelas Sedang Berlangsung</div>
+                </div>
+                <div id="ongoingClassWidgetAdmin">
+                  <div style="font-size:13px; color:#64748b;">Tidak ada kelas yang sedang berlangsung saat ini.</div>
+                </div>
+              </div>
+
+              <div class="widget-box dashboard-side" id="dashboardAcademyUpdatesGuru" style="display:none;">
+                <div class="widget-header"><div class="widget-title">🔔 Info Academy Terbaru</div></div>
+                <div id="dashboardUpdatesGuru" class="dashboard-update-grid"></div>
+              </div>
+
+              <!-- AKSI CEPAT -->
+              <div class="widget-box">
+                <div class="widget-header"><div class="widget-title">⚡ Aksi Cepat</div></div>
+                <div class="resource-grid-guru">
+                  <div class="resource-card" onclick="switchTab('fitur-guru')"><div class="resource-text"><div class="title">👤 Tambah Siswa</div></div></div>
+                  <div class="resource-card" onclick="switchTab('section-jadwal')"><div class="resource-text"><div class="title">📅 Buat Jadwal</div></div></div>
+                  <div class="resource-card admin-only-quick-action" style="display:none;" onclick="openAdminTeacherForm()"><div class="resource-text"><div class="title">👨‍🏫 Tambah Guru</div></div></div>
+                  <div class="resource-card admin-hide-item" onclick="switchTab('section-progress')"><div class="resource-text"><div class="title">📝 Absensi</div></div></div>
+                  <div class="resource-card admin-hide-item" onclick="switchTab('section-tugas')"><div class="resource-text"><div class="title">📄 Buat Tugas</div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BERANDA SISWA -->
+        <div class="content-section" id="dashboard-siswa">
+          <div class="dashboard-layout">
+            <div class="main-dash-left">
+              <div class="welcome-banner">
+                <img id="dashSiswaBannerImg" src="" class="user-banner-avatar" style="display:none;">
+                <div id="dashSiswaBannerInitials" class="user-banner-initial">S</div>
+                <div class="banner-text">
+                  <h2>Halo, <span id="dashSiswaNama">Siswa</span>! 👋</h2>
+                  <p>Terus semangat belajar musik, setiap latihan kecil membawa kamu lebih dekat ke mimpi besar!</p>
+                </div>
+              </div>
+
+              <div class="stats-row-siswa">
+                <div class="stat-card-siswa">
+                  <div class="stat-card-icon" style="background:#fff3eb; color:#F15A24;">📅</div>
+                  <div class="stat-card-info">
+                    <div class="stat-card-title">Kehadiran Kelas</div>
+                    <div class="stat-card-val" id="siswaKehadiranBulan">0 / 4</div>
+                    <div class="stat-card-sub">Total Hadir</div>
+                  </div>
+                </div>
+
+                <div class="stat-card-siswa">
+                  <div class="stat-card-icon" style="background:#fef3c7; color:#d97706;">🏆</div>
+                  <div class="stat-card-info">
+                    <div class="stat-card-title">Level & Kelas</div>
+                    <div class="stat-card-val" id="siswaLevelAktif">Beginner</div>
+                    <div class="stat-card-sub" id="siswaInstrumenSub">Gitar</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PROGRESS BELAJAR UNIVERSAL: SISWA -->
+              <div id="learningProgressDashboardSiswa" class="widget-box lp-widget"></div>
+
+              <!-- JADWAL PELAJARAN KHUSUS DASHBOARD SISWA -->
+              <div class="widget-box">
+                <div class="widget-header">
+                  <div class="widget-title">📅 Jadwal Pelajaran Berikutnya</div>
+                </div>
+                
+                <div id="siswaNextScheduleContainer"></div>
+              </div>
+
+            </div>
+            <div class="main-dash-left-right-wrapper dashboard-side" style="width:100%;">
+              <div class="widget-box">
+                <div class="widget-header"><div class="widget-title">🔔 Info Academy Terbaru</div></div>
+                <div id="dashboardUpdatesSiswa" class="dashboard-update-grid"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PROGRESS BELAJAR UNIVERSAL -->
+        <div class="content-section" id="section-learning-progress">
+          <div class="task-page-head">
+            <div><h2>Progress Belajar</h2><p>Evaluasi universal untuk seluruh kelas musik, tersedia dalam laporan bulanan dan tiga bulanan.</p></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" id="lpPageEditButton" class="btn btn-primary" style="display:none;" onclick="openLearningProgressModal()">+ Tambah / Update Progress</button><button type="button" id="lpPageDeleteButton" class="btn" style="display:none;background:#fee2e2;color:#b91c1c;" onclick="deleteSelectedLearningProgress()">Hapus Progress</button></div>
+          </div>
+          <div class="widget-box lp-page-filter">
+            <div class="form-group" id="lpPageStudentGroup" style="margin:0;"><label>Nama Siswa</label><select id="lpPageStudent" onchange="refreshLearningProgressPage()"></select></div>
+            <div class="form-group" style="margin:0;"><label>Jenis Periode</label><select id="lpPagePeriodType" onchange="refreshLearningProgressPage(true)"><option value="Bulanan">Bulanan</option><option value="Tiga Bulan">Tiga Bulan</option></select></div>
+            <div class="form-group" style="margin:0;"><label>Periode Laporan</label><select id="lpPagePeriod" onchange="refreshLearningProgressPage()"></select></div>
+            <button type="button" id="lpPagePrintButton" class="btn btn-export" style="display:none;margin:0;align-self:end;" onclick="printLearningProgressReport()">🖨 Cetak Laporan</button>
+          </div>
+          <div id="learningProgressPageContent" class="widget-box lp-widget"></div>
+        </div>
+
+        <!-- DAFTAR SISWA -->
+        <div class="content-section" id="section-siswa">
+          <div class="academy-page-head"><div><h2>Daftar Siswa</h2><p>Kelola data siswa, kelas, instrumen, dan guru pengajar dalam satu tampilan.</p></div></div>
+
+          <div class="widget-box student-report-box collapsible-widget" id="studentReportAdminBox" style="display:none;">
+            <div class="student-report-head">
+              <div><h3>📊 Statistik & Laporan Siswa</h3><p>Data siswa masuk dan keluar khusus admin, lengkap dengan laporan yang dapat dicetak.</p></div>
+              <div class="student-report-actions"><button type="button" class="btn" style="background:#fff0e9;color:#c2410c;" onclick="printStudentReport('all')">🖨 Cetak Semua Siswa</button><button type="button" class="btn btn-primary" onclick="printStudentReport('period')">🖨 Cetak Statistik Periode</button><button type="button" class="widget-collapse-btn" data-collapse-button="studentReportAdminBox" onclick="toggleDashboardWidget('studentReportAdminBox')" aria-label="Minimize">−</button></div>
+            </div>
+            <div class="collapsible-content">
+            <div class="student-report-filter">
+              <div class="form-group"><label>Jenis Periode</label><select id="studentReportPeriod" onchange="renderStudentReports()"><option value="1">Per Bulan</option><option value="3">Per 3 Bulan</option><option value="6">Per 6 Bulan</option><option value="12">Per 1 Tahun</option></select></div>
+              <div class="form-group"><label>Bulan Akhir Laporan</label><input type="month" id="studentReportMonth" onchange="renderStudentReports()"></div>
+              <div class="form-group"><label>Guru</label><select id="studentReportGuru" onchange="renderStudentReports()"><option value="">Semua Guru</option></select></div>
+              <div class="form-group"><label>Instrumen</label><select id="studentReportInstrumen" onchange="renderStudentReports()"><option value="">Semua Instrumen</option></select></div>
+              <div id="studentReportPeriodLabel" style="font-size:11px;color:#64748b;font-weight:700;padding:10px 0;"></div>
+            </div>
+            <div class="student-stat-grid">
+              <div class="student-stat-card in"><span>Siswa Masuk</span><strong id="studentStatIn">0</strong></div>
+              <div class="student-stat-card out"><span>Siswa Keluar</span><strong id="studentStatOut">0</strong></div>
+              <div class="student-stat-card net"><span>Pertumbuhan Bersih</span><strong id="studentStatNet">0</strong></div>
+              <div class="student-stat-card"><span>Total Siswa Aktif</span><strong id="studentStatActive">0</strong></div>
+            </div>
+            <div class="student-trend"><div class="student-trend-head"><strong>Pergerakan Siswa</strong><div class="student-trend-legend"><span><i style="background:#f15a24"></i>Masuk</span><span><i style="background:#ef4444"></i>Keluar</span></div></div><div id="studentTrendChart" class="student-trend-chart"></div></div>
+            <div class="student-report-tabs"><button type="button" class="student-report-tab active" data-student-report-tab="all" onclick="setStudentReportView('all')">Semua Siswa</button><button type="button" class="student-report-tab" data-student-report-tab="Masuk" onclick="setStudentReportView('Masuk')">Siswa Masuk</button><button type="button" class="student-report-tab" data-student-report-tab="Keluar" onclick="setStudentReportView('Keluar')">Siswa Keluar</button></div>
+            <div class="responsive-table student-report-table"><table><thead id="studentReportTableHead"></thead><tbody id="studentReportTableBody"></tbody></table></div>
+            </div>
+          </div>
+
+          <!-- FILTER DAFTAR SISWA -->
+          <div class="widget-box" id="siswaFilterBox" style="display:none; background:#fff8f6; border-color:#ffd8bf;">
+            <div class="widget-title" style="margin-bottom:10px; color:#F15A24;">🔍 Filter Data Siswa</div>
+            <div class="filter-grid">
+              <div class="form-group" id="filterSiswaInstrumenGroup" style="margin:0;">
+                <label>Filter Instrumen:</label>
+                <select id="filterSiswaInstrumen" onchange="applySiswaFilters()">
+                  <option value="">-- Semua Instrumen --</option>
+                  <option value="Gitar">Gitar</option>
+                  <option value="Biola">Biola</option>
+                  <option value="Vocal">Vocal</option>
+                  <option value="Bass">Bass</option>
+                  <option value="Piano">Piano</option>
+                  <option value="Drum">Drum</option>
+                  <option value="Cello">Cello</option>
+                  <option value="Saxophone">Saxophone</option>
+                </select>
+              </div>
+              <div class="form-group" id="filterSiswaGuruGroup" style="margin:0;">
+                <label>Filter Guru Pengajar:</label>
+                <select id="filterSiswaGuru" onchange="applySiswaFilters()">
+                  <option value="">-- Semua Guru --</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label>Urutan Siswa:</label>
+                <select id="filterSiswaUrutan" onchange="applySiswaFilters()">
+                  <option value="terbaru">Siswa Terbaru</option>
+                  <option value="terlama">Siswa Terlama</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="widget-box data-list-box">
+            <div class="responsive-table modern-data-table student-responsive-table">
+              <table>
+                <thead><tr><th>No</th><th>Nama Siswa</th><th>Instrumen</th><th>Guru Pengajar</th><th>Grade</th><th>Email</th><th>No. HP</th><th>Status</th><th>Aksi</th></tr></thead>
+                <tbody id="guruSiswaBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- JADWAL PELAJARAN (UNTUK GURU & ADMIN) -->
+        <div class="content-section" id="section-jadwal">
+          <div class="academy-page-head">
+            <div><h2>Jadwal Pelajaran</h2><p>Lihat jadwal dalam kalender atau daftar yang responsif dan mudah dikelola.</p></div>
+            <div class="tabs" style="margin:0; width:auto;">
+              <button class="tab active" id="btnToggleCalendar" onclick="toggleJadwalView('calendar')">📅 Kalender</button>
+              <button class="tab" id="btnToggleTable" onclick="toggleJadwalView('table')">📋 Tabel</button>
+            </div>
+          </div>
+
+          <!-- FILTER JADWAL PELAJARAN -->
+          <div class="widget-box" id="jadwalFilterBox" style="display:none; background:#fff8f6; border-color:#ffd8bf;">
+            <div class="widget-title" style="margin-bottom:10px; color:#F15A24;">🔍 Filter Jadwal Pelajaran</div>
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;">
+                <label>Filter Hari:</label>
+                <select id="filterJadwalHari" onchange="applyJadwalFilters()">
+                  <option value="">-- Semua Hari --</option>
+                  <option value="Senin">Senin</option>
+                  <option value="Selasa">Selasa</option>
+                  <option value="Rabu">Rabu</option>
+                  <option value="Kamis">Kamis</option>
+                  <option value="Jumat">Jumat</option>
+                  <option value="Sabtu">Sabtu</option>
+                  <option value="Minggu">Minggu</option>
+                </select>
+              </div>
+              <div class="form-group filter-admin-only" style="margin:0; display:none;">
+                <label>Filter Instrumen:</label>
+                <select id="filterJadwalInstrumen" onchange="applyJadwalFilters()">
+                  <option value="">-- Semua Instrumen --</option>
+                  <option value="Gitar">Gitar</option>
+                  <option value="Biola">Biola</option>
+                  <option value="Vocal">Vocal</option>
+                  <option value="Bass">Bass</option>
+                  <option value="Piano">Piano</option>
+                  <option value="Drum">Drum</option>
+                  <option value="Cello">Cello</option>
+                  <option value="Saxophone">Saxophone</option>
+                </select>
+              </div>
+              <div class="form-group filter-admin-only" style="margin:0; display:none;">
+                <label>Filter Guru Pengajar:</label>
+                <select id="filterJadwalGuru" onchange="applyJadwalFilters()">
+                  <option value="">-- Semua Guru --</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- VIEW 1: KALENDER -->
+          <div id="jadwalCalendarView" class="widget-box" style="padding: 10px;">
+            <div class="calendar-container">
+              <div id="calendar"></div>
+            </div>
+          </div>
+
+          <!-- VIEW 2: TABEL -->
+          <div id="jadwalTableView" class="widget-box data-list-box" style="display:none;">
+            <div class="responsive-table modern-data-table schedule-responsive-table">
+              <table>
+                <thead>
+                  <tr id="jadwalHeaderRow">
+                    <th>Hari</th>
+                    <th>Mulai</th>
+                    <th>Selesai</th>
+                    <th>Siswa</th>
+                    <th>Instrumen</th>
+                    <th>Ruangan</th>
+                    <th>Guru</th>
+                    <th>Status</th>
+                    <th id="thJadwalAksi">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="jadwalGuruBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- JADWAL PENGGANTI -->
+        <div class="content-section" id="section-pengganti">
+          <div class="academy-page-head"><div><h2>Jadwal Pergantian</h2><p>Kelola dan lihat jadwal Make-up Class berdasarkan tanggal pelaksanaan.</p></div></div>
+
+          <div class="widget-box academy-form-box" id="formJadwalPenggantiBox" style="display:none;">
+            <div class="widget-title" style="margin-bottom:15px;">🔄 Atur Jadwal Pergantian Siswa (Sakit / Izin)</div>
+            <form id="formAddJadwalPengganti" class="academy-form-grid" onsubmit="return handleAddJadwalPengganti(event)">
+              <div class="form-group">
+                <label>Pilih Siswa</label>
+                <select id="penggantiSiswaSelect" required onchange="autoFillJadwalPenggantiData(this.value)"></select>
+              </div>
+              <div class="form-group">
+                <label>Alasan Pergantian</label>
+                <select id="penggantiAlasan" required>
+                  <option value="Sakit">Sakit</option>
+                  <option value="Izin">Izin</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Tanggal Pelaksanaan Kelas Pergantian</label>
+                <input type="date" id="penggantiTanggal" required>
+              </div>
+              <div class="form-group">
+                <label>Jam Mulai</label>
+                <input type="time" id="penggantiJamMulai" required>
+              </div>
+              <div class="form-group">
+                <label>Jam Selesai</label>
+                <input type="time" id="penggantiJamSelesai" required>
+              </div>
+              <div class="form-group">
+                <label>Guru Pengajar</label>
+                <select id="penggantiGuruSelect" required></select>
+              </div>
+              <div class="form-group">
+                <label>Ruangan</label>
+                <select id="penggantiRuanganSelect" required>
+                  <option value="R 1">R 1</option>
+                  <option value="R 2">R 2</option>
+                  <option value="R 3">R 3</option>
+                  <option value="R 4">R 4</option>
+                  <option value="R 5">R 5</option>
+                  <option value="R 6">R 6</option>
+                  <option value="R 7">R 7</option>
+                  <option value="R 8">R 8</option>
+                </select>
+              </div>
+              <div class="academy-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitPengganti" class="btn btn-primary">Simpan Jadwal Pergantian</button></div>
+            </form>
+          </div>
+
+          <div class="widget-box">
+            <div class="widget-header">
+              <div class="widget-title">📋 Daftar Jadwal Pergantian</div>
+            </div>
+            <div id="makeupFilterBox" class="academy-filter-bar" style="margin-bottom:14px;">
+              <div id="makeupFilterClassGroup" class="form-group" style="margin:0;"><label>Kelas / Instrumen</label><select id="makeupFilterClass" onchange="renderTabelJadwalPengganti()"><option value="">Semua Kelas</option></select></div>
+              <div id="makeupFilterDayGroup" class="form-group" style="margin:0;"><label>Hari</label><select id="makeupFilterDay" onchange="renderTabelJadwalPengganti()"><option value="">Semua Hari</option><option>Senin</option><option>Selasa</option><option>Rabu</option><option>Kamis</option><option>Jumat</option><option>Sabtu</option><option>Minggu</option></select></div>
+              <div id="makeupFilterTeacherGroup" class="form-group" style="margin:0;"><label>Guru</label><select id="makeupFilterTeacher" onchange="renderTabelJadwalPengganti()"><option value="">Semua Guru</option></select></div>
+            </div>
+            <div id="jadwalPenggantiListContainer" class="academy-card-grid"></div>
+          </div>
+        </div>
+
+        <!-- KETERSEDIAAN RUANG KHUSUS ADMIN -->
+        <div class="content-section" id="section-ruang">
+          <div class="academy-page-head"><div><h2>Ketersediaan Ruang</h2><p>Cek ruangan kosong berdasarkan tanggal dan jam untuk mencegah bentrok kelas.</p></div></div>
+          <div class="widget-box academy-form-box">
+            <div class="academy-form-grid">
+              <div class="form-group"><label>Tanggal</label><input type="date" id="roomFilterDate" onchange="syncRoomDayAndRender()"></div>
+              <div class="form-group"><label>Hari</label><select id="roomFilterDay" onchange="renderRoomAvailability()"><option>Senin</option><option>Selasa</option><option>Rabu</option><option>Kamis</option><option>Jumat</option><option>Sabtu</option><option>Minggu</option></select></div>
+              <div class="form-group"><label>Jam Mulai</label><input type="time" id="roomFilterStart" value="10:00" onchange="renderRoomAvailability()"></div>
+              <div class="form-group"><label>Jam Selesai</label><input type="time" id="roomFilterEnd" value="11:00" onchange="renderRoomAvailability()"></div>
+              <div class="form-group"><label>Ruangan</label><select id="roomFilterRoom" onchange="renderRoomAvailability()"><option value="">Semua Ruangan</option></select></div>
+            </div>
+          </div>
+          <div class="widget-box">
+            <div id="roomAvailabilitySummary" class="room-summary"></div>
+            <div id="roomAvailabilityGrid" class="room-grid"></div>
+          </div>
+        </div>
+
+        <!-- PENGUMUMAN -->
+        <div class="content-section" id="section-pengumuman">
+          <div class="academy-page-head"><div><h2>Pengumuman Academy</h2><p>Informasi resmi untuk siswa dan guru dalam tampilan yang ringkas dan mudah dibaca.</p></div></div>
+
+          <div class="widget-box academy-form-box" id="formPengumumanBox" style="display:none;">
+            <div class="widget-title" style="margin-bottom:15px;">📢 Buat Pengumuman Baru</div>
+            <form id="formAddPengumuman" class="academy-form-grid" onsubmit="return handleAddPengumuman(event)">
+              <div class="form-group academy-span-2">
+                <label>Judul Pengumuman</label>
+                <input type="text" id="pengumumanJudul" required placeholder="Contoh: Libur Hari Raya / Evaluasi Belajar">
+              </div>
+              <div class="form-group academy-span-2">
+                <label>Target Penerima Pengumuman</label>
+                <select id="pengumumanTarget" required onchange="togglePengumumanTargetDetail(this.value)">
+                  <option value="semua">Semua (Guru & Siswa)</option>
+                  <option value="semua_guru">Semua Guru Saja</option>
+                  <option value="semua_siswa">Semua Siswa Saja</option>
+                  <option value="siswa_tertentu">Siswa Tertentu</option>
+                </select>
+              </div>
+              <div class="form-group academy-span-2" id="containerPengumumanSiswaDetail" style="display:none;">
+                <label>Pilih Siswa Spesifik</label>
+                <select id="pengumumanSiswaDetailSelect"></select>
+              </div>
+              <div class="form-group academy-span-all">
+                <label>Isi Pengumuman</label>
+                <textarea id="pengumumanIsi" rows="4" required placeholder="Tuliskan isi pengumuman lengkap di sini..."></textarea>
+              </div>
+              <div class="academy-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitPengumuman" class="btn btn-primary">Terbitkan Pengumuman</button></div>
+            </form>
+          </div>
+
+          <div class="widget-box">
+            <div class="widget-header">
+              <div class="widget-title">📢 Informasi & Pengumuman Terbaru</div>
+            </div>
+            <div id="pengumumanListContainer" class="academy-card-grid"></div>
+          </div>
+        </div>
+
+        <!-- MATERI & PROGRESS -->
+        <div class="content-section" id="section-progress">
+          <div class="attendance-page-head"><h2>Materi & Progress (Absensi)</h2><p>Catat kehadiran, materi pertemuan, latihan, dan perkembangan siswa dalam satu tampilan.</p></div>
+          <div class="widget-box attendance-form-box collapsible-widget" id="formAbsensiContainer" style="display:none;">
+            <div class="widget-header">
+              <div class="widget-title">Catat Kehadiran & Progress Pertemuan</div>
+              <button type="button" class="widget-collapse-btn" data-collapse-button="formAbsensiContainer" onclick="toggleDashboardWidget('formAbsensiContainer')" aria-label="Minimize">−</button>
+            </div>
+            <form id="formAbsensi" class="attendance-form-grid collapsible-content" onsubmit="return addAbsensiCombined(event)">
+              <div class="form-group"><label>Pilih Siswa</label><select id="absensiSiswa" required></select></div>
+              <div class="form-group"><label>Pertemuan Ke</label><select id="absensiPertemuanKe" required><option value="1">Pertemuan 1</option><option value="2">Pertemuan 2</option><option value="3">Pertemuan 3</option><option value="4">Pertemuan 4</option></select></div>
+              <div class="form-group"><label>Tanggal</label><input type="date" id="absensiTanggal" required></div>
+              <div class="form-group"><label>Status</label><select id="absensiStatus" required><option value="Masuk">Masuk</option><option value="Sakit">Sakit</option><option value="Izin">Izin</option><option value="Alpa">Alpa</option></select></div>
+              <div class="form-group"><label>Materi</label><input type="text" id="absensiMateri"></div>
+              <div class="form-group"><label>Lagu</label><input type="text" id="absensiLagu"></div>
+              <div class="form-group attendance-span-2"><label>Catatan/Tugas</label><textarea id="absensiCatatan" rows="2"></textarea></div>
+              
+              <!-- TANDA TANGAN DIGITAL DUA KOLOM UNTUK GURU -->
+              <div class="filter-grid attendance-span-all" id="guruSignatureGrid" style="margin-bottom:0;">
+                <div class="form-group" style="margin:0;">
+                  <label>✍️ Tanda Tangan Guru</label>
+                  <div class="sig-canvas-container">
+                    <canvas id="canvasTtdGuru" class="sig-canvas"></canvas>
+                    <button type="button" class="btn-expand-sig" onclick="toggleSignatureFullscreen('canvasTtdGuru')">Perbesar</button>
+                    <button type="button" class="btn-clear-sig" onclick="clearSignature('canvasTtdGuru')">Hapus</button>
+                  </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label>✍️ Tanda Tangan Siswa</label>
+                  <div class="sig-canvas-container">
+                    <canvas id="canvasTtdSiswa" class="sig-canvas"></canvas>
+                    <button type="button" class="btn-expand-sig" onclick="toggleSignatureFullscreen('canvasTtdSiswa')">Perbesar</button>
+                    <button type="button" class="btn-clear-sig" onclick="clearSignature('canvasTtdSiswa')">Hapus</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- FALLBACK JIKA DIBUKA ADMIN BUKAN GURU -->
+              <div class="form-group attendance-span-all" id="legacyTtdInputGroup" style="display:none;">
+                <label>Tanda Tangan Pengajar/Admin</label>
+                <input type="text" id="absensiTtd">
+              </div>
+
+              <div class="attendance-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitAbsensi" class="btn btn-primary">Simpan Kehadiran</button></div>
+            </form>
+          </div>
+          
+          <div class="widget-box attendance-list-box">
+            <div class="widget-header attendance-list-head" style="flex-wrap:wrap; gap:10px;">
+              <div class="widget-title">Riwayat Progress</div>
+              <button id="btnExportDocs" class="btn btn-export" onclick="printAbsensiReport()" style="display:none;">🖨 Cetak Laporan</button>
+            </div>
+
+            <!-- AREA FILTER PROGRESS DINAMIS GURU & ADMIN -->
+            <div class="filter-grid attendance-filter-panel" id="progressFilterBox">
+              <!-- Filter Guru (Hanya Admin) -->
+              <div class="form-group filter-admin-only" style="margin:0; display:none;">
+                <label>Filter Guru:</label>
+                <select id="filterProgressGuru" onchange="renderTabelRiwayat()">
+                  <option value="">-- Semua Guru --</option>
+                </select>
+              </div>
+
+              <!-- Filter Siswa (Guru & Admin) -->
+              <div class="form-group" id="containerFilterProgressSiswa" style="margin:0; display:none;">
+                <label>Filter Siswa:</label>
+                <select id="filterProgressSiswa" onchange="renderTabelRiwayat()">
+                  <option value="">-- Semua Siswa --</option>
+                </select>
+              </div>
+
+              <!-- Filter Bulan (Semua Role) -->
+              <div class="form-group" style="margin:0;">
+                <label>Filter Bulan:</label>
+                <select id="filterRiwayatSelect" onchange="renderTabelRiwayat()"></select>
+              </div>
+
+              <!-- Periode Export -->
+              <div class="form-group" id="containerExportPeriod" style="margin:0; display:none;">
+                <label>Periode Cetak:</label>
+                <select id="exportPeriodType" onchange="toggleExportMonthHint()">
+                  <option value="3months">3 Bulan Terakhir</option>
+                  <option value="month">Bulan yang Dipilih</option>
+                  <option value="all">Semua Riwayat</option>
+                </select>
+                <div id="exportMonthHint" style="display:none; margin-top:4px; font-size:11px; color:#64748b; line-height:1.4;">
+                  Jika memilih <b>Bulan yang Dipilih</b>, silakan tentukan bulannya dari <b>Filter Bulan</b>.
+                </div>
+              </div>
+            </div>
+
+            <div class="responsive-table attendance-responsive-table">
+              <table>
+                <thead>
+                  <tr id="trAbsensiHeader">
+                    <th>Tgl</th>
+                    <th>Pertemuan</th>
+                    <th>Siswa</th>
+                    <th>Status</th>
+                    <th>Materi</th>
+                    <th>Lagu</th>
+                    <th>TTD Guru</th>
+                    <th id="thAbsensiTtdSiswa">TTD Siswa</th>
+                    <th>Catatan</th>
+                    <th id="thAbsensiAksi">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="riwayatAbsensiBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TUGAS & LATIHAN -->
+        <div class="content-section" id="section-tugas">
+          <div class="task-page-head">
+            <div>
+              <h2>Tugas & Latihan</h2>
+              <p id="taskPageSubtitle">Kelola latihan, lampiran materi, dan hasil tugas dalam satu tempat.</p>
+            </div>
+            <button type="button" id="btnOpenCreateTask" class="btn btn-primary" style="display:none;" onclick="toggleCreateTaskForm()">+ Buat Tugas Baru</button>
+          </div>
+
+          <div class="task-stats">
+            <div class="task-stat"><div class="task-stat-icon">▤</div><div class="task-stat-copy"><span>Total Tugas</span><strong id="taskStatTotal">0</strong><small id="taskStatTotalHint">Semua tugas</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">◷</div><div class="task-stat-copy"><span>Belum Dikerjakan</span><strong id="taskStatOpen">0</strong><small>Perlu perhatian</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">✓</div><div class="task-stat-copy"><span>Sudah Dikumpulkan</span><strong id="taskStatDone">0</strong><small id="taskStatDoneHint">0% selesai</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">▣</div><div class="task-stat-copy"><span>Melewati Deadline</span><strong id="taskStatLate">0</strong><small>Perlu tindak lanjut</small></div></div>
+          </div>
+          
+          <div class="widget-box task-create-box" id="formCreateTugasBox" style="display:none;">
+            <div class="widget-header">
+              <div class="widget-title">Buat Tugas Baru</div>
+              <button type="button" class="modal-close" onclick="toggleCreateTaskForm(false)">&times;</button>
+            </div>
+            <form id="formCreateTugas" onsubmit="return handleCreateTugas(event)">
+              <div class="task-form-grid">
+              <div class="form-group">
+                <label>Pilih Siswa Penerima</label>
+                <select id="tugasPilihSiswa" required></select>
+              </div>
+              <div class="form-group">
+                <label>Jenis Tugas</label>
+                <select id="tugasTipe">
+                  <option value="Tugas Tulis">Tugas Tulis</option>
+                  <option value="Audio">Audio</option>
+                  <option value="Video">Video</option>
+                  <option value="Campuran">File / Campuran</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Judul Tugas</label>
+                <input type="text" id="tugasJudul" required placeholder="Contoh: Latihan Chord / Song Practice">
+              </div>
+              <div class="form-group">
+                <label>Tenggat Waktu (Deadline)</label>
+                <input type="date" id="tugasDeadline" required>
+              </div>
+              <div class="form-group task-span-2">
+                <label>Deskripsi / Instruksi Tugas</label>
+                <textarea id="tugasDeskripsi" rows="4" placeholder="Tuliskan target latihan, tempo, bagian lagu, dan cara siswa mengumpulkan tugas."></textarea>
+              </div>
+              <div class="form-group task-span-2">
+                <label>Link YouTube (opsional)</label>
+                <input type="url" id="tugasYoutubeUrl" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." oninput="renderCreateTaskYouTubePreview()">
+                <div class="task-help">Video akan tampil di detail tugas dan dapat diputar langsung oleh siswa.</div>
+                <div id="tugasYoutubePreview" class="task-youtube-list"></div>
+              </div>
+              <div class="form-group task-span-2">
+                <label>Lampiran Materi (opsional)</label>
+                <input type="file" id="tugasFileMateri" multiple onchange="renderSelectedTaskFiles(this, 'taskMaterialSelection')">
+                <div class="task-help">Bisa mengirim audio, video, gambar, PDF, dokumen, Guitar Pro, ZIP, dan jenis file lainnya. Maksimal 5 file dalam satu pengiriman, tanpa batas ukuran dari aplikasi.</div>
+                <div id="taskMaterialSelection" class="task-file-selection"></div>
+              </div>
+              </div>
+              <button type="submit" id="btnSubmitTugas" class="btn btn-primary">Kirim Tugas ke Siswa</button>
+            </form>
+          </div>
+
+          <div class="widget-box">
+            <div class="task-controls">
+              <div class="task-status-tabs" aria-label="Filter status tugas">
+                <button type="button" class="task-status-tab active" data-task-filter="semua" onclick="setTaskStatusFilter('semua', this)">Semua</button>
+                <button type="button" class="task-status-tab" data-task-filter="Belum Dikerjakan" onclick="setTaskStatusFilter('Belum Dikerjakan', this)">Berlangsung</button>
+                <button type="button" class="task-status-tab" data-task-filter="Selesai" onclick="setTaskStatusFilter('Selesai', this)">Selesai</button>
+                <button type="button" class="task-status-tab" data-task-filter="Terlambat" onclick="setTaskStatusFilter('Terlambat', this)">Terlambat</button>
+              </div>
+              <input type="hidden" id="taskStatusFilter" value="semua">
+              <div class="task-toolbar">
+                <div class="task-toolbar-field">
+                  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.65" y2="16.65"></line></svg>
+                  <input type="search" id="taskSearchInput" placeholder="Cari judul tugas atau nama siswa..." oninput="renderTabelTugas()">
+                </div>
+                <select id="taskStudentFilter" onchange="renderTabelTugas()" aria-label="Filter berdasarkan nama siswa">
+                  <option value="semua">Semua siswa</option>
+                </select>
+                <select id="taskSortFilter" onchange="renderTabelTugas()" aria-label="Urutkan tugas">
+                  <option value="terbaru">Terbaru</option>
+                  <option value="deadline">Deadline terdekat</option>
+                  <option value="nama">Nama siswa A–Z</option>
+                </select>
+              </div>
+            </div>
+            <div id="tugasTableBody" class="task-list"></div>
+            <div class="task-list-footer"><span id="taskListSummary">Menampilkan 0 tugas</span><span>Gunakan “Lihat Detail” untuk membuka instruksi dan jawaban siswa.</span></div>
+          </div>
+        </div>
+
+        <!-- DAFTAR GURU (ADMIN) -->
+        <div class="content-section" id="section-daftar-guru">
+          <div class="academy-page-head teacher-page-head">
+            <div><h2>Daftar Guru</h2><p>Kelola akun dan data pengajar Legacy Music Center.</p></div>
+            <div class="teacher-page-actions">
+              <button type="button" class="teacher-mini-btn primary" onclick="setTeacherQuickForm('teacherAddFormBox')">＋ <span class="teacher-btn-text-wide">Tambah </span>Guru</button>
+              <button type="button" class="teacher-mini-btn" onclick="switchTeacherAdminTab('attendance')">✓ <span class="teacher-btn-text-wide">Absensi </span>Guru</button>
+            </div>
+          </div>
+          <div class="widget-box">
+              <div id="teacherAddFormBox" class="teacher-quick-form" style="display:none;">
+              <div class="widget-title" style="margin-bottom:6px;">Tambah Guru</div>
+              <p style="font-size:13px; color:#64748b; margin:0 0 16px;">Buat akun guru baru beserta password untuk masuk ke dashboard guru.</p>
+              <form id="formTambahGuru" onsubmit="return handleAddGuru(event)">
+                <input type="hidden" id="editGuruOriginalID" value="">
+                <div class="academy-form-grid">
+                  <input type="hidden" id="addGuruID" value="">
+                  <div class="form-group"><label>Nama Guru</label><input type="text" id="addGuruNama" required></div>
+                  <div class="form-group"><label>Email</label><input type="email" id="addGuruEmail"></div>
+                  <div class="form-group"><label>Password</label><input type="password" id="addGuruPassword" autocomplete="new-password" required placeholder="Masukkan password guru"></div>
+                  <div class="form-group"><label>No. HP</label><input type="text" id="addGuruHP"></div>
+                  <div class="form-group"><label>Kelas / Instrumen</label><select id="addGuruInstrumen" required><option value="Gitar">Gitar</option><option value="Piano">Piano</option><option value="Vocal">Vocal</option><option value="Drum">Drum</option><option value="Biola">Biola</option><option value="Bass">Bass</option><option value="Cello">Cello</option><option value="Saxophone">Saxophone</option><option value="Music Creation">Music Creation</option></select></div>
+                  <div class="form-group"><label>Status</label><select id="addGuruStatus" required><option value="Aktif">Aktif</option><option value="Nonaktif">Nonaktif</option></select></div>
+                </div>
+                <div class="teacher-form-actions">
+                  <button type="submit" id="btnSubmitGuru" class="btn btn-primary">Simpan Guru</button>
+                  <button type="button" id="btnCancelEditGuru" class="btn" style="display:none;background:#f1f5f9;color:#475569;" onclick="cancelEditGuru()">Batal Edit</button>
+                </div>
+              </form>
+              </div>
+              <div class="widget-title" style="margin-bottom:12px;">Daftar Guru</div>
+              <div class="responsive-table modern-data-table teacher-mobile-table" style="padding:0;">
+                <table style="min-width:760px;"><thead><tr><th>No</th><th>Nama Guru</th><th>Instrumen</th><th>Email</th><th>No. HP</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="adminGuruListBody"></tbody></table>
+              </div>
+
+
+          </div>
+        </div>
+
+        <!-- ABSENSI GURU (ADMIN) -->
+        <div class="content-section" id="section-absensi-guru">
+          <div class="academy-page-head teacher-page-head">
+            <div><h2>Absensi Guru</h2><p>Catat kehadiran pengajar lengkap dengan tanda tangan digital dan cetak laporan.</p></div>
+            <div class="teacher-page-actions">
+              <button type="button" class="teacher-mini-btn primary" onclick="setTeacherQuickForm('teacherAttendanceFormBox')">＋ <span class="teacher-btn-text-wide">Tambah </span>Absensi</button>
+              <button type="button" class="teacher-mini-btn" onclick="switchTeacherAdminTab('list')">👤 <span class="teacher-btn-text-wide">Daftar </span>Guru</button>
+              <button type="button" class="teacher-mini-btn print" onclick="printTeacherAttendanceReport()">🖨 <span class="teacher-btn-text-wide">Cetak</span></button>
+            </div>
+          </div>
+          <div class="widget-box">
+              <div id="teacherAttendanceFormBox" class="teacher-quick-form" style="display:none;">
+              <div class="widget-title" style="margin-bottom:6px;">Tambah Absensi Guru</div>
+              <p style="font-size:13px;color:#64748b;margin:0 0 16px;">Catat kehadiran guru beserta tanda tangan digital. Data pada guru dan tanggal yang sama akan diperbarui, bukan diduplikasi.</p>
+              <form id="formAbsensiGuru" onsubmit="return handleTeacherAttendance(event)">
+                <input type="hidden" id="editAbsensiGuruID" value="">
+                <div class="academy-form-grid">
+                  <div class="form-group"><label>Nama Guru</label><select id="absensiGuruID" required><option value="">Pilih Guru...</option></select></div>
+                  <div class="form-group"><label>Tanggal</label><input type="date" id="absensiGuruTanggal" required></div>
+                  <div class="form-group"><label>Status</label><select id="absensiGuruStatus" required><option value="Hadir">Hadir</option><option value="Izin">Izin</option><option value="Sakit">Sakit</option><option value="Alpa">Alpa</option><option value="Cuti">Cuti</option></select></div>
+                  <div class="form-group"><label>Jam Masuk</label><input type="time" id="absensiGuruJamMasuk"></div>
+                  <div class="form-group"><label>Jam Keluar</label><input type="time" id="absensiGuruJamKeluar"></div>
+                  <div class="form-group"><label>Catatan</label><input type="text" id="absensiGuruCatatan" placeholder="Opsional"></div>
+                  <div class="form-group academy-span-all" style="margin:0;">
+                    <label>✍️ Tanda Tangan Guru</label>
+                    <div class="sig-canvas-container">
+                      <canvas id="canvasTtdAbsensiGuru" class="sig-canvas"></canvas>
+                      <button type="button" class="btn-expand-sig" onclick="toggleSignatureFullscreen('canvasTtdAbsensiGuru')">Perbesar</button>
+                      <button type="button" class="btn-clear-sig" onclick="clearSignature('canvasTtdAbsensiGuru')">Hapus</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="teacher-form-actions" style="margin-top:14px;">
+                  <button type="submit" id="btnSubmitAbsensiGuru" class="btn btn-primary">Simpan Absensi Guru</button>
+                  <button type="button" id="btnCancelEditAbsensiGuru" class="btn" style="display:none;background:#f1f5f9;color:#475569;" onclick="cancelEditTeacherAttendance()">Batal Edit</button>
+                </div>
+              </form>
+              </div>
+              <div class="widget-title" style="margin-bottom:12px;">Riwayat Absensi Guru</div>
+              <div class="responsive-table modern-data-table teacher-mobile-table" style="padding:0;">
+                <table style="min-width:920px;"><thead><tr><th>No</th><th>Tanggal</th><th>Nama Guru</th><th>Status</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Catatan</th><th>TTD</th><th>Aksi</th></tr></thead><tbody id="adminTeacherAttendanceBody"></tbody></table>
+              </div>
+
+          </div>
+        </div>
+
+        <!-- MANAJEMEN KELAS -->
+        <div class="content-section" id="fitur-guru">
+          <h2 style="margin-bottom:15px;">Manajemen Kelas</h2>
+          <div class="widget-box">
+            <div class="widget-title" style="margin-bottom:15px;">Tambah Siswa & Jadwal Baru</div>
+            <form id="formTambahSiswaCombined" onsubmit="return handleAddSiswaCombined(event)">
+              <div class="form-group"><label>Nama Lengkap Siswa</label><input type="text" id="addSiswaNama" required></div>
+              <div class="form-group">
+                <label>Pilih Kelas / Instrumen</label>
+                <select id="addSiswaInstrumen" required>
+                  <option value="Gitar">Gitar</option>
+                  <option value="Biola">Biola</option>
+                  <option value="Vocal">Vocal</option>
+                  <option value="Bass">Bass</option>
+                  <option value="Piano">Piano</option>
+                  <option value="Drum">Drum</option>
+                  <option value="Cello">Cello</option>
+                  <option value="Saxophone">Saxophone</option>
+                </select>
+              </div>
+
+              <!-- Pilihan Guru Pengajar -->
+              <div class="form-group" id="groupPilihGuruPengajar" style="display:none;">
+                <label style="color:#F15A24; font-weight:700;">Pilih Guru Pengajar</label>
+                <select id="addSiswaGuruSelect"></select>
+              </div>
+
+              <div class="form-group"><label>Grade (Kelas)</label><select id="addSiswaGrade" required><option value="Beginner">Beginner</option><option value="Grade 1">Grade 1</option><option value="Grade 2">Grade 2</option><option value="Grade 3">Grade 3</option><option value="Grade 4">Grade 4</option><option value="Advanced">Advanced</option></select></div>
+              <div class="form-group"><label>Email</label><input type="email" id="addSiswaEmail"></div>
+              <div class="form-group"><label>No HP</label><input type="text" id="addSiswaHP"></div>
+              <div class="form-group"><label>Tanggal Siswa Masuk</label><input type="date" id="addSiswaTanggalMasuk" required></div>
+              <div class="form-group"><label>Tanggal Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><input type="date" id="addSiswaTanggalKeluar"></div>
+              <div class="form-group"><label>Status Siswa</label><select id="addSiswaStatus" required><option value="Aktif">Aktif</option><option value="Cuti">Cuti</option><option value="Keluar">Keluar</option></select></div>
+              <hr style="margin:15px 0;">
+              <div class="form-group"><label>Hari Mengajar</label><select id="addJadwalHari" required><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option><option value="Minggu">Minggu</option></select></div>
+              <div class="form-group"><label>Jam Mulai</label><input type="time" id="addJadwalMulai" required></div>
+              <div class="form-group"><label>Jam Selesai</label><input type="time" id="addJadwalSelesai" required></div>
+              
+              <div class="form-group">
+                <label>Ruangan</label>
+                <select id="addJadwalRuanganSelect" required onchange="toggleRuanganOtherInput(this.value, 'containerRuanganOther', 'addJadwalRuanganOther')">
+                  <option value="">-- Pilih Ruangan --</option>
+                  <option value="R 1">R 1</option>
+                  <option value="R 2">R 2</option>
+                  <option value="R 3">R 3</option>
+                  <option value="R 4">R 4</option>
+                  <option value="R 5">R 5</option>
+                  <option value="R 6">R 6</option>
+                  <option value="R 7">R 7</option>
+                  <option value="R 8">R 8</option>
+                  <option value="Other">Other (Isi Sendiri)</option>
+                </select>
+              </div>
+
+              <div class="form-group" id="containerRuanganOther" style="display:none;">
+                <label style="color:#F15A24;">Nama Ruangan Lainnya</label>
+                <input type="text" id="addJadwalRuanganOther" placeholder="Masukkan nama ruangan manual...">
+              </div>
+
+              <div id="addStudentExtraClassesBox" style="display:none; margin:16px 0; padding:14px; border:1px solid #fed7aa; border-radius:12px; background:#fffaf6;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;">
+                  <div><b>Instrumen Tambahan</b><div style="font-size:12px;color:#64748b;margin-top:2px;">Tambahkan guru dan jadwal berbeda untuk siswa yang sama.</div></div>
+                  <button type="button" class="btn-action btn-edit" onclick="addStudentExtraClassRow()">+ Tambah Instrumen</button>
+                </div>
+                <div id="addStudentExtraClasses"></div>
+              </div>
+
+              <button type="submit" id="btnSubmitSiswaCombined" class="btn btn-primary">Simpan Siswa & Jadwal</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- PROFIL KUSTOMISASI -->
+        <div class="content-section" id="section-profil">
+          <h2 style="margin-bottom:15px;">Kustomisasi Profil Saya</h2>
+          <div class="profile-layout">
+            <div class="profile-photo-container">
+              <div class="profile-avatar-large" onclick="triggerPhotoSelect()">
+                <img id="myProfilePhotoImg" src="" style="display:none;">
+                <span id="myProfileInitials">A</span>
+                <div class="overlay">Ubah Foto</div>
+              </div>
+              <input type="file" id="inputFotoProfil" accept="image/*" style="display:none;" onchange="handleFotoSelected(event)">
+              <div>
+                <h3 id="myProfileDisplayName">Nama User</h3>
+                <p style="font-size:12px; color:#64748b;">Klik pada foto profil untuk mengubah & potong (crop) foto Anda.</p>
+              </div>
+            </div>
+
+            <section class="appearance-settings" aria-labelledby="appearanceSettingsTitle">
+              <h3 id="appearanceSettingsTitle">Tampilan Aplikasi</h3>
+              <p>Pilih tema yang nyaman. Mode otomatis mengikuti pengaturan tampilan perangkat Anda.</p>
+              <div class="theme-options" role="group" aria-label="Pilih mode tampilan">
+                <button type="button" class="theme-option" data-theme-preference="light" onclick="setThemePreference('light')" aria-pressed="false">
+                  <span class="theme-option-icon">☀️</span><span class="theme-option-label">Terang</span>
+                </button>
+                <button type="button" class="theme-option" data-theme-preference="dark" onclick="setThemePreference('dark')" aria-pressed="false">
+                  <span class="theme-option-icon">🌙</span><span class="theme-option-label">Gelap</span>
+                </button>
+                <button type="button" class="theme-option" data-theme-preference="auto" onclick="setThemePreference('auto')" aria-pressed="false">
+                  <span class="theme-option-icon">◐</span><span class="theme-option-label">Otomatis</span>
+                </button>
+              </div>
+            </section>
+
+            <form id="formEditProfileSelf" onsubmit="return handleSaveSelfProfile(event)">
+              <div class="form-group"><label>Nama Lengkap</label><input type="text" id="selfProfileNama" required></div>
+              <div class="form-group"><label>Alamat Email</label><input type="email" id="selfProfileEmail" required></div>
+              <div class="form-group"><label>No. HP / WhatsApp</label><input type="text" id="selfProfileHP"></div>
+              <div class="form-group" id="selfProfileInstrumenGroup" style="display:none;">
+                <label>Spesialisasi / Instrumen Utama</label>
+                <select id="selfProfileInstrumen">
+                  <option value="Gitar">Gitar</option>
+                  <option value="Biola">Biola</option>
+                  <option value="Vocal">Vocal</option>
+                  <option value="Bass">Bass</option>
+                  <option value="Piano">Piano</option>
+                  <option value="Drum">Drum</option>
+                  <option value="Cello">Cello</option>
+                  <option value="Saxophone">Saxophone</option>
+                </select>
+              </div>
+              <button type="submit" id="btnSaveSelfProfile" class="btn btn-primary">Simpan Perubahan Profil</button>
+            </form>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDIT ABSENSI -->
+  <div id="modalEditAbsensi" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Edit Riwayat Progress</h3><button class="modal-close" onclick="closeEditAbsensiModal()">&times;</button></div>
+      <form id="formEditAbsensi" onsubmit="return handleUpdateAbsensi(event)">
+        <input type="hidden" id="editAbsensiID">
+        <div class="form-group"><label>Nama Siswa</label><input type="text" id="editAbsensiNamaSiswa" readonly style="background:#f1f5f9;"></div>
+        <div class="form-group"><label>Pertemuan Ke</label><select id="editAbsensiPertemuanKe" required><option value="1">Pertemuan 1</option><option value="2">Pertemuan 2</option><option value="3">Pertemuan 3</option><option value="4">Pertemuan 4</option></select></div>
+        <div class="form-group"><label>Tanggal</label><input type="text" id="editAbsensiTanggal" required placeholder="DD-MM-YYYY"></div>
+        <div class="form-group"><label>Status</label><select id="editAbsensiStatus" required><option value="Masuk">Masuk</option><option value="Sakit">Sakit</option><option value="Izin">Izin</option><option value="Alpa">Alpa</option></select></div>
+        <div class="form-group"><label>Materi</label><input type="text" id="editAbsensiMateri"></div>
+        <div class="form-group"><label>Lagu</label><input type="text" id="editAbsensiLagu"></div>
+        <div class="form-group"><label>Catatan/Tugas</label><textarea id="editAbsensiCatatan" rows="2"></textarea></div>
+        
+        <div id="modalTtdGuruContainer">
+          <div class="form-group">
+            <label>✍️ Update Tanda Tangan Guru</label>
+            <div class="sig-canvas-container">
+              <canvas id="canvasEditTtdGuru" class="sig-canvas"></canvas>
+              <button type="button" class="btn-expand-sig" onclick="toggleSignatureFullscreen('canvasEditTtdGuru')">Perbesar</button>
+              <button type="button" class="btn-clear-sig" onclick="clearSignature('canvasEditTtdGuru')">Hapus</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>✍️ Update Tanda Tangan Siswa</label>
+            <div class="sig-canvas-container">
+              <canvas id="canvasEditTtdSiswa" class="sig-canvas"></canvas>
+              <button type="button" class="btn-expand-sig" onclick="toggleSignatureFullscreen('canvasEditTtdSiswa')">Perbesar</button>
+              <button type="button" class="btn-clear-sig" onclick="clearSignature('canvasEditTtdSiswa')">Hapus</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group" id="modalTtdLegacyContainer" style="display:none;">
+          <label>Tanda Tangan Pengajar/Admin</label>
+          <input type="text" id="editAbsensiTtd">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%;">Update Progress</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL KERJAKAN TUGAS (SISWA) -->
+  <div id="modalKerjakanTugas" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Kumpulkan Tugas</h3>
+        <button class="modal-close" onclick="closeKerjakanModal()">&times;</button>
+      </div>
+      <form onsubmit="return handleSubmitJawabanTugas(event)">
+        <input type="hidden" id="modalTugasID">
+        <div class="form-group">
+          <label>Judul Tugas</label>
+          <input type="text" id="modalJudulTugas" readonly style="background:#f1f5f9;">
+        </div>
+        <div class="form-group">
+          <label>Jawaban Tertulis</label>
+          <textarea id="modalJawabanTeks" rows="5" placeholder="Tulis jawaban, catatan latihan, atau kesulitan yang dialami..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Lampiran Jawaban (opsional)</label>
+          <input type="file" id="modalFileJawaban" multiple onchange="renderSelectedTaskFiles(this, 'taskAnswerSelection')">
+          <div class="task-help">Tambahkan rekaman audio, video latihan, foto, PDF, atau file lainnya. Jawaban tertulis atau minimal satu file wajib diisi.</div>
+          <div id="taskAnswerSelection" class="task-file-selection"></div>
+        </div>
+        <button type="submit" id="btnSubmitJawaban" class="btn btn-primary" style="width:100%;">Kirim Jawaban</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DETAIL TUGAS & JAWABAN -->
+  <div id="modalDetailTugas" class="modal task-detail-modal" onclick="handleTaskDetailBackdrop(event)">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="taskDetailModalTitle">
+      <div class="modal-header">
+        <h3 id="taskDetailModalTitle">Detail Tugas</h3>
+        <button type="button" class="modal-close" onclick="closeTaskDetailModal()" aria-label="Tutup detail tugas">&times;</button>
+      </div>
+      <div id="taskDetailBody" class="task-detail-body"></div>
+      <div id="taskDetailFooter" class="task-detail-footer"></div>
+    </div>
+  </div>
+
+  <!-- MODAL PROGRESS BELAJAR UNIVERSAL (GURU) -->
+  <div id="modalLearningProgress" class="modal lp-modal" onclick="handleLearningProgressBackdrop(event)">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="learningProgressModalTitle">
+      <div class="modal-header">
+        <div><h3 id="learningProgressModalTitle">Update Progress Belajar</h3><div id="lpOverallPreview" style="font-size:11px;color:#64748b;margin-top:3px;">Progress keseluruhan: 0%</div></div>
+        <button type="button" class="modal-close" onclick="closeLearningProgressModal()" aria-label="Tutup">&times;</button>
+      </div>
+      <form id="formLearningProgress" onsubmit="return handleSaveLearningProgress(event)" style="display:flex;flex-direction:column;min-height:0;">
+        <div class="lp-modal-body">
+          <input type="hidden" id="lpProgressID">
+          <input type="hidden" id="lpGuruSignatureUrl"><input type="hidden" id="lpGuruSignatureName">
+          <input type="hidden" id="lpKepalaSignatureUrl"><input type="hidden" id="lpKepalaSignatureName">
+          <div class="lp-form-top">
+            <div class="form-group"><label>Nama Siswa</label><select id="lpStudent" required onchange="loadLearningProgressFormForStudent(this.value)"></select></div>
+            <div class="form-group"><label>Level</label><select id="lpLevel" required><option>Beginner</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option><option>Grade 4</option><option>Grade 5</option><option>Advance</option></select></div>
+            <div class="form-group"><label>Jenis Periode</label><select id="lpPeriodType" onchange="toggleLearningProgressPeriodInput();loadLearningProgressFormForStudent(document.getElementById('lpStudent').value)"><option value="Bulanan">Bulanan</option><option value="Tiga Bulan">Tiga Bulan</option></select></div>
+            <div class="form-group"><label>Periode</label><input type="month" id="lpPeriodMonth" required onchange="loadLearningProgressFormForStudent(document.getElementById('lpStudent').value)"><input type="month" id="lpPeriodThreeStart" style="display:none;" onchange="updateLearningThreeMonthHint();loadLearningProgressFormForStudent(document.getElementById('lpStudent').value)"><small id="lpPeriodThreeHint" style="display:none;color:#64748b;margin-top:5px;"></small></div>
+          </div>
+          <div class="lp-section-label" style="margin-top:2px;">Status dan Nilai Komponen (0–100)</div>
+          <div class="lp-form-components">
+            <div class="lp-form-component"><div class="lp-form-component-title"><span>📖 Materi</span></div><div class="lp-component-controls"><select id="lpMateriStatus" onchange="handleLearningStatusChange('Materi')"><option>Belum Dimulai</option><option>Dalam Proses</option><option>Selesai</option></select><input id="lpMateriProgress" type="number" min="0" max="100" value="0" oninput="updateLearningProgressPreview()" aria-label="Nilai Materi"></div><div id="lpMateriHint" class="lp-score-hint">Belum dimulai • 0%</div><textarea id="lpMateriCatatan" placeholder="Materi yang sudah, sedang, dan berikutnya..."></textarea></div>
+            <div class="lp-form-component"><div class="lp-form-component-title"><span>⚙️ Teknik</span></div><div class="lp-component-controls"><select id="lpTeknikStatus" onchange="handleLearningStatusChange('Teknik')"><option>Belum Dimulai</option><option>Dalam Proses</option><option>Selesai</option></select><input id="lpTeknikProgress" type="number" min="0" max="100" value="0" oninput="updateLearningProgressPreview()" aria-label="Nilai Teknik"></div><div id="lpTeknikHint" class="lp-score-hint">Belum dimulai • 0%</div><textarea id="lpTeknikCatatan" placeholder="Teknik dasar, lanjutan, dan penguasaannya..."></textarea></div>
+            <div class="lp-form-component"><div class="lp-form-component-title"><span>♫ Teori Musik</span></div><div class="lp-component-controls"><select id="lpTeoriStatus" onchange="handleLearningStatusChange('Teori')"><option>Belum Dimulai</option><option>Dalam Proses</option><option>Selesai</option></select><input id="lpTeoriProgress" type="number" min="0" max="100" value="0" oninput="updateLearningProgressPreview()" aria-label="Nilai Teori Musik"></div><div id="lpTeoriHint" class="lp-score-hint">Belum dimulai • 0%</div><textarea id="lpTeoriCatatan" placeholder="Teori dasar, notasi/rhythm, harmoni, penerapan..."></textarea></div>
+            <div class="lp-form-component"><div class="lp-form-component-title"><span>▤ Repertoire / Lagu</span></div><div class="lp-component-controls"><select id="lpRepertoireStatus" onchange="handleLearningStatusChange('Repertoire')"><option>Belum Dimulai</option><option>Dalam Proses</option><option>Selesai</option></select><input id="lpRepertoireProgress" type="number" min="0" max="100" value="0" oninput="updateLearningProgressPreview()" aria-label="Nilai Repertoire"></div><div id="lpRepertoireHint" class="lp-score-hint">Belum dimulai • 0%</div><textarea id="lpRepertoireCatatan" placeholder="Lagu yang sudah, sedang, dan target berikutnya..."></textarea></div>
+            <div class="lp-form-component"><div class="lp-form-component-title"><span>◷ Practice / Latihan</span></div><div class="lp-component-controls"><select id="lpPracticeStatus" onchange="handleLearningStatusChange('Practice')"><option>Belum Dimulai</option><option>Dalam Proses</option><option>Selesai</option></select><input id="lpPracticeProgress" type="number" min="0" max="100" value="0" oninput="updateLearningProgressPreview()" aria-label="Nilai Practice"></div><div id="lpPracticeHint" class="lp-score-hint">Belum dimulai • 0%</div><textarea id="lpPracticeCatatan" placeholder="Konsistensi, latihan mandiri, target mingguan..."></textarea></div>
+            <div class="lp-form-component"><div class="lp-form-component-title"><span>★ Performance</span></div><div class="lp-component-controls"><select id="lpPerformanceStatus" onchange="handleLearningStatusChange('Performance')"><option>Belum Dimulai</option><option>Dalam Proses</option><option>Selesai</option></select><input id="lpPerformanceProgress" type="number" min="0" max="100" value="0" oninput="updateLearningProgressPreview()" aria-label="Nilai Performance"></div><div id="lpPerformanceHint" class="lp-score-hint">Belum dimulai • 0%</div><textarea id="lpPerformanceCatatan" placeholder="Di depan coach, kelas, orang lain, konser/recital..."></textarea></div>
+            <div class="lp-form-component"><div class="lp-form-component-title"><span>▥ Evaluasi</span></div><div class="lp-component-controls"><select id="lpEvaluasiStatus" onchange="handleLearningStatusChange('Evaluasi')"><option>Belum Dimulai</option><option>Dalam Proses</option><option>Selesai</option></select><input id="lpEvaluasiProgress" type="number" min="0" max="100" value="0" oninput="updateLearningProgressPreview()" aria-label="Nilai Evaluasi"></div><div id="lpEvaluasiHint" class="lp-score-hint">Belum dimulai • 0%</div><textarea id="lpEvaluasiCatatan" placeholder="Hasil evaluasi berkala..."></textarea></div>
+          </div>
+          <div class="lp-evaluation-grid">
+            <div class="form-group"><label>Kelebihan</label><textarea id="lpKelebihan" rows="3" placeholder="Hal yang sudah dikuasai dengan baik..."></textarea></div>
+            <div class="form-group"><label>Perlu Ditingkatkan</label><textarea id="lpPerluDitingkatkan" rows="3" placeholder="Hal yang perlu mendapat perhatian..."></textarea></div>
+            <div class="form-group lp-full"><label>Target Berikutnya</label><textarea id="lpTargetBerikutnya" rows="3" required placeholder="Target belajar berikutnya yang jelas dan terukur..."></textarea></div>
+          </div>
+          <div class="lp-section-label">Pengesahan Laporan</div>
+          <div class="lp-signature-grid">
+            <div class="lp-signature-upload"><label>Tanda Tangan Guru</label><input type="file" id="lpGuruSignatureFile" accept="image/*" onchange="previewLearningSignature(this,'lpGuruSignaturePreview')"><div id="lpGuruSignaturePreview" class="lp-signature-preview">Belum ada gambar</div></div>
+            <div class="lp-signature-upload"><label>Nama Kepala Sekolah</label><input type="text" id="lpKepalaSekolahNama" placeholder="Dapat diisi atau diubah nanti"><label style="margin-top:10px;">Tanda Tangan Kepala Sekolah</label><input type="file" id="lpKepalaSignatureFile" accept="image/*" onchange="previewLearningSignature(this,'lpKepalaSignaturePreview')"><div id="lpKepalaSignaturePreview" class="lp-signature-preview">Belum ada gambar</div></div>
+          </div>
+        </div>
+        <div class="lp-modal-footer"><button type="button" class="btn" onclick="closeLearningProgressModal()" style="background:#e9eef4;color:#475569;">Batal</button><button type="submit" id="btnSaveLearningProgress" class="btn btn-primary">Simpan Progress</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DETAIL PROGRESS BELAJAR -->
+  <div id="modalLearningProgressDetail" class="modal lp-modal lp-detail-fullscreen" onclick="handleLearningProgressDetailBackdrop(event)">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="lpDetailTitle">
+      <div class="modal-header"><h3 id="lpDetailTitle">Detail Progress Belajar</h3><button type="button" class="modal-close" onclick="closeLearningProgressDetailModal()" aria-label="Tutup">&times;</button></div>
+      <div id="lpDetailBody" class="lp-modal-body"></div>
+      <div class="lp-modal-footer"><button type="button" id="lpDetailDeleteButton" class="btn" style="display:none;background:#fee2e2;color:#b91c1c;" onclick="deleteSelectedLearningProgress()">Hapus</button><button type="button" id="lpDetailEditButton" class="btn btn-export" style="display:none;" onclick="closeLearningProgressDetailModal();openLearningProgressModal()">Edit / Update</button><button type="button" class="btn btn-primary" onclick="closeLearningProgressDetailModal()">Tutup</button></div>
+    </div>
+  </div>
+
+  <!-- MODAL EDIT SISWA -->
+  <div id="modalEditSiswa" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Edit Data Siswa</h3><button class="modal-close" onclick="closeEditModal()">&times;</button></div>
+      <form id="formEditSiswa" onsubmit="return handleUpdateSiswa(event)">
+        <input type="hidden" id="editOldNama">
+        <input type="hidden" id="editSiswaID">
+        <div class="form-group"><label>Nama Lengkap</label><input type="text" id="editSiswaNama" required></div>
+        <div class="form-group">
+          <label>Pilih Kelas / Instrumen</label>
+          <select id="editSiswaInstrumen" required>
+            <option value="Gitar">Gitar</option>
+            <option value="Biola">Biola</option>
+            <option value="Vocal">Vocal</option>
+            <option value="Bass">Bass</option>
+            <option value="Piano">Piano</option>
+            <option value="Drum">Drum</option>
+            <option value="Cello">Cello</option>
+            <option value="Saxophone">Saxophone</option>
+          </select>
+        </div>
+        <div class="form-group" id="editSiswaGuruGroup" style="display:none;">
+          <label>Guru Pengajar</label>
+          <select id="editSiswaGuruSelect"></select>
+        </div>
+        <div class="form-group"><label>Grade (Kelas)</label><select id="editSiswaGrade" required><option value="Beginner">Beginner</option><option value="Grade 1">Grade 1</option><option value="Grade 2">Grade 2</option><option value="Grade 3">Grade 3</option><option value="Grade 4">Grade 4</option><option value="Advanced">Advanced</option></select></div>
+        <div id="editStudentExtraClassesBox" style="display:none; margin:14px 0; padding:14px; border:1px solid #fed7aa; border-radius:12px; background:#fffaf6;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;">
+            <div><b>Instrumen Tambahan</b><div style="font-size:12px;color:#64748b;margin-top:2px;">Setiap instrumen dapat menggunakan guru dan jadwal berbeda.</div></div>
+            <button type="button" class="btn-action btn-edit" onclick="addEditStudentExtraClassRow()">+ Tambah Instrumen</button>
+          </div>
+          <div id="editStudentExtraClasses"></div>
+        </div>
+        <div class="form-group"><label>Email</label><input type="email" id="editSiswaEmail" required></div>
+        <div class="form-group"><label>No HP</label><input type="text" id="editSiswaHP"></div>
+        <div class="form-group"><label>Tanggal Siswa Masuk</label><input type="date" id="editSiswaTanggalMasuk" required></div>
+        <div class="form-group"><label>Tanggal Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><input type="date" id="editSiswaTanggalKeluar"></div>
+        <div class="form-group"><label>Status Siswa</label><select id="editSiswaStatus" required><option value="Aktif">Aktif</option><option value="Cuti">Cuti</option><option value="Keluar">Keluar</option></select></div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Update Data Siswa</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL EDIT JADWAL -->
+  <div id="modalEditJadwal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Edit / Detail Jadwal</h3><button class="modal-close" onclick="closeEditJadwalModal()">&times;</button></div>
+      <form id="formEditJadwal" onsubmit="return handleUpdateJadwal(event)">
+        <input type="hidden" id="editJadwalID">
+        <div class="form-group"><label>Pilih Siswa</label><select id="editJadwalSiswa" required></select></div>
+        <div class="form-group">
+          <label>Kelas / Instrumen</label>
+          <select id="editJadwalInstrumen" required>
+            <option value="Gitar">Gitar</option>
+            <option value="Biola">Biola</option>
+            <option value="Vocal">Vocal</option>
+            <option value="Bass">Bass</option>
+            <option value="Piano">Piano</option>
+            <option value="Drum">Drum</option>
+            <option value="Cello">Cello</option>
+            <option value="Saxophone">Saxophone</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Guru Pengajar</label><select id="editJadwalGuru" required></select></div>
+        <div class="form-group"><label>Hari</label><select id="editJadwalHari" required><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option><option value="Minggu">Minggu</option></select></div>
+        <div class="form-group"><label>Jam Mulai</label><input type="time" id="editJadwalMulai" required></div>
+        <div class="form-group"><label>Jam Selesai</label><input type="time" id="editJadwalSelesai" required></div>
+        
+        <div class="form-group">
+          <label>Ruangan</label>
+          <select id="editJadwalRuanganSelect" required onchange="toggleRuanganOtherInput(this.value, 'containerEditRuanganOther', 'editJadwalRuanganOther')">
+            <option value="">-- Pilih Ruangan --</option>
+            <option value="R 1">R 1</option>
+            <option value="R 2">R 2</option>
+            <option value="R 3">R 3</option>
+            <option value="R 4">R 4</option>
+            <option value="R 5">R 5</option>
+            <option value="R 6">R 6</option>
+            <option value="R 7">R 7</option>
+            <option value="R 8">R 8</option>
+            <option value="Other">Other (Isi Sendiri)</option>
+          </select>
+        </div>
+        <div class="form-group" id="containerEditRuanganOther" style="display:none;">
+          <label style="color:#F15A24;">Nama Ruangan Lainnya</label>
+          <input type="text" id="editJadwalRuanganOther" placeholder="Masukkan nama ruangan manual...">
+        </div>
+
+        <div class="form-group"><label>Status</label><select id="editJadwalStatus" required><option value="Aktif">Aktif</option><option value="Cuti">Cuti</option><option value="Keluar">Keluar</option></select></div>
+        <button type="submit" id="btnUpdateJadwalForm" class="btn btn-primary" style="width:100%;">Update Jadwal</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL CROPPER FOTO -->
+  <div id="modalCropper" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Potong Foto Profile (Crop)</h3>
+        <button class="modal-close" onclick="closeCropperModal()">&times;</button>
+      </div>
+      <div class="cropper-modal-container"><img id="imageToCrop" src=""></div>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn" onclick="closeCropperModal()" style="background:#e2e8f0; color:#475569;">Batal</button>
+        <button class="btn btn-primary" onclick="cropAndUploadPhoto()">Simpan Foto</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/services/api.js"></script>
+  <script src="/js/legacy-app.js"></script>
+</body>
+</html>
