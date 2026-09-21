@@ -32,3 +32,6 @@ Ini disengaja untuk tahap pertama. Memecah 5.000+ baris sekaligus sambil meminda
 ## Regression test wajib
 
 Uji tiga role (Siswa, Guru, Admin): login/logout, reload/close browser, dashboard, jadwal, tambah/edit/hapus siswa, guru, tugas + YouTube + lampiran, jawaban tugas, absensi + tanda tangan, progress belajar + cetak, jadwal pengganti, pengumuman, foto profil, laporan/statistik, dan konflik ruangan.
+
+## V3 performance pass
+See `docs/REFACTOR-V3.md`. V3 lazy-loads FullCalendar/CropperJS and deduplicates simultaneous identical read RPCs while leaving legacy global handlers untouched. Backend and Spreadsheet contracts are unchanged.

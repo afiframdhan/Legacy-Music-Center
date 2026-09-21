@@ -1,7 +1,12 @@
 (function () {
   'use strict';
 
-  async function rpc(method, args) {
+  // V3: identical read requests share the same in-flight Promise. No response cache is kept,
+  // so writes are still reflected on the next request exactly as before.
+  const inflightReads = new Map();
+  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo']);
+
+  async function rawRpc(method, args) {
     const response = await fetch('/api/rpc', {
       method: 'POST',
       credentials: 'same-origin',
@@ -16,12 +21,21 @@
     if (!response.ok || !payload || payload.ok === false) {
       const error = new Error((payload && payload.error) || `API error (${response.status})`);
       error.status = response.status;
-      if (response.status === 401) {
-        window.dispatchEvent(new CustomEvent('legacy:session-expired'));
-      }
+      if (response.status === 401) window.dispatchEvent(new CustomEvent('legacy:session-expired'));
       throw error;
     }
     return payload.data;
+  }
+
+  function rpc(method, args) {
+    if (!DEDUPE_METHODS.has(method)) return rawRpc(method, args);
+    let key;
+    try { key = `${method}:${JSON.stringify(args)}`; }
+    catch (_) { return rawRpc(method, args); }
+    if (inflightReads.has(key)) return inflightReads.get(key);
+    const request = rawRpc(method, args).finally(() => inflightReads.delete(key));
+    inflightReads.set(key, request);
+    return request;
   }
 
   function makeRunner() {
@@ -29,12 +43,8 @@
     let proxy;
     proxy = new Proxy({}, {
       get(_target, prop) {
-        if (prop === 'withSuccessHandler') {
-          return function (fn) { state.success = fn; return proxy; };
-        }
-        if (prop === 'withFailureHandler') {
-          return function (fn) { state.failure = fn; return proxy; };
-        }
+        if (prop === 'withSuccessHandler') return function (fn) { state.success = fn; return proxy; };
+        if (prop === 'withFailureHandler') return function (fn) { state.failure = fn; return proxy; };
         if (prop === 'then') return undefined;
         return function (...args) {
           rpc(String(prop), args)
@@ -50,8 +60,6 @@
     return proxy;
   }
 
-  // Compatibility shim. Existing UI can keep using google.script.run while the app
-  // is hosted on Cloudflare; the calls now go through /api/rpc instead of Apps Script iframe RPC.
   window.google = window.google || {};
   window.google.script = window.google.script || {};
   Object.defineProperty(window.google.script, 'run', {
@@ -62,6 +70,7 @@
 
   window.LegacyAPI = { rpc };
 })();
+
 let currentUser = { userType: '', userID: '', userName: '' };
     let loginType = 'siswa';
     let globalSiswaList = [];
@@ -86,6 +95,65 @@ let currentUser = { userType: '', userID: '', userName: '' };
     const AUTH_COOKIE_KEY = 'legacyMusicCenterAuthPersistent';
     const THEME_STORAGE_KEY = 'legacyThemePreference';
     let themeMediaListenerReady = false;
+
+
+(function () {
+  'use strict';
+
+  const pending = new Map();
+
+  function loadScript(key, src, ready) {
+    if (ready()) return Promise.resolve();
+    if (pending.has(key)) return pending.get(key);
+    const promise = new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[data-legacy-vendor="${key}"]`);
+      if (existing) {
+        existing.addEventListener('load', resolve, { once:true });
+        existing.addEventListener('error', () => reject(new Error(`Gagal memuat ${key}.`)), { once:true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.dataset.legacyVendor = key;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Gagal memuat ${key}.`));
+      document.head.appendChild(script);
+    }).finally(() => {
+      if (!ready()) pending.delete(key);
+    });
+    pending.set(key, promise);
+    return promise;
+  }
+
+  function loadStyle(key, href) {
+    if (document.querySelector(`link[data-legacy-vendor="${key}"]`)) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.dataset.legacyVendor = key;
+    document.head.appendChild(link);
+  }
+
+  function loadFullCalendar() {
+    return loadScript(
+      'fullcalendar',
+      'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js',
+      () => Boolean(window.FullCalendar && window.FullCalendar.Calendar)
+    );
+  }
+
+  function loadCropper() {
+    loadStyle('cropper-css', 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css');
+    return loadScript(
+      'cropper',
+      'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js',
+      () => typeof window.Cropper === 'function'
+    );
+  }
+
+  window.LegacyVendors = { loadFullCalendar, loadCropper };
+})();
 
     function getThemePreference() {
       try {
@@ -154,6 +222,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         return userType && userID && userName ? { userType, userID, userName } : null;
       } catch (ignore) { return null; }
     }
+
 
     function initApp() {
       initializeThemeSettings();
@@ -383,6 +452,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       setTimeout(() => { if(!sb.classList.contains('open') && window.innerWidth <= 768) sb.style.display = 'none'; }, 300);
     }
 
+
     function setLoginType(type) {
       loginType = type;
       document.getElementById('tabSiswa').classList.toggle('active', type === 'siswa');
@@ -452,6 +522,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       buildNavigation();
       fetchDashboardData();
     }
+
 
     function buildNavigation() {
       const icons = {
@@ -552,8 +623,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (sectionId === 'section-jadwal') {
         setTimeout(() => {
-          if(!calendarInstance) initCalendar();
-          else calendarInstance.render();
+          LegacyVendors.loadFullCalendar().then(() => {
+            if(!calendarInstance) initCalendar();
+            else calendarInstance.render();
+          }).catch(error => {
+            console.error('[Legacy Vendors] FullCalendar gagal dimuat', error);
+            showAlert('alertDanger', 'Kalender gagal dimuat. Periksa koneksi internet lalu coba lagi.');
+          });
         }, 150);
       }
 
@@ -635,15 +711,20 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!file) return;
       selectedFileName = file.name;
 
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const image = document.getElementById('imageToCrop');
-        image.src = e.target.result;
-        document.getElementById('modalCropper').style.display = 'flex';
-        if (cropperInstance) cropperInstance.destroy();
-        cropperInstance = new Cropper(image, { aspectRatio: 1, viewMode: 1 });
-      };
-      reader.readAsDataURL(file);
+      LegacyVendors.loadCropper().then(() => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const image = document.getElementById('imageToCrop');
+          image.src = e.target.result;
+          document.getElementById('modalCropper').style.display = 'flex';
+          if (cropperInstance) cropperInstance.destroy();
+          cropperInstance = new Cropper(image, { aspectRatio: 1, viewMode: 1 });
+        };
+        reader.readAsDataURL(file);
+      }).catch(error => {
+        console.error('[Legacy Vendors] Cropper gagal dimuat', error);
+        showAlert('alertDanger', 'Editor foto gagal dimuat. Periksa koneksi internet lalu coba lagi.');
+      });
     }
 
     function closeCropperModal() {
@@ -669,6 +750,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         }
       }).updateUserPhoto(currentUser.userID, currentUser.userType, base64Data, selectedFileName);
     }
+
 
     function fetchDashboardData() {
       const requestNumber = ++dashboardRequestNumber;
@@ -963,6 +1045,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       { key:'performance', label:'Performance', icon:'★' },
       { key:'evaluasi', label:'Evaluasi', icon:'▥' }
     ];
+
 
     function formatLearningProgressPeriod(period) {
       const range = String(period || '').match(/^(\d{4})-(\d{2})~(\d{4})-(\d{2})$/);
@@ -1325,6 +1408,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       printWindow.document.open(); printWindow.document.write(printReadyReport); printWindow.document.close();
     }
 
+
     function formatAcademyDate(value) {
       const text = String(value || '').trim();
       const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1650,6 +1734,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const center = document.getElementById('notificationCenter');
       if (center && !center.contains(event.target)) document.getElementById('notificationPanel')?.classList.remove('open');
     });
+
 
     function filterAdminByGuru() {
       renderDashboardViews();
@@ -2089,6 +2174,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       printWindow.document.open(); printWindow.document.write(report); printWindow.document.close();
     }
 
+
     function getFilteredJadwal() {
       const filterHari = document.getElementById('filterJadwalHari') ? document.getElementById('filterJadwalHari').value.trim().toLowerCase() : '';
       const filterInst = document.getElementById('filterJadwalInstrumen') ? document.getElementById('filterJadwalInstrumen').value.trim().toLowerCase() : '';
@@ -2116,6 +2202,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function initCalendar() {
+      if (!window.FullCalendar || !window.FullCalendar.Calendar) return;
       const calendarEl = document.getElementById('calendar');
       const compact = window.innerWidth <= 768;
       calendarInstance = new FullCalendar.Calendar(calendarEl, {
@@ -2530,6 +2617,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         }).deleteAbsensi(id);
       }
     }
+
 
     function escapeTaskHtml(value) {
       return String(value === undefined || value === null ? '' : value)
@@ -2982,6 +3070,7 @@ function normalizeTaskStatus(task) {
     const studentDayOptions = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'];
     const studentRoomOptions = ['R 1','R 2','R 3','R 4','R 5','R 6','R 7','R 8'];
 
+
     function classSelectOptions(values, selected) {
       return values.map(value => `<option value="${escapeTaskHtml(value)}" ${String(value) === String(selected || '') ? 'selected' : ''}>${escapeTaskHtml(value)}</option>`).join('');
     }
@@ -3191,6 +3280,7 @@ function normalizeTaskStatus(task) {
         }
       }).updateSelfProfile(payload);
     }
+
 
     function toggleRuanganOtherInput(value, containerId, inputId) {
       const containerOther = document.getElementById(containerId);

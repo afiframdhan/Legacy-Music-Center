@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 const jsSources = [
   'src/js/services/api.js',
   'src/js/state.js',
+  'src/js/core/vendor-loader.js',
   'src/js/core/theme-session.js',
   'src/js/core/app-shell.js',
   'src/js/auth.js',
@@ -29,7 +30,7 @@ const cssSources = [
 async function concat(files) {
   const parts = [];
   for (const file of files) parts.push(await readFile(file, 'utf8'));
-  return parts.join('');
+  return parts.join('\n');
 }
 
 await mkdir('public/js', { recursive: true });
@@ -42,3 +43,4 @@ await writeFile('public/css/app.bundle.css', css);
 const hash = value => createHash('sha256').update(value).digest('hex').slice(0, 12);
 console.log(`Built public/js/app.bundle.js  ${(Buffer.byteLength(js)/1024).toFixed(1)} KiB  sha256:${hash(js)}`);
 console.log(`Built public/css/app.bundle.css ${(Buffer.byteLength(css)/1024).toFixed(1)} KiB  sha256:${hash(css)}`);
+console.log('V3 vendor policy: FullCalendar and CropperJS are lazy-loaded on demand.');

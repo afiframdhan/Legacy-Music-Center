@@ -25,6 +25,7 @@
     }
 
     function initCalendar() {
+      if (!window.FullCalendar || !window.FullCalendar.Calendar) return;
       const calendarEl = document.getElementById('calendar');
       const compact = window.innerWidth <= 768;
       calendarInstance = new FullCalendar.Calendar(calendarEl, {

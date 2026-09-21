@@ -97,8 +97,13 @@
 
       if (sectionId === 'section-jadwal') {
         setTimeout(() => {
-          if(!calendarInstance) initCalendar();
-          else calendarInstance.render();
+          LegacyVendors.loadFullCalendar().then(() => {
+            if(!calendarInstance) initCalendar();
+            else calendarInstance.render();
+          }).catch(error => {
+            console.error('[Legacy Vendors] FullCalendar gagal dimuat', error);
+            showAlert('alertDanger', 'Kalender gagal dimuat. Periksa koneksi internet lalu coba lagi.');
+          });
         }, 150);
       }
 
@@ -180,15 +185,20 @@
       if (!file) return;
       selectedFileName = file.name;
 
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const image = document.getElementById('imageToCrop');
-        image.src = e.target.result;
-        document.getElementById('modalCropper').style.display = 'flex';
-        if (cropperInstance) cropperInstance.destroy();
-        cropperInstance = new Cropper(image, { aspectRatio: 1, viewMode: 1 });
-      };
-      reader.readAsDataURL(file);
+      LegacyVendors.loadCropper().then(() => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const image = document.getElementById('imageToCrop');
+          image.src = e.target.result;
+          document.getElementById('modalCropper').style.display = 'flex';
+          if (cropperInstance) cropperInstance.destroy();
+          cropperInstance = new Cropper(image, { aspectRatio: 1, viewMode: 1 });
+        };
+        reader.readAsDataURL(file);
+      }).catch(error => {
+        console.error('[Legacy Vendors] Cropper gagal dimuat', error);
+        showAlert('alertDanger', 'Editor foto gagal dimuat. Periksa koneksi internet lalu coba lagi.');
+      });
     }
 
     function closeCropperModal() {
