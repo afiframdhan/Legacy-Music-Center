@@ -1,4 +1,46 @@
 const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+// V4 PERFORMANCE: request-local read snapshot.
+// Aktif hanya selama penyusunan dashboard agar pembacaan sheet yang sama
+// oleh helper bertingkat tidak memanggil Spreadsheet service berulang kali.
+let __LMC_READ_SNAPSHOT__ = null;
+let __LMC_HEADER_SNAPSHOT__ = null;
+
+function beginReadSnapshot_() {
+  __LMC_READ_SNAPSHOT__ = Object.create(null);
+  __LMC_HEADER_SNAPSHOT__ = Object.create(null);
+}
+
+function endReadSnapshot_() {
+  __LMC_READ_SNAPSHOT__ = null;
+  __LMC_HEADER_SNAPSHOT__ = null;
+}
+
+function sheetSnapshotKey_(sheet) {
+  return String(sheet.getSheetId()) + ':' + sheet.getLastRow() + ':' + sheet.getLastColumn();
+}
+
+function readSheetValues_(sheet) {
+  if (!sheet) return [];
+  if (!__LMC_READ_SNAPSHOT__) return sheet.getDataRange().getValues();
+  const key = sheetSnapshotKey_(sheet);
+  if (!Object.prototype.hasOwnProperty.call(__LMC_READ_SNAPSHOT__, key)) {
+    __LMC_READ_SNAPSHOT__[key] = sheet.getDataRange().getValues();
+  }
+  return __LMC_READ_SNAPSHOT__[key];
+}
+
+function readHeaderValues_(sheet) {
+  const lastColumn = Math.max(sheet.getLastColumn(), 1);
+  if (!__LMC_HEADER_SNAPSHOT__) {
+    return sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  }
+  const key = String(sheet.getSheetId()) + ':' + lastColumn;
+  if (!Object.prototype.hasOwnProperty.call(__LMC_HEADER_SNAPSHOT__, key)) {
+    __LMC_HEADER_SNAPSHOT__[key] = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  }
+  return __LMC_HEADER_SNAPSHOT__[key];
+}
 const LEGACY_UPLOAD_ROOT_FOLDER_ID = '1RT0qG4utSornXTtDPbNE3-baeWmbyn4Q';
 
 function doGet(e) {
@@ -99,7 +141,7 @@ function checkAndSetupSheets() {
 }
 
 function headerMap_(sheet) {
-  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0].map(value => String(value || '').trim());
+  const headers = readHeaderValues_(sheet).map(value => String(value || '').trim());
   const map = {};
   headers.forEach((header, index) => map[header] = index);
   return map;
@@ -114,7 +156,7 @@ function entityDirectory_(sheetName, idHeader, nameHeader) {
   const result = { byID: {}, byName: {}, rows: [] };
   if (!sheet || sheet.getLastRow() < 2) return result;
   const map = headerMap_(sheet);
-  const data = sheet.getDataRange().getValues();
+  const data = readSheetValues_(sheet);
   for (let i = 1; i < data.length; i++) {
     const id = String(data[i][map[idHeader]] || '').trim();
     const name = String(data[i][map[nameHeader]] || '').trim();
@@ -157,7 +199,7 @@ function studentClassKey_(siswaID, instrumen, guruID, guruName) {
 function migrateStudentClasses_(students, teachers) {
   const sheet = ensureStudentClassSheet_();
   const map = headerMap_(sheet);
-  const existingRows = sheet.getDataRange().getValues();
+  const existingRows = readSheetValues_(sheet);
   const known = new Set();
   for (let i = 1; i < existingRows.length; i++) {
     const key = studentClassKey_(existingRows[i][map.SiswaID], existingRows[i][map.Instrumen], existingRows[i][map.GuruID], existingRows[i][map.Guru]);
@@ -181,7 +223,7 @@ function migrateStudentClasses_(students, teachers) {
   const siswaSheet = ss.getSheetByName('Siswa');
   if (siswaSheet && siswaSheet.getLastRow() >= 2) {
     const siswaMap = headerMap_(siswaSheet);
-    const rows = siswaSheet.getDataRange().getValues();
+    const rows = readSheetValues_(siswaSheet);
     for (let i = 1; i < rows.length; i++) {
       const student = students.byID[String(rows[i][siswaMap.SiswaID] || '').trim().toLowerCase()];
       const teacher = teachers.byID[String(rows[i][siswaMap.GuruID] || '').trim().toLowerCase()] || teachers.byName[String(rows[i][siswaMap.Guru] || '').trim().toLowerCase()];
@@ -192,7 +234,7 @@ function migrateStudentClasses_(students, teachers) {
   const jadwalSheet = ss.getSheetByName('Jadwal');
   if (jadwalSheet && jadwalSheet.getLastRow() >= 2) {
     const jadwalMap = headerMap_(jadwalSheet);
-    const rows = jadwalSheet.getDataRange().getValues();
+    const rows = readSheetValues_(jadwalSheet);
     for (let i = 1; i < rows.length; i++) {
       const student = students.byID[String(rows[i][jadwalMap.SiswaID] || '').trim().toLowerCase()] || students.byName[String(rows[i][jadwalMap.NamaSiswa] || '').trim().toLowerCase()];
       const teacher = teachers.byID[String(rows[i][jadwalMap.GuruID] || '').trim().toLowerCase()] || teachers.byName[String(rows[i][jadwalMap.Guru] || '').trim().toLowerCase()];
@@ -205,11 +247,11 @@ function getStudentClasses_(siswaID, guruID) {
   const sheet = ensureStudentClassSheet_();
   if (sheet.getLastRow() < 2) return [];
   const map = headerMap_(sheet);
-  const rows = sheet.getDataRange().getValues();
+  const rows = readSheetValues_(sheet);
   const studentKey = String(siswaID || '').trim().toLowerCase();
   const teacherKey = String(guruID || '').trim().toLowerCase();
   const schedules = ss.getSheetByName('Jadwal');
-  const scheduleRows = schedules ? schedules.getDataRange().getValues() : [];
+  const scheduleRows = schedules ? readSheetValues_(schedules) : [];
   const scheduleMap = schedules ? headerMap_(schedules) : {};
   const result = [];
   for (let i = 1; i < rows.length; i++) {
@@ -246,9 +288,9 @@ function getStudentClassIndex_() {
   const sheet = ensureStudentClassSheet_();
   if (sheet.getLastRow() < 2) return result;
   const map = headerMap_(sheet);
-  const rows = sheet.getDataRange().getValues();
+  const rows = readSheetValues_(sheet);
   const schedules = ss.getSheetByName('Jadwal');
-  const scheduleRows = schedules ? schedules.getDataRange().getValues() : [];
+  const scheduleRows = schedules ? readSheetValues_(schedules) : [];
   const scheduleMap = schedules ? headerMap_(schedules) : {};
   for (let i = 1; i < rows.length; i++) {
     const studentKey = String(rows[i][map.SiswaID] || '').trim().toLowerCase();
@@ -299,7 +341,7 @@ function saveStudentClasses_(student, classes, options) {
   const classSheet = ensureStudentClassSheet_();
   const classMap = headerMap_(classSheet);
   const classHeaders = classSheet.getRange(1, 1, 1, classSheet.getLastColumn()).getValues()[0].map(String);
-  const existing = classSheet.getDataRange().getValues();
+  const existing = readSheetValues_(classSheet);
   const retainedIDs = new Set();
   const startDate = options.tglDaftar || '';
   const endDate = options.tglKeluar || '';
@@ -319,7 +361,7 @@ function saveStudentClasses_(student, classes, options) {
     saveStudentClassSchedule_(student, item);
   });
   if (options.replaceAll && classSheet.getLastRow() >= 2) {
-    const rows = classSheet.getDataRange().getValues();
+    const rows = readSheetValues_(classSheet);
     for (let i = rows.length - 1; i >= 1; i--) {
       if (String(rows[i][classMap.SiswaID] || '').trim().toLowerCase() === student.id.toLowerCase() && !retainedIDs.has(String(rows[i][classMap.KelasSiswaID] || '').trim())) {
         deleteStudentClassSchedules_(student.id, rows[i][classMap.Instrumen], rows[i][classMap.GuruID], rows[i][classMap.Guru]);
@@ -333,7 +375,7 @@ function deleteStudentClassSchedules_(siswaID, instrumen, guruID, guruName) {
   const sheet = ss.getSheetByName('Jadwal');
   if (!sheet || sheet.getLastRow() < 2) return;
   const map = headerMap_(sheet);
-  const rows = sheet.getDataRange().getValues();
+  const rows = readSheetValues_(sheet);
   for (let i = rows.length - 1; i >= 1; i--) {
     const sameStudent = String(rows[i][map.SiswaID] || '').trim().toLowerCase() === String(siswaID || '').trim().toLowerCase();
     const sameInstrument = String(rows[i][map.Instrumen] || '').trim().toLowerCase() === String(instrumen || '').trim().toLowerCase();
@@ -347,7 +389,7 @@ function saveStudentClassSchedule_(student, item) {
   if (!item.hari || !item.jamMulai || !item.jamSelesai || !item.ruangan) return;
   const sheet = ensureAcademySheet('Jadwal', ['JadwalID','NamaSiswa','Hari','JamMulai','JamSelesai','Guru','Ruangan','Status','Instrumen','SiswaID','GuruID']);
   const map = headerMap_(sheet);
-  const rows = sheet.getDataRange().getValues();
+  const rows = readSheetValues_(sheet);
   let targetRow = 0;
   let jadwalID = item.jadwalID;
   for (let i = 1; i < rows.length; i++) {
@@ -490,7 +532,7 @@ function verifyLogin(userType, username, password) {
     const sheet = ss.getSheetByName(sheetName);
     if (!sheet) return { success: false, message: 'Database belum tersedia.' };
 
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
 
     for (let i = 1; i < data.length; i++) {
@@ -531,23 +573,20 @@ function verifyLogin(userType, username, password) {
 }
 
 function getDashboardData(userID, userType) {
+  const perfStartedAt = Date.now();
   try {
     ensureIdentitySystem_();
-    if (userType === 'admin') {
-      cleanupOrphanStudentSchedules_();
-      return serializeDashboardData(getAdminDashboardData(userID));
-    }
-    if (userType === 'guru') {
-      cleanupOrphanStudentSchedules_();
-      return serializeDashboardData(getGuruDashboardData(userID));
-    }
+    if (userType === 'admin' || userType === 'guru') cleanupOrphanStudentSchedules_();
+    beginReadSnapshot_();
+    if (userType === 'admin') return serializeDashboardData(getAdminDashboardData(userID));
+    if (userType === 'guru') return serializeDashboardData(getGuruDashboardData(userID));
 
     // DASHBOARD SISWA
     const siswaSheet = ss.getSheetByName('Siswa');
     const jadwalSheet = ss.getSheetByName('Jadwal');
     const absensiSheet = ss.getSheetByName('Absensi');
 
-    const siswaData = siswaSheet.getDataRange().getValues();
+    const siswaData = readSheetValues_(siswaSheet);
     let siswaInfo = null;
     const studentEntity = resolveStudent_(userID);
     if (!studentEntity) return serializeDashboardData({ success: false, error: 'Data siswa tidak ditemukan.' });
@@ -572,7 +611,7 @@ function getDashboardData(userID, userType) {
     }
 
     const schedules = [];
-    const jData = jadwalSheet ? jadwalSheet.getDataRange().getValues() : [];
+    const jData = jadwalSheet ? readSheetValues_(jadwalSheet) : [];
     const jadwalColumns = jadwalSheet ? headerMap_(jadwalSheet) : {};
     for (let i = 1; i < jData.length; i++) {
       if (rowMatchesEntity_(jData[i], jadwalColumns, 'SiswaID', 'NamaSiswa', studentEntity) && String(jData[i][7] || 'Aktif').toLowerCase() === 'aktif') {
@@ -596,7 +635,7 @@ function getDashboardData(userID, userType) {
 
     const absensiList = [];
     if (absensiSheet) {
-      const aData = absensiSheet.getDataRange().getValues();
+      const aData = readSheetValues_(absensiSheet);
       const absensiColumns = headerMap_(absensiSheet);
       for (let i = 1; i < aData.length; i++) {
         if (rowMatchesEntity_(aData[i], absensiColumns, 'SiswaID', 'NamaSiswa', studentEntity)) {
@@ -652,6 +691,10 @@ function getDashboardData(userID, userType) {
     });
 
   } catch (e) { return serializeDashboardData({ success: false, error: e.toString() }); }
+  finally {
+    endReadSnapshot_();
+    Logger.log('V4 getDashboardData [' + String(userType || '') + '] ' + (Date.now() - perfStartedAt) + ' ms');
+  }
 }
 
 function serializeDashboardData(data) {
@@ -673,7 +716,7 @@ function getAdminDashboardData(userID) {
     const jadwalSheet = ss.getSheetByName('Jadwal');
     const absensiSheet = ss.getSheetByName('Absensi');
 
-    const adminData = adminSheet ? adminSheet.getDataRange().getValues() : [];
+    const adminData = adminSheet ? readSheetValues_(adminSheet) : [];
     let adminInfo = null;
     for (let i = 1; i < adminData.length; i++) {
       if (String(adminData[i][0]).toLowerCase() === String(userID).toLowerCase() || String(adminData[i][1]).toLowerCase() === String(userID).toLowerCase()) {
@@ -683,7 +726,7 @@ function getAdminDashboardData(userID) {
     }
 
     const siswaList = [];
-    const sData = siswaSheet ? siswaSheet.getDataRange().getValues() : [];
+    const sData = siswaSheet ? readSheetValues_(siswaSheet) : [];
     const siswaColumns = siswaSheet ? headerMap_(siswaSheet) : {};
     const studentClassIndex = getStudentClassIndex_();
     for (let i = 1; i < sData.length; i++) {
@@ -702,7 +745,7 @@ function getAdminDashboardData(userID) {
 
     const guruList = getGuruList();
     const jadwal = [];
-    const jData = jadwalSheet ? jadwalSheet.getDataRange().getValues() : [];
+    const jData = jadwalSheet ? readSheetValues_(jadwalSheet) : [];
     for (let i = 1; i < jData.length; i++) {
       const namaSiswaJadwal = String(jData[i][1] || '').trim();
       if (!siswaNamaAktifSet.has(namaSiswaJadwal.toLowerCase())) continue;
@@ -715,7 +758,7 @@ function getAdminDashboardData(userID) {
 
     const absensiList = [];
     if (absensiSheet) {
-      const aData = absensiSheet.getDataRange().getValues();
+      const aData = readSheetValues_(absensiSheet);
       for (let i = 1; i < aData.length; i++) {
         absensiList.push({
           absensiID: aData[i][0],
@@ -759,7 +802,7 @@ function getGuruDashboardData(userID) {
     const jadwalSheet = ss.getSheetByName('Jadwal');
     const absensiSheet = ss.getSheetByName('Absensi');
 
-    const guruData = guruSheet ? guruSheet.getDataRange().getValues() : [];
+    const guruData = guruSheet ? readSheetValues_(guruSheet) : [];
     let guruInfo = null;
     let namaGuruAktif = '';
     const teacherEntity = resolveTeacher_(userID);
@@ -784,7 +827,7 @@ function getGuruDashboardData(userID) {
     const siswaList = [];
     const siswaNamaSet = new Set();
     const semuaSiswaNamaSet = new Set();
-    const sData = siswaSheet ? siswaSheet.getDataRange().getValues() : [];
+    const sData = siswaSheet ? readSheetValues_(siswaSheet) : [];
     const siswaColumns = siswaSheet ? headerMap_(siswaSheet) : {};
     const studentClassIndex = getStudentClassIndex_();
     for (let i = 1; i < sData.length; i++) {
@@ -813,7 +856,7 @@ function getGuruDashboardData(userID) {
 
     let sesiJadwalHariIniCount = 0;
     const jadwal = [];
-    const jData = jadwalSheet ? jadwalSheet.getDataRange().getValues() : [];
+    const jData = jadwalSheet ? readSheetValues_(jadwalSheet) : [];
     const jadwalColumns = jadwalSheet ? headerMap_(jadwalSheet) : {};
     for (let i = 1; i < jData.length; i++) {
       const guruJadwal = String(jData[i][5] || '').trim();
@@ -838,7 +881,7 @@ function getGuruDashboardData(userID) {
 
     const absensiList = [];
     if (absensiSheet) {
-      const aData = absensiSheet.getDataRange().getValues();
+      const aData = readSheetValues_(absensiSheet);
       const absensiColumns = headerMap_(absensiSheet);
       for (let i = 1; i < aData.length; i++) {
         const sNama = String(aData[i][1]).trim().toLowerCase();
@@ -878,7 +921,7 @@ function getGuruList() {
   try {
     const sheet = ss.getSheetByName('Guru');
     if (!sheet) return [];
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const guruList = [];
     for (let i = 1; i < data.length; i++) {
       if (data[i][1]) {
@@ -909,7 +952,7 @@ function addGuru(payload, requesterType) {
     if (!instrumen) return { success: false, message: 'Kelas / instrumen wajib dipilih.' };
 
     const sheet = ensureAcademySheet('Guru', ['GuruID', 'Nama', 'Email', 'Password', 'NoHP', 'Instrumen', 'Status', 'FotoURL']);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const namaKey = nama.toLowerCase();
     const emailKey = email.toLowerCase();
 
@@ -940,7 +983,7 @@ function updateGuru(payload, requesterType) {
     const originalID = String(payload.originalGuruID || payload.guruID || '').trim();
     if (!originalID) return { success:false, message:'Data guru yang akan diedit tidak ditemukan.' };
     const sheet = ensureAcademySheet('Guru', ['GuruID', 'Nama', 'Email', 'Password', 'NoHP', 'Instrumen', 'Status', 'FotoURL']);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     let rowIndex = -1;
     for (let i=1;i<data.length;i++) if (String(data[i][0] || '').trim().toLowerCase() === originalID.toLowerCase()) { rowIndex=i; break; }
     if (rowIndex < 0) return { success:false, message:'Guru tidak ditemukan.' };
@@ -966,7 +1009,7 @@ function deleteGuru(identifier, requesterType) {
     if (!teacher) return { success:false, message:'Guru tidak ditemukan.' };
     const siswaSheet = ss.getSheetByName('Siswa');
     if (siswaSheet) {
-      const data=siswaSheet.getDataRange().getValues(), col=headerMap_(siswaSheet);
+      const data=readSheetValues_(siswaSheet), col=headerMap_(siswaSheet);
       for (let i=1;i<data.length;i++) {
         const gid = col.GuruID !== undefined ? String(data[i][col.GuruID] || '').trim().toLowerCase() : '';
         const gname = col.Guru !== undefined ? String(data[i][col.Guru] || '').trim().toLowerCase() : '';
@@ -976,7 +1019,7 @@ function deleteGuru(identifier, requesterType) {
     }
     const kelasSheet = ss.getSheetByName('KelasSiswa');
     if (kelasSheet) {
-      const data=kelasSheet.getDataRange().getValues(), col=headerMap_(kelasSheet);
+      const data=readSheetValues_(kelasSheet), col=headerMap_(kelasSheet);
       for (let i=1;i<data.length;i++) {
         const gid = col.GuruID !== undefined ? String(data[i][col.GuruID] || '').trim().toLowerCase() : '';
         const gname = col.Guru !== undefined ? String(data[i][col.Guru] || '').trim().toLowerCase() : '';
@@ -986,11 +1029,11 @@ function deleteGuru(identifier, requesterType) {
     }
     const jadwalSheet = ss.getSheetByName('Jadwal');
     if (jadwalSheet) {
-      const data=jadwalSheet.getDataRange().getValues();
+      const data=readSheetValues_(jadwalSheet);
       for (let i=1;i<data.length;i++) if (String(data[i][5] || '').trim().toLowerCase() === teacher.name.toLowerCase() && String(data[i][7] || 'Aktif').trim().toLowerCase() !== 'nonaktif') return { success:false, message:'Guru masih memiliki jadwal aktif. Ubah atau hapus jadwal terlebih dahulu.' };
     }
     const sheet=ss.getSheetByName('Guru');
-    const data=sheet.getDataRange().getValues();
+    const data=readSheetValues_(sheet);
     for (let i=1;i<data.length;i++) if (String(data[i][0] || '').trim().toLowerCase() === teacher.id.toLowerCase()) { sheet.deleteRow(i+1); return { success:true, message:'Guru ' + teacher.name + ' berhasil dihapus.' }; }
     return { success:false, message:'Guru tidak ditemukan.' };
   } catch(e) { return { success:false, message:'Gagal menghapus guru: ' + e.toString() }; }
@@ -1004,7 +1047,7 @@ function getTeacherAttendanceData(requesterType) {
   try {
     if (String(requesterType || '').trim().toLowerCase() !== 'admin') return [];
     const sheet = ensureTeacherAttendanceSheet_();
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
     const list = [];
     for (let i = 1; i < data.length; i++) {
@@ -1045,7 +1088,7 @@ function recordTeacherAttendance(payload, requesterType) {
     if (!['Hadir','Izin','Sakit','Alpa','Cuti'].includes(status)) return { success:false, message:'Status absensi guru tidak valid.' };
 
     const sheet = ensureTeacherAttendanceSheet_();
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
     let targetRow = 0;
     const attendanceID = String(payload.absensiGuruID || '').trim().toLowerCase();
@@ -1082,7 +1125,7 @@ function deleteTeacherAttendance(absensiGuruID, requesterType) {
   try {
     if (String(requesterType || '').trim().toLowerCase() !== 'admin') return { success:false, message:'Hanya admin yang dapat menghapus absensi guru.' };
     const sheet = ensureTeacherAttendanceSheet_();
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
     const target = String(absensiGuruID || '').trim().toLowerCase();
     for (let i = 1; i < data.length; i++) {
@@ -1132,7 +1175,7 @@ function getLearningProgressData(identifier, userType) {
   const list = [];
   try {
     const sheet = ensureLearningProgressSheet();
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     if (data.length < 2) return list;
     const headers = data[0].map(h => String(h || '').trim());
     const col = {};
@@ -1250,7 +1293,7 @@ function saveLearningProgress(payload, currentUserName, currentUserType) {
     }
 
     const siswaSheet = ss.getSheetByName('Siswa');
-    const siswaData = siswaSheet ? siswaSheet.getDataRange().getValues() : [];
+    const siswaData = siswaSheet ? readSheetValues_(siswaSheet) : [];
     let studentInfo = null;
     const assignedClasses = getStudentClasses_(studentEntity.id, teacherEntity.id);
     for (let i = 1; i < siswaData.length; i++) {
@@ -1286,7 +1329,7 @@ function saveLearningProgress(payload, currentUserName, currentUserType) {
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
     const col = {};
     headers.forEach((header, index) => col[header] = index);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     let targetRow = -1;
     let progressID = String(payload.progressID || '').trim();
     for (let i = 1; i < data.length; i++) {
@@ -1366,7 +1409,7 @@ function deleteLearningProgress(progressID, currentUserName, currentUserType) {
     const teacher = String(currentUserName || '').trim().toLowerCase();
     if (!id) return { success: false, message: 'Data progress tidak ditemukan.' };
     const sheet = ensureLearningProgressSheet();
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const headers = data[0].map(value => String(value || '').trim());
     const idCol = headers.indexOf('ProgressID');
     const teacherCol = headers.indexOf('Guru');
@@ -1388,8 +1431,14 @@ function deleteLearningProgress(progressID, currentUserName, currentUserType) {
 
 function getLearningProgressPrintLogo() {
   try {
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'lmc:v4:learning-progress-print-logo';
+    const cached = cache.get(cacheKey);
+    if (cached) return { success: true, dataUrl: cached };
     const blob = DriveApp.getFileById('100p7XBZR19_tqTph14SbSkaJrAmbSIVl').getBlob();
-    return { success: true, dataUrl: 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes()) };
+    const dataUrl = 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
+    try { cache.put(cacheKey, dataUrl, 21600); } catch (cacheError) { Logger.log('Logo cache dilewati: ' + cacheError); }
+    return { success: true, dataUrl: dataUrl };
   } catch (e) {
     return { success: false, message: 'Logo laporan tidak dapat dimuat: ' + e.toString() };
   }
@@ -1400,7 +1449,7 @@ function getTugasData(identifier, userType) {
   try {
     const sheet = ensureTaskSheetSchema();
     if (!sheet) return list;
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     if (data.length < 2) return list;
     const headers = data[0].map(h => String(h || '').trim());
     const col = {};
@@ -1598,7 +1647,7 @@ function findRoomScheduleConflict(room, day, date, start, end, excludeRegularId,
   const normalizedDay = String(day || dayNameFromIsoDate(date) || '').trim().toLowerCase();
   const scheduleSheet = ss.getSheetByName('Jadwal');
   if (scheduleSheet && scheduleSheet.getLastRow() > 1) {
-    const rows = scheduleSheet.getDataRange().getValues();
+    const rows = readSheetValues_(scheduleSheet);
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][0] || '').trim() === String(excludeRegularId || '').trim()) continue;
       if (String(rows[i][6] || '').trim().toLowerCase() !== normalizedRoom) continue;
@@ -1609,7 +1658,7 @@ function findRoomScheduleConflict(room, day, date, start, end, excludeRegularId,
   }
   if (date) {
     const makeupSheet = ensureAcademySheet('JadwalPengganti', ['PenggantiID', 'JadwalID', 'NamaSiswa', 'Alasan', 'TanggalPelaksanaan', 'JamMulai', 'JamSelesai', 'Guru', 'Ruangan', 'Status', 'DibuatPada']);
-    const data = makeupSheet.getDataRange().getValues();
+    const data = readSheetValues_(makeupSheet);
     const headers = data[0].map(value => String(value || '').trim());
     const col = {}; headers.forEach((header, index) => col[header] = index);
     for (let i = 1; i < data.length; i++) {
@@ -1648,7 +1697,7 @@ function addStudentMovement(nama, jenis, tanggal, statusSebelum, statusSesudah, 
 
 function updateStudentMovementDate(oldNama, nama, jenis, tanggal, statusSebelum, statusSesudah, instrumen, guru, keterangan) {
   const sheet = getStudentHistorySheet();
-  const data = sheet.getDataRange().getValues();
+  const data = readSheetValues_(sheet);
   const oldNameKey = String(oldNama || nama || '').trim().toLowerCase();
   const typeKey = String(jenis || '').trim().toLowerCase();
   let matchedRow = 0;
@@ -1685,7 +1734,7 @@ function updateStudentMovementDate(oldNama, nama, jenis, tanggal, statusSebelum,
 }
 
 function studentMovementExists(nama, jenis) {
-  const data = getStudentHistorySheet().getDataRange().getValues();
+  const data = readSheetValues_(getStudentHistorySheet());
   const nameKey = String(nama || '').trim().toLowerCase();
   const typeKey = String(jenis || '').trim().toLowerCase();
   for (let i = 1; i < data.length; i++) {
@@ -1697,7 +1746,7 @@ function studentMovementExists(nama, jenis) {
 function getStudentMovementData() {
   try {
     const list = [];
-    const historyData = getStudentHistorySheet().getDataRange().getValues();
+    const historyData = readSheetValues_(getStudentHistorySheet());
     for (let i = 1; i < historyData.length; i++) {
       if (!historyData[i][1] || !historyData[i][2]) continue;
       list.push({
@@ -1712,7 +1761,7 @@ function getStudentMovementData() {
     // Data lama tetap masuk laporan meski dibuat sebelum sheet RiwayatSiswa tersedia.
     const known = new Set(list.map(item => String(item.jenis).toLowerCase() + '|' + String(item.nama).trim().toLowerCase() + '|' + String(item.tanggal || '')));
     const siswaSheet = ss.getSheetByName('Siswa');
-    const siswaData = siswaSheet ? siswaSheet.getDataRange().getValues() : [];
+    const siswaData = siswaSheet ? readSheetValues_(siswaSheet) : [];
     for (let i = 1; i < siswaData.length; i++) {
       const nama = String(siswaData[i][0] || '').trim();
       if (!nama) continue;
@@ -1751,7 +1800,7 @@ function deleteExitedStudentRecord(identifier, requesterType) {
     }
 
     const history = getStudentHistorySheet();
-    const data = history.getDataRange().getValues();
+    const data = readSheetValues_(history);
     const columns = headerMap_(history);
     let deletedHistory = 0;
     for (let i = data.length - 1; i >= 1; i--) {
@@ -1775,7 +1824,7 @@ function deleteExitedStudentRecord(identifier, requesterType) {
 function addSiswaCombined(data) {
   try {
     const sheetSiswa = ensureAcademySheet('Siswa', ['Nama','Grade','Email','Password','NoHP','TglDaftar','Status','FotoURL','Instrumen','Guru','TglKeluar','SiswaID','GuruID']);
-    const existingData = sheetSiswa.getDataRange().getValues();
+    const existingData = readSheetValues_(sheetSiswa);
     for (let i = 1; i < existingData.length; i++) {
       if (String(existingData[i][0]).trim().toLowerCase() === String(data.nama).trim().toLowerCase()) {
         return { success: false, message: 'Gagal: Nama Siswa tersebut sudah terdaftar!' };
@@ -1818,7 +1867,7 @@ function addSiswaCombined(data) {
 function updateSiswa(data) {
   try {
     const sheet = ss.getSheetByName('Siswa');
-    const d = sheet.getDataRange().getValues();
+    const d = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
     for (let i = 1; i < d.length; i++) {
       const requestedID = String(data.siswaID || '').trim().toLowerCase();
@@ -1885,7 +1934,7 @@ function deleteSiswa(nama) {
   try {
     lock.waitLock(20000);
     const sheet = ss.getSheetByName('Siswa'); 
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][0]).trim().toLowerCase() === String(nama).trim().toLowerCase()) {
         const namaSiswa = String(data[i][0] || '').trim();
@@ -2057,7 +2106,7 @@ function updateAbsensi(data) {
   try {
     const sheet = ss.getSheetByName('Absensi');
     if (!sheet) return { success: false, message: 'Sheet Absensi tidak ditemukan.' };
-    const d = sheet.getDataRange().getValues();
+    const d = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
     for (let i = 1; i < d.length; i++) {
       if (String(d[i][0]).trim() === String(data.absensiID).trim()) {
@@ -2087,7 +2136,7 @@ function deleteAbsensi(absensiID) {
   try {
     const sheet = ss.getSheetByName('Absensi');
     if (!sheet) return { success: false, message: 'Sheet Absensi tidak ditemukan.' };
-    const d = sheet.getDataRange().getValues();
+    const d = readSheetValues_(sheet);
     for (let i = 1; i < d.length; i++) {
       if (String(d[i][0]).trim() === String(absensiID).trim()) {
         sheet.deleteRow(i + 1);
@@ -2102,7 +2151,7 @@ function submitTugasJawaban(payload) {
   try {
     const sheet = ensureTaskSheetSchema();
     if (!sheet) return { success: false, message: 'Sheet Tugas belum ada.' };
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const col = getTaskColumnMap(sheet);
     const incomingFiles = Array.isArray(payload.files) ? payload.files : (payload.fileBase64 ? [{ dataUrl: payload.fileBase64, name: payload.fileName, type: payload.fileType, size: payload.fileSize }] : []);
     if (!String(payload.jawabanTeks || '').trim() && incomingFiles.length === 0) {
@@ -2134,7 +2183,7 @@ function deleteTugas(tugasID) {
   try {
     const sheet = ss.getSheetByName('Tugas');
     if (!sheet) return { success: false, message: 'Sheet Tugas tidak ditemukan.' };
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][0]).trim() === String(tugasID).trim()) {
         sheet.deleteRow(i + 1);
@@ -2167,7 +2216,7 @@ function updateUserPhoto(userID, userType, base64Data, fileName) {
     if (userType === 'admin') sheetName = 'Admin';
 
     const sheet = ss.getSheetByName(sheetName);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
 
     for (let i = 1; i < data.length; i++) {
@@ -2191,7 +2240,7 @@ function updateSelfProfile(data) {
     if (data.userType === 'admin') sheetName = 'Admin';
 
     const sheet = ss.getSheetByName(sheetName);
-    const d = sheet.getDataRange().getValues();
+    const d = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
 
     for (let i = 1; i < d.length; i++) {
@@ -2229,7 +2278,7 @@ function updateJadwal(data) {
   try {
     const conflict = findRoomScheduleConflict(data.ruangan, data.hari, '', data.jamMulai, data.jamSelesai, data.jadwalID, '');
     if (conflict) return { success: false, message: roomConflictMessage(conflict, data.ruangan) };
-    const sheet = ensureAcademySheet('Jadwal', ['JadwalID','NamaSiswa','Hari','JamMulai','JamSelesai','Guru','Ruangan','Status','Instrumen','SiswaID','GuruID']); const d = sheet.getDataRange().getValues();
+    const sheet = ensureAcademySheet('Jadwal', ['JadwalID','NamaSiswa','Hari','JamMulai','JamSelesai','Guru','Ruangan','Status','Instrumen','SiswaID','GuruID']); const d = readSheetValues_(sheet);
     const columns = headerMap_(sheet);
     const studentEntity = resolveStudent_(data.siswaID || data.namaSiswa);
     const teacherEntity = resolveTeacher_(data.guruID || data.guru);
@@ -2262,7 +2311,7 @@ function updateJadwal(data) {
 
 function deleteJadwal(jadwalID) {
   try {
-    const sheet = ss.getSheetByName('Jadwal'); const data = sheet.getDataRange().getValues();
+    const sheet = ss.getSheetByName('Jadwal'); const data = readSheetValues_(sheet);
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][0]).trim() === String(jadwalID).trim()) { sheet.deleteRow(i + 1); return { success: true, message: 'Jadwal dihapus.' }; }
     }
@@ -2274,7 +2323,7 @@ function getSiswaList() {
   const sheet = ss.getSheetByName('Siswa');
   const columns = headerMap_(sheet);
   const classIndex = getStudentClassIndex_();
-  return sheet.getDataRange().getValues().slice(1).map(r => {
+  return readSheetValues_(sheet).slice(1).map(r => {
     const classes = classIndex[String(r[columns.SiswaID] || '').trim().toLowerCase()] || [];
     return { siswaID:r[columns.SiswaID] || '', guruID:r[columns.GuruID] || '', nama:r[0], kelas:[...new Set(classes.map(item => item.grade).filter(Boolean))].join(', ') || r[1], email:r[2], status:r[6], instrumen:[...new Set(classes.map(item => item.instrumen).filter(Boolean))].join(', ') || r[8] || 'Gitar', guru:[...new Set(classes.map(item => item.guru).filter(Boolean))].join(', ') || r[9] || '', kelasList:classes };
   });
@@ -2314,7 +2363,7 @@ function getJadwalPenggantiData(identifier, userType) {
   try {
     const headersRequired = ['PenggantiID', 'JadwalID', 'NamaSiswa', 'Alasan', 'TanggalPelaksanaan', 'JamMulai', 'JamSelesai', 'Guru', 'Ruangan', 'Status', 'DibuatPada', 'SiswaID', 'GuruID'];
     const sheet = ensureAcademySheet('JadwalPengganti', headersRequired);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const headers = data[0].map(value => String(value || '').trim());
     const col = {}; headers.forEach((header, index) => col[header] = index);
     const get = (row, primary, legacy, fallback) => {
@@ -2393,7 +2442,7 @@ function deleteJadwalPengganti(id, currentUserType) {
   if (String(currentUserType || '').toLowerCase() !== 'admin') return { success: false, message: 'Hanya admin yang dapat menghapus jadwal pergantian.' };
   try {
     const sheet = ensureAcademySheet('JadwalPengganti', ['PenggantiID', 'JadwalID', 'NamaSiswa', 'Alasan', 'TanggalPelaksanaan', 'JamMulai', 'JamSelesai', 'Guru', 'Ruangan', 'Status', 'DibuatPada']);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const idCol = data[0].map(String).indexOf('PenggantiID');
     for (let i = 1; i < data.length; i++) if (String(data[i][idCol] || '').trim() === String(id || '').trim()) { sheet.deleteRow(i + 1); return { success: true, message: 'Jadwal pergantian berhasil dihapus.' }; }
     return { success: false, message: 'Jadwal pergantian tidak ditemukan.' };
@@ -2405,7 +2454,7 @@ function getPengumumanData(identifier, userType) {
   try {
     const headersRequired = ['PengumumanID', 'Judul', 'Target', 'TargetDetail', 'Isi', 'Pembuat', 'TanggalKirim', 'Status', 'TargetSiswaID', 'PembuatID'];
     const sheet = ensureAcademySheet('Pengumuman', headersRequired);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const headers = data[0].map(value => String(value || '').trim());
     const col = {}; headers.forEach((header, index) => col[header] = index);
     const get = (row, header, fallback) => col[header] === undefined || row[col[header]] === '' || row[col[header]] === null ? fallback : row[col[header]];
@@ -2417,7 +2466,7 @@ function getPengumumanData(identifier, userType) {
     const teacherStudentIDs = new Set();
     if (role === 'guru') {
       const students = ss.getSheetByName('Siswa');
-      const rows = students ? students.getDataRange().getValues() : [];
+      const rows = students ? readSheetValues_(students) : [];
       const studentColumns = students ? headerMap_(students) : {};
       const classIndex = getStudentClassIndex_();
       for (let i = 1; i < rows.length; i++) {
@@ -2482,7 +2531,7 @@ function deletePengumuman(id, currentUserType) {
   if (String(currentUserType || '').toLowerCase() !== 'admin') return { success: false, message: 'Hanya admin yang dapat menghapus pengumuman.' };
   try {
     const sheet = ensureAcademySheet('Pengumuman', ['PengumumanID', 'Judul', 'Target', 'TargetDetail', 'Isi', 'Pembuat', 'TanggalKirim', 'Status']);
-    const data = sheet.getDataRange().getValues();
+    const data = readSheetValues_(sheet);
     const idCol = data[0].map(String).indexOf('PengumumanID');
     for (let i = 1; i < data.length; i++) if (String(data[i][idCol] || '').trim() === String(id || '').trim()) { sheet.deleteRow(i + 1); return { success: true, message: 'Pengumuman berhasil dihapus.' }; }
     return { success: false, message: 'Pengumuman tidak ditemukan.' };
@@ -2537,7 +2586,7 @@ function generateProgressDoc(filterSiswa, filterGuru, periodType, periodValue, c
       return periodType === 'all' ? 'Semua Riwayat' : '3 Bulan Terakhir';
     }
 
-    const data = sh.getDataRange().getValues();
+    const data = readSheetValues_(sh);
     const rows = [];
     const today = new Date();
     const threeMonthsAgo = new Date(today.getFullYear(), today.getMonth()-3, today.getDate());

@@ -35,3 +35,8 @@ Uji tiga role (Siswa, Guru, Admin): login/logout, reload/close browser, dashboar
 
 ## V3 performance pass
 See `docs/REFACTOR-V3.md`. V3 lazy-loads FullCalendar/CropperJS and deduplicates simultaneous identical read RPCs while leaving legacy global handlers untouched. Backend and Spreadsheet contracts are unchanged.
+
+
+## V4 Backend Performance
+
+Lihat `docs/REFACTOR-V4.md`. V4 menambahkan request-local Spreadsheet snapshot untuk dashboard, header snapshot, cache logo laporan, dan timing log tanpa mengubah kontrak API.
