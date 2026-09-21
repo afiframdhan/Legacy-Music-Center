@@ -1,0 +1,25 @@
+let currentUser = { userType: '', userID: '', userName: '' };
+    let loginType = 'siswa';
+    let globalSiswaList = [];
+    let globalJadwalList = [];
+    let globalAbsensiList = [];
+    let globalTugasList = [];
+    let globalGuruList = [];
+    let globalJadwalPenggantiList = [];
+    let globalPengumumanList = [];
+    let globalLearningProgressList = [];
+    let globalStudentHistory = [];
+    let globalTeacherAttendanceList = [];
+    let studentReportView = 'all';
+    let globalSelectedLearningProgressStudent = '';
+    let cropperInstance = null;
+    let selectedFileName = 'profile.jpg';
+    let calendarInstance = null;
+    let sigCanvases = {};
+    let dashboardRequestNumber = 0;
+    let notificationTimer = null;
+    const AUTH_STORAGE_KEY = 'legacyMusicCenterAuth';
+    const AUTH_COOKIE_KEY = 'legacyMusicCenterAuthPersistent';
+    const THEME_STORAGE_KEY = 'legacyThemePreference';
+    let themeMediaListenerReady = false;
+
