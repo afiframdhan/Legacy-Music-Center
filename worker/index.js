@@ -10,7 +10,7 @@ const TEACHER = new Set([
   'saveLearningProgress', 'deleteLearningProgress', 'getLearningProgressPrintLogo',
   'addTugasCombined', 'deleteTugas', 'recordAbsensi', 'updateAbsensi', 'deleteAbsensi',
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
-  'addSiswaCombined', 'deleteSiswa'
+  'addSiswaCombined', 'deleteSiswa', 'getStudent360Report'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -166,6 +166,18 @@ async function handleRpc(request, env, ctx) {
       console.error('Supabase dashboard error, falling back to Apps Script:', error);
       const fallback = await gasRpc(env, method, [session.userID, session.userType]);
       return json({ ok:true, data:fallback });
+    }
+  }
+
+
+  if (method === 'getStudent360Report') {
+    try {
+      const identifier = String(args[0] || '').trim();
+      const result = await buildStudent360ReportSupabase(env, session, identifier);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Student 360 report error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
 
@@ -1745,6 +1757,88 @@ function activeAnnouncementsForRole(rows, role, student, teacherStudentIds, teac
     })
     .sort((a,b) => String(b.sent_at || '').localeCompare(String(a.sent_at || '')))
     .map(mapAnnouncement);
+}
+
+
+async function buildStudent360ReportSupabase(env, session, identifier) {
+  if (!identifier) throw new Error('Identitas siswa tidak ditemukan.');
+
+  let studentRows = await sbRows(env, 'students', {
+    student_id:`eq.${identifier}`,
+    limit:'1'
+  });
+
+  if (!studentRows.length) {
+    studentRows = await sbRows(env, 'students', {
+      name:`eq.${identifier}`,
+      limit:'1'
+    });
+  }
+
+  const student = studentRows[0];
+  if (!student) throw new Error('Data siswa tidak ditemukan di Supabase.');
+
+  const studentId = String(student.student_id || '').trim();
+
+  if (session.userType === 'guru') {
+    const allowedClasses = await sbRows(env, 'student_classes', {
+      student_id:`eq.${studentId}`,
+      teacher_id:`eq.${session.userID}`,
+      limit:'1'
+    });
+    const legacyOwner = String(student.teacher_id || '') === String(session.userID || '');
+    if (!allowedClasses.length && !legacyOwner) {
+      throw new Error('Anda tidak memiliki akses ke laporan siswa ini.');
+    }
+  }
+
+  const [classes, schedules, attendance, assignments, progressById, progressByName] = await Promise.all([
+    sbRows(env, 'student_classes', { student_id:`eq.${studentId}`, order:'created_at.asc' }),
+    sbRows(env, 'schedules', { student_id:`eq.${studentId}`, order:'created_at.asc' }),
+    sbRows(env, 'student_attendance', { student_id:`eq.${studentId}`, order:'attendance_date.asc,created_at.asc' }),
+    sbRows(env, 'assignments', { student_id:`eq.${studentId}`, order:'created_at.asc' }),
+    sbRows(env, 'learning_progress', { student_id:`eq.${studentId}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
+    sbRows(env, 'learning_progress', { student_name_snapshot:`eq.${student.name || ''}`, order:'last_updated_at.desc.nullslast,created_at.desc' })
+  ]);
+
+  const progressMap = new Map();
+  [...progressById, ...progressByName].forEach(row => {
+    const key = String(row.progress_id || `${row.period || ''}:${row.student_name_snapshot || ''}`);
+    if (!progressMap.has(key)) progressMap.set(key, row);
+  });
+  const progress = [...progressMap.values()].sort((a,b) =>
+    String(b.last_updated_at || b.created_at || '').localeCompare(String(a.last_updated_at || a.created_at || ''))
+  );
+
+  const mappedClasses = classes.map(row => mapClassRow(row, schedules));
+  const instruments = uniqueText(mappedClasses.map(x => x.instrumen));
+  const grades = uniqueText(mappedClasses.map(x => x.grade));
+  const teachers = uniqueText(mappedClasses.map(x => x.guru));
+
+  const mappedProgress = progress.map(mapProgress);
+
+  return {
+    success:true,
+    student:{
+      siswaID:student.student_id || '',
+      nama:student.name || '',
+      email:student.email || '',
+      noHp:student.phone || '',
+      status:student.status || '',
+      foto:student.photo_url || '',
+      instrumen:instruments.join(', ') || student.instrument || 'Gitar',
+      kelas:grades.join(', ') || student.grade || '',
+      guru:teachers.join(', ') || student.teacher_name_snapshot || '-',
+      tglDaftar:formatDbDateIso(student.registered_on),
+      tglKeluar:formatDbDateIso(student.left_on)
+    },
+    classes:mappedClasses,
+    schedules:schedules.map(row => mapSchedule(row, true)),
+    attendance:attendance.map(mapAttendance),
+    assignments:assignments.map(mapAssignment),
+    progress:mappedProgress,
+    latestProgress:mappedProgress[0] || null
+  };
 }
 
 async function buildStudentDashboardSupabase(env, session) {

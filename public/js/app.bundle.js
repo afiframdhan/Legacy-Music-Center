@@ -1989,12 +1989,204 @@ let currentUser = { userType: '', userID: '', userName: '' };
           <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
           <td data-label="Aksi"><div class="table-actions">
             <button class="btn-action btn-edit" onclick="openEditModal(decodeURIComponent('${encodeURIComponent(s.nama)}'))">Edit</button>
+            <button class="btn-action" style="background:#fff0e9;color:#c2410c;border:1px solid #fed7c3;" onclick="event.stopPropagation();openStudent360Report(decodeURIComponent('${encodeURIComponent(s.siswaID || s.nama)}'))">Laporan Lengkap</button>
             <button class="btn-action btn-delete" onclick="deleteSiswa(decodeURIComponent('${encodeURIComponent(s.nama)}'))">Hapus</button>
           </div>
           </td>
         </tr>`;
       });
 
+    }
+
+
+    function openStudent360Report(identifier) {
+      if (!identifier || !['guru','admin'].includes(currentUser.userType)) return;
+      const reportWindow = window.open('', '_blank', 'width=1180,height=820');
+      if (!reportWindow) {
+        showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk membuka laporan lengkap.');
+        return;
+      }
+      reportWindow.document.write('<!doctype html><html><body style="font-family:Arial,sans-serif;padding:36px;color:#64748b;background:#f4f6f8"><div style="max-width:720px;margin:auto;background:#fff;padding:28px;border-radius:18px"><b style="color:#f15a24">Legacy Music Center</b><h2 style="color:#17232d">Menyiapkan Laporan Perkembangan Siswa...</h2><p>Data akademik, kehadiran, tugas, dan progress sedang dimuat.</p></div></body></html>');
+      google.script.run.withSuccessHandler(response => {
+        const data = typeof response === 'string' ? JSON.parse(response) : response;
+        if (!data || data.success === false) {
+          reportWindow.document.body.innerHTML = `<div style="font-family:Arial;padding:32px"><h2>Gagal memuat laporan</h2><p>${escapeTaskHtml(data?.message || 'Data laporan tidak tersedia.')}</p></div>`;
+          return;
+        }
+        google.script.run.withSuccessHandler(logo => {
+          buildStudent360ReportWindow(data, reportWindow, logo && logo.success ? logo.dataUrl : '');
+        }).withFailureHandler(() => buildStudent360ReportWindow(data, reportWindow, '')).getLearningProgressPrintLogo();
+      }).withFailureHandler(error => {
+        reportWindow.document.body.innerHTML = `<div style="font-family:Arial;padding:32px"><h2>Gagal memuat laporan</h2><p>${escapeTaskHtml(error.message || error)}</p></div>`;
+      }).getStudent360Report(identifier);
+    }
+
+    function student360PeriodLabel(progress) {
+      if (!progress) return 'Belum ada periode progress';
+      if (typeof formatLearningProgressPeriod === 'function') return formatLearningProgressPeriod(progress.periode);
+      return progress.periode || '-';
+    }
+
+    function student360ParseDate(value) {
+      const raw = String(value || '').trim();
+      let m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      m = raw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+      if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+      return null;
+    }
+
+    function buildStudent360ReportWindow(data, reportWindow, logoDataUrl) {
+      const student = data.student || {};
+      const attendance = Array.isArray(data.attendance) ? data.attendance : [];
+      const assignments = Array.isArray(data.assignments) ? data.assignments : [];
+      const progressList = Array.isArray(data.progress) ? data.progress : [];
+      const classes = Array.isArray(data.classes) ? data.classes : [];
+      const latest = data.latestProgress || progressList[0] || null;
+
+      const statusKey = value => String(value || '').trim().toLowerCase();
+      const present = attendance.filter(x => ['masuk','hadir'].includes(statusKey(x.status))).length;
+      const izin = attendance.filter(x => statusKey(x.status) === 'izin').length;
+      const sakit = attendance.filter(x => statusKey(x.status) === 'sakit').length;
+      const alpa = attendance.filter(x => ['alpa','alpha'].includes(statusKey(x.status))).length;
+      const totalAttendance = attendance.length;
+      const attendancePct = totalAttendance ? Math.round((present / totalAttendance) * 100) : 0;
+
+      const completedTasks = assignments.filter(x => statusKey(x.status) === 'selesai').length;
+      const now = new Date(); now.setHours(0,0,0,0);
+      const lateTasks = assignments.filter(x => {
+        if (statusKey(x.status) === 'selesai') return false;
+        const deadline = student360ParseDate(x.deadline);
+        return deadline && deadline < now;
+      }).length;
+      const pendingTasks = Math.max(0, assignments.length - completedTasks);
+
+      const materials = [...new Set(attendance.map(x => String(x.materi || '').trim()).filter(Boolean))].slice(0,8);
+      const songs = [...new Set(attendance.map(x => String(x.lagu || '').trim()).filter(Boolean))].slice(0,8);
+      const overall = latest ? Math.max(0, Math.min(100, Number(latest.overallProgress) || 0)) : 0;
+      const components = latest ? [
+        ['Materi', latest.materiProgress],
+        ['Teknik', latest.teknikProgress],
+        ['Teori / Reading', latest.teoriProgress],
+        ['Repertoire', latest.repertoireProgress],
+        ['Practice', latest.practiceProgress],
+        ['Performance', latest.performanceProgress],
+        ['Evaluasi', latest.evaluasiProgress]
+      ] : [];
+
+      const trend = progressList.slice().sort((a,b) => String(a.periodeMulai || a.periode || '').localeCompare(String(b.periodeMulai || b.periode || ''))).slice(-6);
+      const trendMax = Math.max(100, ...trend.map(x => Number(x.overallProgress) || 0));
+
+      const esc = escapeTaskHtml;
+      const emptyText = text => text ? esc(text) : '<span class="muted">Belum ada data</span>';
+      const listHtml = (items, empty='Belum ada data') => items.length
+        ? `<ul>${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`
+        : `<div class="empty">${esc(empty)}</div>`;
+
+      const classLabel = classes.length
+        ? classes.map(c => `${esc(c.instrumen || '-')}${c.grade ? ` • ${esc(c.grade)}` : ''}${c.guru ? ` • ${esc(c.guru)}` : ''}`).join('<br>')
+        : `${esc(student.instrumen || '-')} • ${esc(student.kelas || '-')}`;
+
+      const studentAvatar = student.foto
+        ? `<img class="student-photo" src="${esc(student.foto)}" alt="">`
+        : `<div class="student-photo fallback">${esc(String(student.nama || 'S').charAt(0).toUpperCase())}</div>`;
+
+      const componentHtml = components.length ? components.map(([label,val]) => {
+        const score = Math.max(0, Math.min(100, Number(val) || 0));
+        return `<div class="progress-row"><div class="progress-top"><b>${esc(label)}</b><span>${score}%</span></div><div class="bar"><i style="width:${score}%"></i></div></div>`;
+      }).join('') : '<div class="empty">Progress belajar belum tersedia.</div>';
+
+      const trendHtml = trend.length ? `<div class="trend-chart">${trend.map(item => {
+        const value = Math.max(0, Math.min(100, Number(item.overallProgress) || 0));
+        const height = Math.max(8, (value / trendMax) * 110);
+        return `<div class="trend-col"><span>${value}%</span><i style="height:${height}px"></i><b>${esc(String(item.periode || '').replace(/^\d{4}-/,''))}</b></div>`;
+      }).join('')}</div>` : '<div class="empty">Belum ada riwayat progress.</div>';
+
+      const sig = (url,name,role) => `<div class="signature"><span>${esc(role)}</span><div class="signature-img">${url ? `<img src="${esc(url)}" alt="">` : ''}</div><b>${esc(name || '-')}</b></div>`;
+
+      const logo = logoDataUrl
+        ? `<img class="logo" src="${logoDataUrl}" alt="Legacy Music Center">`
+        : `<div class="logo-text"><strong>LEGACY</strong><span>Music Center</span></div>`;
+
+      const page1 = `
+        <section class="page">
+          <header>${logo}<div class="header-copy"><b>Laporan Perkembangan Siswa</b><span>Perjalanan belajar, progress, dan konsistensi siswa.</span></div></header>
+          <div class="student-card">${studentAvatar}<div class="student-main"><div class="student-name">${esc(student.nama || '-')} <em>${esc(student.status || 'Aktif')}</em></div><div class="student-grid"><div><span>Instrumen / Kelas</span><b>${classLabel}</b></div><div><span>Periode Laporan</span><b>${esc(student360PeriodLabel(latest))}</b></div><div><span>Tanggal Masuk</span><b>${esc(formatAcademyDate(student.tglDaftar || '-'))}</b></div><div><span>ID Siswa</span><b>${esc(student.siswaID || '-')}</b></div></div></div></div>
+          <h2>Ringkasan Utama</h2>
+          <div class="metric-grid">
+            <div class="metric orange"><span>Kehadiran</span><b>${attendancePct}%</b><small>${present} hadir dari ${totalAttendance} catatan</small></div>
+            <div class="metric peach"><span>Progress Keseluruhan</span><b>${overall}%</b><small>${latest ? esc(latest.level || 'Progress terbaru') : 'Belum dinilai'}</small></div>
+            <div class="metric green"><span>Tugas Selesai</span><b>${completedTasks}/${assignments.length}</b><small>${pendingTasks} belum selesai</small></div>
+            <div class="metric blue"><span>Pertemuan</span><b>${totalAttendance}</b><small>Riwayat absensi tercatat</small></div>
+          </div>
+          <div class="two-col">
+            <div class="panel"><h2>Perkembangan Belajar</h2>${componentHtml}</div>
+            <div class="panel"><h2>Materi yang Sudah Dipelajari</h2>${listHtml(materials,'Belum ada materi tercatat.')}</div>
+          </div>
+          <div class="two-col lower">
+            <div class="panel"><h2>Repertoire / Lagu</h2>${listHtml(songs,'Belum ada repertoire tercatat.')}</div>
+            <div class="panel"><h2>Catatan Perkembangan</h2><div class="note-block"><b>Kelebihan</b><p>${emptyText(latest?.kelebihan || '')}</p><b>Perlu Ditingkatkan</b><p>${emptyText(latest?.perluDitingkatkan || '')}</p></div></div>
+          </div>
+          <footer>Legacy Music Center • Laporan Perkembangan Siswa</footer>
+        </section>`;
+
+      const page2 = `
+        <section class="page">
+          <header>${logo}<div class="header-copy"><b>Ringkasan Akademik & Kehadiran</b><span>${esc(student.nama || '-')} • ${esc(student360PeriodLabel(latest))}</span></div></header>
+          <div class="two-col top-summary">
+            <div class="panel attendance-panel"><h2>Statistik Kehadiran</h2><div class="attendance-wrap"><div class="donut" style="--pct:${attendancePct * 3.6}deg"><div><b>${attendancePct}%</b><span>Tingkat Kehadiran</span></div></div><div class="legend"><span><i class="g"></i>Hadir <b>${present}</b></span><span><i class="o"></i>Izin <b>${izin}</b></span><span><i class="s"></i>Sakit <b>${sakit}</b></span><span><i class="r"></i>Alpa <b>${alpa}</b></span></div></div></div>
+            <div class="panel"><h2>Ringkasan Tugas</h2><div class="task-grid"><div><span>Total Tugas</span><b>${assignments.length}</b></div><div><span>Selesai</span><b>${completedTasks}</b></div><div><span>Belum Selesai</span><b>${pendingTasks}</b></div><div><span>Terlambat</span><b>${lateTasks}</b></div></div></div>
+          </div>
+          <div class="panel trend-panel"><h2>Riwayat Progress</h2>${trendHtml}</div>
+          <div class="two-col lower">
+            <div class="panel target"><h2>Target Periode Berikutnya</h2><div class="target-copy">${emptyText(latest?.targetBerikutnya || '')}</div></div>
+            <div class="panel"><h2>Ringkasan Guru</h2><div class="note-block"><b>Guru Pengajar</b><p>${esc(latest?.guru || student.guru || '-')}</p><b>Terakhir Diperbarui</b><p>${esc(latest?.lastUpdated || '-')}</p></div></div>
+          </div>
+          <div class="signatures">
+            ${sig(latest?.guruSignatureUrl, latest?.guru || student.guru, 'Guru / Coach')}
+            ${sig(latest?.kepalaSekolahSignatureUrl, latest?.kepalaSekolahNama, 'Kepala Sekolah')}
+          </div>
+          <footer>Dokumen resmi Legacy Music Center • Dicetak ${new Date().toLocaleDateString('id-ID')}</footer>
+        </section>`;
+
+      const report = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Laporan Lengkap ${esc(student.nama || '')}</title>
+      <style>
+        *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+        :root{--orange:#f15a24;--peach:#fff3ec;--ink:#17232d;--muted:#718096;--line:#e6ebf1}
+        body{margin:0;background:#e9edf2;color:var(--ink);font-family:Arial,Helvetica,sans-serif}
+        .toolbar{position:sticky;top:0;z-index:20;display:flex;justify-content:center;gap:10px;padding:12px;background:rgba(23,35,45,.92);backdrop-filter:blur(8px)}
+        .toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer}.toolbar .print{background:var(--orange);color:#fff}.toolbar .close{background:#fff;color:#334155}
+        .report-shell{display:flex;gap:24px;align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
+        .page{width:210mm;min-width:210mm;height:297mm;background:#fff;padding:12mm;box-shadow:0 10px 35px rgba(15,23,42,.12);position:relative;overflow:hidden}
+        header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--orange);padding-bottom:7mm;margin-bottom:6mm}
+        .logo{width:42mm;height:19mm;object-fit:contain;object-position:left center}.logo-text strong{display:block;font-size:20px;letter-spacing:2px}.logo-text span{font-size:10px;color:#64748b}
+        .header-copy{text-align:right}.header-copy b{display:block;font-size:20px}.header-copy span{display:block;color:var(--muted);font-size:9px;margin-top:4px}
+        .student-card{display:grid;grid-template-columns:25mm 1fr;gap:6mm;align-items:center;border:1px solid var(--line);border-radius:13px;padding:5mm;background:#fff;box-shadow:0 4px 16px rgba(15,23,42,.04)}
+        .student-photo{width:23mm;height:23mm;border-radius:50%;object-fit:cover;background:#ffe6d8}.student-photo.fallback{display:grid;place-items:center;color:var(--orange);font-size:28px;font-weight:900}
+        .student-name{font-size:18px;font-weight:900;margin-bottom:4mm}.student-name em{font-style:normal;font-size:9px;background:#ffe9dc;color:#d94d18;padding:5px 9px;border-radius:999px;margin-left:6px;vertical-align:middle}
+        .student-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:4mm 8mm}.student-grid span{display:block;font-size:7.5px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}.student-grid b{font-size:9px;line-height:1.35}
+        h2{font-size:11px;margin:6mm 0 3mm;padding-left:3mm;border-left:3px solid var(--orange)}
+        .metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm}.metric{border-radius:11px;padding:4mm;min-height:28mm}.metric span{display:block;font-size:8px;color:#53657a}.metric b{display:block;font-size:20px;margin:2mm 0 1mm}.metric small{font-size:7px;color:#718096}.orange{background:#fff0e8}.peach{background:#fff6e8}.green{background:#eefaf1}.blue{background:#edf6ff}
+        .two-col{display:grid;grid-template-columns:1fr 1fr;gap:4mm}.panel{border:1px solid var(--line);border-radius:11px;padding:4mm;background:#fff;min-width:0}.panel h2{margin-top:0}
+        .progress-row{margin-bottom:3mm}.progress-top{display:flex;justify-content:space-between;font-size:8px}.progress-top span{color:#64748b}.bar{height:5px;background:#eef1f4;border-radius:999px;margin-top:1.5mm;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#f15a24,#ff8a3d);border-radius:inherit}
+        ul{margin:0;padding-left:18px}li{font-size:8.5px;line-height:1.7}.empty,.muted{color:#94a3b8;font-size:8px}
+        .lower{margin-top:4mm}.note-block b{display:block;font-size:8px;color:var(--orange);margin-top:2mm}.note-block p{font-size:8px;line-height:1.45;margin:1mm 0 2mm;white-space:pre-line}
+        .top-summary{margin-top:1mm}.attendance-wrap{display:flex;align-items:center;justify-content:center;gap:8mm}.donut{width:37mm;height:37mm;border-radius:50%;background:conic-gradient(#55ad62 var(--pct),#f1f5f9 0);display:grid;place-items:center;position:relative}.donut:after{content:'';position:absolute;inset:6mm;background:#fff;border-radius:50%}.donut div{position:relative;z-index:2;text-align:center}.donut b{display:block;font-size:18px}.donut span{font-size:6.5px;color:#718096}.legend{display:grid;gap:2mm}.legend span{font-size:8px;display:grid;grid-template-columns:8px 1fr 20px;gap:4px;align-items:center}.legend span b{text-align:right}.legend i{width:7px;height:7px;border-radius:50%}.legend .g{background:#55ad62}.legend .o{background:#ff8a3d}.legend .s{background:#94a3b8}.legend .r{background:#ef4444}
+        .task-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm}.task-grid div{background:#f8fafc;border-radius:9px;padding:4mm}.task-grid span{display:block;font-size:7.5px;color:#718096}.task-grid b{font-size:18px}
+        .trend-panel{margin-top:4mm}.trend-chart{height:40mm;display:flex;align-items:flex-end;justify-content:space-around;border-bottom:1px solid #cbd5e1;padding:3mm 5mm 0}.trend-col{height:34mm;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:18mm}.trend-col span{font-size:7px;font-weight:800;margin-bottom:2px}.trend-col i{display:block;width:10mm;background:linear-gradient(#ff9b69,#f15a24);border-radius:4px 4px 0 0}.trend-col b{font-size:6.5px;margin-top:2px;color:#64748b;max-width:18mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .target-copy{font-size:9px;line-height:1.55;white-space:pre-line;background:#fff7f2;border-radius:9px;padding:4mm;color:#475569}
+        .signatures{display:grid;grid-template-columns:1fr 1fr;gap:20mm;margin-top:9mm;text-align:center;page-break-inside:avoid}.signature span{font-size:8px;color:#64748b}.signature-img{height:20mm;display:flex;align-items:center;justify-content:center}.signature-img img{max-width:42mm;max-height:18mm;object-fit:contain}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:2mm;font-size:9px}
+        footer{position:absolute;left:12mm;right:12mm;bottom:8mm;border-top:1px solid #e8edf2;padding-top:2mm;font-size:6.5px;color:#94a3b8;text-align:right}
+        @media(max-width:900px){.report-shell{display:block;padding:8px}.page{transform-origin:top left;width:100%;min-width:0;height:auto;min-height:297mm;margin-bottom:14px;padding:18px}.student-grid,.two-col{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.page footer{position:static;margin-top:18px}}
+        @media print{@page{size:A4 portrait;margin:0}.toolbar{display:none}.report-shell{display:block;padding:0}.page{width:210mm;min-width:210mm;height:297mm;box-shadow:none;margin:0;page-break-after:always}.page:last-child{page-break-after:auto}}
+      </style></head><body>
+      <div class="toolbar"><button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button class="close" onclick="window.close()">Tutup</button></div>
+      <main class="report-shell">${page1}${page2}</main>
+      </body></html>`;
+
+      reportWindow.document.open();
+      reportWindow.document.write(report);
+      reportWindow.document.close();
     }
 
     function applyJadwalFilters() {
