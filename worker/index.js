@@ -1703,7 +1703,7 @@ function jakartaWeekday() {
   }
 }
 
-function activeAnnouncementsForRole(rows, role, student, teacherStudentIds, teacherStudentNames) {
+function activeAnnouncementsForRole(rows, role, student, teacherStudentIds, teacherStudentNames, teacher) {
   return rows
     .filter(row => {
       const status = String(row.status || 'Terbit').toLowerCase();
@@ -1726,9 +1726,15 @@ function activeAnnouncementsForRole(rows, role, student, teacherStudentIds, teac
 
       if (role === 'guru') {
         if (target === 'semua_guru') return true;
+        const detail = String(row.target_detail || '').trim().toLowerCase();
+        if (target === 'guru_tertentu') {
+          return Boolean(teacher) && (
+            detail === String(teacher.teacher_id || '').trim().toLowerCase() ||
+            detail === String(teacher.name || '').trim().toLowerCase()
+          );
+        }
         if (target !== 'siswa_tertentu') return false;
         const targetId = String(row.target_student_id || '').trim().toLowerCase();
-        const detail = String(row.target_detail || '').trim().toLowerCase();
         return (
           (targetId && teacherStudentIds.has(targetId)) ||
           (!targetId && teacherStudentNames.has(detail))
@@ -1894,7 +1900,7 @@ async function buildTeacherDashboardSupabase(env, session) {
     learningProgressList:progress.map(mapProgress),
     jadwalPenggantiList:replacements.map(mapReplacement),
     pengumumanList:activeAnnouncementsForRole(
-      announcements, 'guru', null, studentIds, studentNames
+      announcements, 'guru', null, studentIds, studentNames, teacher
     )
   };
 }
