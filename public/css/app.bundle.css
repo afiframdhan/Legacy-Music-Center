@@ -616,6 +616,24 @@
     position: relative;
     z-index: 2;
   }
+  html[data-theme="dark"] .sidebar .sidebar-footer {
+  background: #111b2e;
+  border-top-color: #26344a;
+}
+
+html[data-theme="dark"] .sidebar .sidebar-footer .nav-link {
+  color: #a8b5c7;
+}
+
+html[data-theme="dark"] .sidebar .sidebar-footer .nav-link:hover {
+  background: #17243a;
+  color: #ff8a50;
+}
+
+html[data-theme="dark"] .sidebar .sidebar-footer .nav-link.active {
+  background: #382318;
+  color: #ff8a50;
+}
       
       .content { width: 100%; padding: 12px; overflow-x: hidden; }
       .user-info { display: none; }
