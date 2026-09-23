@@ -172,6 +172,15 @@
     function applySiswaFilters() {
       let result = [...globalSiswaList];
       const urutan = document.getElementById('filterSiswaUrutan') ? document.getElementById('filterSiswaUrutan').value : 'terbaru';
+      const search = String(document.getElementById('studentSearchInput')?.value || '').trim().toLowerCase();
+
+      if (search) {
+        result = result.filter(s => {
+          const classText = getStudentClassesForUI(s).map(item => `${item.instrumen || ''} ${item.guru || ''} ${item.grade || ''}`).join(' ');
+          const haystack = `${s.nama || ''} ${s.instrumen || ''} ${s.guru || ''} ${s.kelas || ''} ${s.email || ''} ${s.noHp || ''} ${s.status || ''} ${classText}`.toLowerCase();
+          return haystack.includes(search);
+        });
+      }
 
       if (currentUser.userType === 'admin') {
         const filterInst = document.getElementById('filterSiswaInstrumen') ? document.getElementById('filterSiswaInstrumen').value.trim().toLowerCase() : '';

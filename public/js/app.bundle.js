@@ -1417,7 +1417,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function getAnnouncementTargetLabel(item) {
-      const labels = { semua:'Semua Guru & Siswa', semua_guru:'Semua Guru', semua_siswa:'Semua Siswa', siswa_tertentu:item.targetDetail || 'Siswa Tertentu' };
+      const labels = { semua:'Semua Guru & Siswa', semua_guru:'Semua Guru', guru_tertentu:item.targetDetail || 'Guru Tertentu', semua_siswa:'Semua Siswa', siswa_tertentu:item.targetDetail || 'Siswa Tertentu' };
       return labels[item.target] || 'Semua Guru & Siswa';
     }
 
@@ -1534,11 +1534,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function togglePengumumanTargetDetail(targetVal) {
-      const containerDetail = document.getElementById('containerPengumumanSiswaDetail');
-      if (targetVal === 'siswa_tertentu') {
-        containerDetail.style.display = 'block';
-      } else {
-        containerDetail.style.display = 'none';
+      const studentContainer = document.getElementById('containerPengumumanSiswaDetail');
+      const teacherContainer = document.getElementById('containerPengumumanGuruDetail');
+      if (studentContainer) studentContainer.style.display = targetVal === 'siswa_tertentu' ? 'block' : 'none';
+      if (teacherContainer) teacherContainer.style.display = targetVal === 'guru_tertentu' ? 'block' : 'none';
+
+      if (targetVal === 'guru_tertentu') {
+        const select = document.getElementById('pengumumanGuruDetailSelect');
+        if (select) {
+          const previous = select.value;
+          select.innerHTML = '<option value="">Pilih Guru...</option>' + (globalGuruList || []).map(guru => `<option value="${escapeTaskHtml(guru.nama || '')}">${escapeTaskHtml(guru.nama || '-')} (${escapeTaskHtml(guru.instrumen || 'Musik')})</option>`).join('');
+          if ([...select.options].some(option => option.value === previous)) select.value = previous;
+        }
       }
     }
 
@@ -1554,6 +1561,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
         targetDetailVal = document.getElementById('pengumumanSiswaDetailSelect').value;
         if (!targetDetailVal) {
           alert('Silakan pilih Siswa spesifik terlebih dahulu!');
+          btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
+          return false;
+        }
+      } else if (targetVal === 'guru_tertentu') {
+        targetDetailVal = document.getElementById('pengumumanGuruDetailSelect')?.value || '';
+        if (!targetDetailVal) {
+          alert('Silakan pilih Guru spesifik terlebih dahulu!');
           btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
           return false;
         }
@@ -1910,6 +1924,15 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function applySiswaFilters() {
       let result = [...globalSiswaList];
       const urutan = document.getElementById('filterSiswaUrutan') ? document.getElementById('filterSiswaUrutan').value : 'terbaru';
+      const search = String(document.getElementById('studentSearchInput')?.value || '').trim().toLowerCase();
+
+      if (search) {
+        result = result.filter(s => {
+          const classText = getStudentClassesForUI(s).map(item => `${item.instrumen || ''} ${item.guru || ''} ${item.grade || ''}`).join(' ');
+          const haystack = `${s.nama || ''} ${s.instrumen || ''} ${s.guru || ''} ${s.kelas || ''} ${s.email || ''} ${s.noHp || ''} ${s.status || ''} ${classText}`.toLowerCase();
+          return haystack.includes(search);
+        });
+      }
 
       if (currentUser.userType === 'admin') {
         const filterInst = document.getElementById('filterSiswaInstrumen') ? document.getElementById('filterSiswaInstrumen').value.trim().toLowerCase() : '';
@@ -3265,7 +3288,13 @@ function normalizeTaskStatus(task) {
         nama: document.getElementById('selfProfileNama').value,
         email: document.getElementById('selfProfileEmail').value,
         noHp: document.getElementById('selfProfileHP').value,
-        instrumen: document.getElementById('selfProfileInstrumen') ? document.getElementById('selfProfileInstrumen').value : '',
+        instrumen: (() => {
+          const input = document.getElementById('selfProfileInstrumen');
+          const typed = input ? String(input.value || '').trim() : '';
+          if (typed) return typed;
+          const existingGuru = currentUser.userType === 'guru' ? (globalGuruList || []).find(g => String(g.id || '').trim() === String(currentUser.userID || '').trim() || String(g.nama || '').trim().toLowerCase() === String(currentUser.userName || '').trim().toLowerCase()) : null;
+          return existingGuru ? String(existingGuru.instrumen || '').trim() : '';
+        })(),
         userType: currentUser.userType
       };
 
@@ -3315,11 +3344,33 @@ function normalizeTaskStatus(task) {
       if (attendance) setTimeout(() => { initSignaturePads(); resizeSignaturePad('canvasTtdAbsensiGuru'); }, 60);
     }
 
+    function getTeacherInstrumentValues(value) {
+      return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
+    }
+
+    function setTeacherInstrumentSelection(select, value) {
+      if (!select) return;
+      const values = new Set(getTeacherInstrumentValues(value));
+      [...select.options].forEach(option => { option.selected = values.has(option.value); });
+    }
+
+    function getSelectedTeacherInstruments() {
+      const select = document.getElementById('addGuruInstrumen');
+      if (!select) return '';
+      return [...select.selectedOptions].map(option => option.value).filter(Boolean).join(', ');
+    }
+
     function renderAdminTeacherManagement() {
       if (currentUser.userType !== 'admin') return;
+      const teacherSearch = String(document.getElementById('teacherSearchInput')?.value || '').trim().toLowerCase();
+      const displayedTeachers = teacherSearch ? globalGuruList.filter(guru => {
+        const haystack = `${guru.nama || ''} ${guru.instrumen || ''} ${guru.email || ''} ${guru.noHp || ''} ${guru.status || ''}`.toLowerCase();
+        return haystack.includes(teacherSearch);
+      }) : globalGuruList;
+
       const teacherBody = document.getElementById('adminGuruListBody');
       if (teacherBody) {
-        teacherBody.innerHTML = globalGuruList.length ? globalGuruList.map((guru, index) => `<tr class="teacher-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(guru.nama || '-')}</b></td><td data-label="Instrumen">${escapeTaskHtml(guru.instrumen || '-')}</td><td data-label="Email">${escapeTaskHtml(guru.email || '-')}</td><td data-label="No. HP">${escapeTaskHtml(guru.noHp || '-')}</td><td data-label="Status"><span><span class="badge ${String(guru.status || 'Aktif').toLowerCase() === 'aktif' ? 'badge-success' : 'badge-danger'}">${escapeTaskHtml(guru.status || 'Aktif')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditGuru(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteGuruRecord(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'),decodeURIComponent('${encodeURIComponent(guru.nama || '')}'))">Hapus</button></div></td></tr>`).join('') : '<tr class="table-empty-row"><td class="table-empty-cell" colspan="7" style="text-align:center;color:#94a3b8;">Belum ada data guru.</td></tr>';
+        teacherBody.innerHTML = displayedTeachers.length ? displayedTeachers.map((guru, index) => `<tr class="teacher-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(guru.nama || '-')}</b></td><td data-label="Instrumen">${escapeTaskHtml(guru.instrumen || '-')}</td><td data-label="Email">${escapeTaskHtml(guru.email || '-')}</td><td data-label="No. HP">${escapeTaskHtml(guru.noHp || '-')}</td><td data-label="Status"><span><span class="badge ${String(guru.status || 'Aktif').toLowerCase() === 'aktif' ? 'badge-success' : 'badge-danger'}">${escapeTaskHtml(guru.status || 'Aktif')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditGuru(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteGuruRecord(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'),decodeURIComponent('${encodeURIComponent(guru.nama || '')}'))">Hapus</button></div></td></tr>`).join('') : '<tr class="table-empty-row"><td class="table-empty-cell" colspan="7" style="text-align:center;color:#94a3b8;">Belum ada data guru.</td></tr>';
       }
 
       const teacherSelect = document.getElementById('absensiGuruID');
@@ -3360,7 +3411,7 @@ function normalizeTaskStatus(task) {
       document.getElementById('addGuruPassword').required = false;
       document.getElementById('addGuruPassword').placeholder = 'Kosongkan jika password tidak diubah';
       document.getElementById('addGuruHP').value = guru.noHp || '';
-      document.getElementById('addGuruInstrumen').value = guru.instrumen || 'Gitar';
+      setTeacherInstrumentSelection(document.getElementById('addGuruInstrumen'), guru.instrumen || 'Gitar');
       document.getElementById('addGuruStatus').value = guru.status || 'Aktif';
       document.getElementById('btnSubmitGuru').textContent = 'Update Guru';
       document.getElementById('btnCancelEditGuru').style.display = 'inline-block';
@@ -3505,9 +3556,14 @@ function normalizeTaskStatus(task) {
         email: document.getElementById('addGuruEmail').value.trim(),
         password: document.getElementById('addGuruPassword').value,
         noHp: document.getElementById('addGuruHP').value.trim(),
-        instrumen: document.getElementById('addGuruInstrumen').value,
+        instrumen: getSelectedTeacherInstruments(),
         status: document.getElementById('addGuruStatus').value
       };
+
+      if (!payload.instrumen) {
+        showAlert('alertDanger', 'Pilih minimal satu instrumen untuk guru.');
+        return false;
+      }
 
       btn.disabled = true;
       btn.textContent = isEdit ? 'Mengupdate...' : 'Menyimpan...';

@@ -31,11 +31,33 @@
       if (attendance) setTimeout(() => { initSignaturePads(); resizeSignaturePad('canvasTtdAbsensiGuru'); }, 60);
     }
 
+    function getTeacherInstrumentValues(value) {
+      return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
+    }
+
+    function setTeacherInstrumentSelection(select, value) {
+      if (!select) return;
+      const values = new Set(getTeacherInstrumentValues(value));
+      [...select.options].forEach(option => { option.selected = values.has(option.value); });
+    }
+
+    function getSelectedTeacherInstruments() {
+      const select = document.getElementById('addGuruInstrumen');
+      if (!select) return '';
+      return [...select.selectedOptions].map(option => option.value).filter(Boolean).join(', ');
+    }
+
     function renderAdminTeacherManagement() {
       if (currentUser.userType !== 'admin') return;
+      const teacherSearch = String(document.getElementById('teacherSearchInput')?.value || '').trim().toLowerCase();
+      const displayedTeachers = teacherSearch ? globalGuruList.filter(guru => {
+        const haystack = `${guru.nama || ''} ${guru.instrumen || ''} ${guru.email || ''} ${guru.noHp || ''} ${guru.status || ''}`.toLowerCase();
+        return haystack.includes(teacherSearch);
+      }) : globalGuruList;
+
       const teacherBody = document.getElementById('adminGuruListBody');
       if (teacherBody) {
-        teacherBody.innerHTML = globalGuruList.length ? globalGuruList.map((guru, index) => `<tr class="teacher-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(guru.nama || '-')}</b></td><td data-label="Instrumen">${escapeTaskHtml(guru.instrumen || '-')}</td><td data-label="Email">${escapeTaskHtml(guru.email || '-')}</td><td data-label="No. HP">${escapeTaskHtml(guru.noHp || '-')}</td><td data-label="Status"><span><span class="badge ${String(guru.status || 'Aktif').toLowerCase() === 'aktif' ? 'badge-success' : 'badge-danger'}">${escapeTaskHtml(guru.status || 'Aktif')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditGuru(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteGuruRecord(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'),decodeURIComponent('${encodeURIComponent(guru.nama || '')}'))">Hapus</button></div></td></tr>`).join('') : '<tr class="table-empty-row"><td class="table-empty-cell" colspan="7" style="text-align:center;color:#94a3b8;">Belum ada data guru.</td></tr>';
+        teacherBody.innerHTML = displayedTeachers.length ? displayedTeachers.map((guru, index) => `<tr class="teacher-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(guru.nama || '-')}</b></td><td data-label="Instrumen">${escapeTaskHtml(guru.instrumen || '-')}</td><td data-label="Email">${escapeTaskHtml(guru.email || '-')}</td><td data-label="No. HP">${escapeTaskHtml(guru.noHp || '-')}</td><td data-label="Status"><span><span class="badge ${String(guru.status || 'Aktif').toLowerCase() === 'aktif' ? 'badge-success' : 'badge-danger'}">${escapeTaskHtml(guru.status || 'Aktif')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditGuru(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteGuruRecord(decodeURIComponent('${encodeURIComponent(guru.id || guru.nama || '')}'),decodeURIComponent('${encodeURIComponent(guru.nama || '')}'))">Hapus</button></div></td></tr>`).join('') : '<tr class="table-empty-row"><td class="table-empty-cell" colspan="7" style="text-align:center;color:#94a3b8;">Belum ada data guru.</td></tr>';
       }
 
       const teacherSelect = document.getElementById('absensiGuruID');
@@ -76,7 +98,7 @@
       document.getElementById('addGuruPassword').required = false;
       document.getElementById('addGuruPassword').placeholder = 'Kosongkan jika password tidak diubah';
       document.getElementById('addGuruHP').value = guru.noHp || '';
-      document.getElementById('addGuruInstrumen').value = guru.instrumen || 'Gitar';
+      setTeacherInstrumentSelection(document.getElementById('addGuruInstrumen'), guru.instrumen || 'Gitar');
       document.getElementById('addGuruStatus').value = guru.status || 'Aktif';
       document.getElementById('btnSubmitGuru').textContent = 'Update Guru';
       document.getElementById('btnCancelEditGuru').style.display = 'inline-block';
@@ -221,9 +243,14 @@
         email: document.getElementById('addGuruEmail').value.trim(),
         password: document.getElementById('addGuruPassword').value,
         noHp: document.getElementById('addGuruHP').value.trim(),
-        instrumen: document.getElementById('addGuruInstrumen').value,
+        instrumen: getSelectedTeacherInstruments(),
         status: document.getElementById('addGuruStatus').value
       };
+
+      if (!payload.instrumen) {
+        showAlert('alertDanger', 'Pilih minimal satu instrumen untuk guru.');
+        return false;
+      }
 
       btn.disabled = true;
       btn.textContent = isEdit ? 'Mengupdate...' : 'Menyimpan...';

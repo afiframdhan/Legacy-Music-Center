@@ -322,6 +322,10 @@
           <div class="widget-box" id="siswaFilterBox" style="display:none; background:#fff8f6; border-color:#ffd8bf;">
             <div class="widget-title" style="margin-bottom:10px; color:#F15A24;">🔍 Filter Data Siswa</div>
             <div class="filter-grid">
+              <div class="form-group" style="margin:0;">
+                <label>Cari Siswa:</label>
+                <input type="search" id="studentSearchInput" placeholder="Nama, instrumen, guru, grade, email, HP, status..." oninput="applySiswaFilters()" autocomplete="off">
+              </div>
               <div class="form-group" id="filterSiswaInstrumenGroup" style="margin:0;">
                 <label>Filter Instrumen:</label>
                 <select id="filterSiswaInstrumen" onchange="applySiswaFilters()">
@@ -541,6 +545,7 @@
                 <select id="pengumumanTarget" required onchange="togglePengumumanTargetDetail(this.value)">
                   <option value="semua">Semua (Guru & Siswa)</option>
                   <option value="semua_guru">Semua Guru Saja</option>
+                  <option value="guru_tertentu">Guru Tertentu</option>
                   <option value="semua_siswa">Semua Siswa Saja</option>
                   <option value="siswa_tertentu">Siswa Tertentu</option>
                 </select>
@@ -548,6 +553,10 @@
               <div class="form-group academy-span-2" id="containerPengumumanSiswaDetail" style="display:none;">
                 <label>Pilih Siswa Spesifik</label>
                 <select id="pengumumanSiswaDetailSelect"></select>
+              </div>
+              <div class="form-group academy-span-2" id="containerPengumumanGuruDetail" style="display:none;">
+                <label>Pilih Guru Spesifik</label>
+                <select id="pengumumanGuruDetailSelect"><option value="">Pilih Guru...</option></select>
               </div>
               <div class="form-group academy-span-all">
                 <label>Isi Pengumuman</label>
@@ -794,7 +803,7 @@
                   <div class="form-group"><label>Email</label><input type="email" id="addGuruEmail"></div>
                   <div class="form-group"><label>Password</label><input type="password" id="addGuruPassword" autocomplete="new-password" required placeholder="Masukkan password guru"></div>
                   <div class="form-group"><label>No. HP</label><input type="text" id="addGuruHP"></div>
-                  <div class="form-group"><label>Kelas / Instrumen</label><select id="addGuruInstrumen" required><option value="Gitar">Gitar</option><option value="Piano">Piano</option><option value="Vocal">Vocal</option><option value="Drum">Drum</option><option value="Biola">Biola</option><option value="Bass">Bass</option><option value="Cello">Cello</option><option value="Saxophone">Saxophone</option><option value="Music Creation">Music Creation</option></select></div>
+                  <div class="form-group"><label>Kelas / Instrumen</label><select id="addGuruInstrumen" required multiple size="5" aria-describedby="addGuruInstrumenHint"><option value="Gitar">Gitar</option><option value="Piano">Piano</option><option value="Vocal">Vocal</option><option value="Drum">Drum</option><option value="Biola">Biola</option><option value="Bass">Bass</option><option value="Cello">Cello</option><option value="Saxophone">Saxophone</option><option value="Music Creation">Music Creation</option></select><small id="addGuruInstrumenHint" style="display:block;margin-top:5px;color:#64748b;line-height:1.35;">Bisa pilih lebih dari satu instrumen. Di Mac: tahan ⌘ saat memilih; di Windows: Ctrl.</small></div>
                   <div class="form-group"><label>Status</label><select id="addGuruStatus" required><option value="Aktif">Aktif</option><option value="Nonaktif">Nonaktif</option></select></div>
                 </div>
                 <div class="teacher-form-actions">
@@ -804,6 +813,10 @@
               </form>
               </div>
               <div class="widget-title" style="margin-bottom:12px;">Daftar Guru</div>
+              <div class="form-group" style="margin:0 0 12px;">
+                <label for="teacherSearchInput">Cari Guru</label>
+                <input type="search" id="teacherSearchInput" placeholder="Nama, instrumen, email, HP, status..." oninput="renderAdminTeacherManagement()" autocomplete="off">
+              </div>
               <div class="responsive-table modern-data-table teacher-mobile-table" style="padding:0;">
                 <table style="min-width:760px;"><thead><tr><th>No</th><th>Nama Guru</th><th>Instrumen</th><th>Email</th><th>No. HP</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="adminGuruListBody"></tbody></table>
               </div>
@@ -968,17 +981,9 @@
               <div class="form-group"><label>Alamat Email</label><input type="email" id="selfProfileEmail" required></div>
               <div class="form-group"><label>No. HP / WhatsApp</label><input type="text" id="selfProfileHP"></div>
               <div class="form-group" id="selfProfileInstrumenGroup" style="display:none;">
-                <label>Spesialisasi / Instrumen Utama</label>
-                <select id="selfProfileInstrumen">
-                  <option value="Gitar">Gitar</option>
-                  <option value="Biola">Biola</option>
-                  <option value="Vocal">Vocal</option>
-                  <option value="Bass">Bass</option>
-                  <option value="Piano">Piano</option>
-                  <option value="Drum">Drum</option>
-                  <option value="Cello">Cello</option>
-                  <option value="Saxophone">Saxophone</option>
-                </select>
+                <label>Spesialisasi / Instrumen</label>
+                <input type="text" id="selfProfileInstrumen" placeholder="Contoh: Piano, Vocal">
+                <small style="display:block;margin-top:5px;color:#64748b;line-height:1.35;">Untuk lebih dari satu instrumen, pisahkan dengan koma.</small>
               </div>
               <button type="submit" id="btnSaveSelfProfile" class="btn btn-primary">Simpan Perubahan Profil</button>
             </form>
