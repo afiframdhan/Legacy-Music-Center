@@ -2017,25 +2017,103 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
 
     function openStudent360Report(identifier) {
-      if (!identifier || !['guru','admin'].includes(currentUser.userType)) return;
+      if (!identifier || !['guru', 'admin'].includes(currentUser.userType)) return;
+
       const reportWindow = window.open('', '_blank', 'width=1180,height=820');
+
       if (!reportWindow) {
-        showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk membuka laporan lengkap.');
+        showAlert(
+          'alertDanger',
+          'Popup diblokir. Izinkan popup untuk membuka laporan lengkap.'
+        );
         return;
       }
-      reportWindow.document.write('<!doctype html><html><body style="font-family:Arial,sans-serif;padding:36px;color:#64748b;background:#f4f6f8"><div style="max-width:720px;margin:auto;background:#fff;padding:28px;border-radius:18px"><b style="color:#f15a24">Legacy Music Center</b><h2 style="color:#17232d">Menyiapkan Laporan Perkembangan Siswa...</h2><p>Data akademik, kehadiran, tugas, dan progress sedang dimuat.</p></div></body></html>');
-      google.script.run.withSuccessHandler(response => {
-        const data = typeof response === 'string' ? JSON.parse(response) : response;
-        if (!data || data.success === false) {
-          reportWindow.document.body.innerHTML = `<div style="font-family:Arial;padding:32px"><h2>Gagal memuat laporan</h2><p>${escapeTaskHtml(data?.message || 'Data laporan tidak tersedia.')}</p></div>`;
-          return;
-        }
-        google.script.run.withSuccessHandler(logo => {
-          buildStudent360ReportWindow(data, reportWindow, logo && logo.success ? logo.dataUrl : '');
-        }).withFailureHandler(() => buildStudent360ReportWindow(data, reportWindow, '')).getLearningProgressPrintLogo();
-      }).withFailureHandler(error => {
-        reportWindow.document.body.innerHTML = `<div style="font-family:Arial;padding:32px"><h2>Gagal memuat laporan</h2><p>${escapeTaskHtml(error.message || error)}</p></div>`;
-      }).getStudent360Report(identifier);
+
+      reportWindow.document.write(`
+        <!doctype html>
+        <html>
+          <body style="
+            font-family:Arial,sans-serif;
+            padding:36px;
+            color:#64748b;
+            background:#f4f6f8;
+          ">
+            <div style="
+              max-width:720px;
+              margin:auto;
+              background:#fff;
+              padding:28px;
+              border-radius:16px;
+            ">
+              <b style="color:#f15a24;">Legacy Music Center</b>
+              <h2 style="color:#17232d;">
+                Menyiapkan Laporan Perkembangan Siswa...
+              </h2>
+              <p>Data akademik, kehadiran, tugas, dan progress sedang dimuat.</p>
+            </div>
+          </body>
+        </html>
+      `);
+
+      google.script.run
+        .withSuccessHandler(response => {
+          const data =
+            typeof response === 'string'
+              ? JSON.parse(response)
+              : response;
+
+          if (!data || data.success === false) {
+            reportWindow.document.body.innerHTML = `
+              <div style="font-family:Arial;padding:32px">
+                <h2>Gagal memuat laporan</h2>
+                <p>${escapeTaskHtml(data?.message || 'Data laporan tidak tersedia.')}</p>
+              </div>
+            `;
+            return;
+          }
+
+          let reportRendered = false;
+
+          const renderReport = (logoDataUrl = '') => {
+            if (reportRendered) return;
+            reportRendered = true;
+
+            buildStudent360ReportWindow(
+              data,
+              reportWindow,
+              logoDataUrl
+            );
+          };
+
+          const logoTimeout = setTimeout(() => {
+            renderReport('');
+          }, 2000);
+
+          google.script.run
+            .withSuccessHandler(logo => {
+              clearTimeout(logoTimeout);
+
+              renderReport(
+                logo && logo.success
+                  ? logo.dataUrl
+                  : ''
+              );
+            })
+            .withFailureHandler(() => {
+              clearTimeout(logoTimeout);
+              renderReport('');
+            })
+            .getLearningProgressPrintLogo();
+        })
+        .withFailureHandler(error => {
+          reportWindow.document.body.innerHTML = `
+            <div style="font-family:Arial;padding:32px">
+              <h2>Gagal memuat laporan</h2>
+              <p>${escapeTaskHtml(error?.message || error || 'Terjadi kesalahan.')}</p>
+            </div>
+          `;
+        })
+        .getStudent360Report(identifier);
     }
 
     function student360PeriodLabel(progress) {
