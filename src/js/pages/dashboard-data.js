@@ -33,6 +33,7 @@
           if (data.userType === 'siswa') renderSiswa(data);
           if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
           renderLearningProgressViews();
+          if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
           setupFilterDropdown();
           renderTabelJadwal();

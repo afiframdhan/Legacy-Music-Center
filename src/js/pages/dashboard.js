@@ -291,6 +291,9 @@
       const progressList = Array.isArray(data.progress) ? data.progress : [];
       const classes = Array.isArray(data.classes) ? data.classes : [];
       const latest = data.latestProgress || progressList[0] || null;
+      const publication = data.publication || null;
+      const isStudentViewer = currentUser.userType === 'siswa';
+      const initialSignatureMode = publication?.signatureMode === 'manual' ? 'manual' : 'uploaded';
 
       const statusKey = value => String(value || '').trim().toLowerCase();
       const present = attendance.filter(x => ['masuk','hadir'].includes(statusKey(x.status))).length;
@@ -350,7 +353,10 @@
         return `<div class="trend-col"><span>${value}%</span><i style="height:${height}px"></i><b>${esc(String(item.periode || '').replace(/^\d{4}-/,''))}</b></div>`;
       }).join('')}</div>` : '<div class="empty">Belum ada riwayat progress.</div>';
 
-      const sig = (url,name,role) => `<div class="signature"><span>${esc(role)}</span><div class="signature-img">${url ? `<img src="${esc(url)}" alt="">` : ''}</div><b>${esc(name || '-')}</b></div>`;
+      const sig = (url,name,role) => {
+        const imageUrl = student360SignatureDisplayUrl(url);
+        return `<div class="signature"><span>${esc(role)}</span><div class="signature-img">${imageUrl ? `<img src="${esc(imageUrl)}" alt="${esc(role)}" onerror="this.style.display='none'">` : ''}</div><b>${esc(name || '-')}</b></div>`;
+      };
 
       const logo = logoDataUrl
         ? `<img class="logo" src="${logoDataUrl}" alt="Legacy Music Center">`
@@ -403,7 +409,7 @@
         :root{--orange:#f15a24;--peach:#fff3ec;--ink:#17232d;--muted:#718096;--line:#e6ebf1}
         body{margin:0;background:#e9edf2;color:var(--ink);font-family:Arial,Helvetica,sans-serif}
         .toolbar{position:sticky;top:0;z-index:20;display:flex;justify-content:center;gap:10px;padding:12px;background:rgba(23,35,45,.92);backdrop-filter:blur(8px)}
-        .toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer}.toolbar .print{background:var(--orange);color:#fff}.toolbar .close{background:#fff;color:#334155}
+        .toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer}.toolbar button:disabled{opacity:.65;cursor:wait}.toolbar .print{background:var(--orange);color:#fff}.toolbar .close{background:#fff;color:#334155}.toolbar .mode{background:#475569;color:#fff}.toolbar .mode.active{background:#fff;color:#17232d;box-shadow:0 0 0 2px #ff8a3d inset}.toolbar .send{background:#16a34a;color:#fff}.toolbar-status{align-self:center;color:#e2e8f0;font-size:11px;min-width:120px}
         .report-shell{display:flex;gap:24px;align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
         .page{width:210mm;min-width:210mm;height:297mm;background:#fff;padding:12mm;box-shadow:0 10px 35px rgba(15,23,42,.12);position:relative;overflow:hidden}
         header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--orange);padding-bottom:7mm;margin-bottom:6mm}
@@ -423,13 +429,48 @@
         .task-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm}.task-grid div{background:#f8fafc;border-radius:9px;padding:4mm}.task-grid span{display:block;font-size:7.5px;color:#718096}.task-grid b{font-size:18px}
         .trend-panel{margin-top:4mm}.trend-chart{height:40mm;display:flex;align-items:flex-end;justify-content:space-around;border-bottom:1px solid #cbd5e1;padding:3mm 5mm 0}.trend-col{height:34mm;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:18mm}.trend-col span{font-size:7px;font-weight:800;margin-bottom:2px}.trend-col i{display:block;width:10mm;background:linear-gradient(#ff9b69,#f15a24);border-radius:4px 4px 0 0}.trend-col b{font-size:6.5px;margin-top:2px;color:#64748b;max-width:18mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .target-copy{font-size:9px;line-height:1.55;white-space:pre-line;background:#fff7f2;border-radius:9px;padding:4mm;color:#475569}
-        .signatures{display:grid;grid-template-columns:1fr 1fr;gap:20mm;margin-top:9mm;text-align:center;page-break-inside:avoid}.signature span{font-size:8px;color:#64748b}.signature-img{height:20mm;display:flex;align-items:center;justify-content:center}.signature-img img{max-width:42mm;max-height:18mm;object-fit:contain}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:2mm;font-size:9px}
+        .signatures{display:grid;grid-template-columns:1fr 1fr;gap:20mm;margin-top:9mm;text-align:center;page-break-inside:avoid}.signature span{font-size:8px;color:#64748b}.signature-img{height:24mm;display:flex;align-items:flex-end;justify-content:center;padding-bottom:2mm}.signature-img img{display:block;max-width:38mm;max-height:17mm;width:auto;height:auto;object-fit:contain;filter:contrast(1.08);mix-blend-mode:multiply}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:2mm;font-size:9px}body[data-signature-mode="manual"] .signature-img img{display:none!important}
         footer{position:absolute;left:12mm;right:12mm;bottom:8mm;border-top:1px solid #e8edf2;padding-top:2mm;font-size:6.5px;color:#94a3b8;text-align:right}
         @media(max-width:900px){.report-shell{display:block;padding:8px}.page{transform-origin:top left;width:100%;min-width:0;height:auto;min-height:297mm;margin-bottom:14px;padding:18px}.student-grid,.two-col{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.page footer{position:static;margin-top:18px}}
         @media print{@page{size:A4 portrait;margin:0}.toolbar{display:none}.report-shell{display:block;padding:0}.page{width:210mm;min-width:210mm;height:297mm;box-shadow:none;margin:0;page-break-after:always}.page:last-child{page-break-after:auto}}
-      </style></head><body>
-      <div class="toolbar"><button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button class="close" onclick="window.close()">Tutup</button></div>
+      </style></head><body data-signature-mode="${initialSignatureMode}">
+      <div class="toolbar">
+        <button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button>
+        ${isStudentViewer ? '' : `<button id="sigUploadedBtn" class="mode" onclick="setSignatureMode('uploaded')">✍️ TTD Upload</button><button id="sigManualBtn" class="mode" onclick="setSignatureMode('manual')">🖊 TTD Manual</button><button id="publishReportBtn" class="send" onclick="publishReport()">📨 Kirim ke Siswa</button>`}
+        <span id="reportStatus" class="toolbar-status">${isStudentViewer && publication ? `Dikirim ${esc(publication.sentAt || '')}` : ''}</span>
+        <button class="close" onclick="window.close()">Tutup</button>
+      </div>
       <main class="report-shell">${page1}${page2}</main>
+      <script>
+        function applySignatureModeButtons(){
+          var mode=document.body.dataset.signatureMode||'uploaded';
+          var up=document.getElementById('sigUploadedBtn'), man=document.getElementById('sigManualBtn');
+          if(up) up.classList.toggle('active',mode==='uploaded');
+          if(man) man.classList.toggle('active',mode==='manual');
+        }
+        function setSignatureMode(mode){
+          document.body.dataset.signatureMode=mode==='manual'?'manual':'uploaded';
+          applySignatureModeButtons();
+        }
+        function publishReport(){
+          var btn=document.getElementById('publishReportBtn');
+          var status=document.getElementById('reportStatus');
+          if(!window.opener || !window.opener.google || !window.opener.google.script) {
+            if(status) status.textContent='Tidak dapat menghubungi aplikasi.';
+            return;
+          }
+          if(btn){btn.disabled=true;btn.textContent='Mengirim...';}
+          var mode=document.body.dataset.signatureMode||'uploaded';
+          window.opener.google.script.run.withSuccessHandler(function(res){
+            if(btn){btn.disabled=false;btn.textContent=res&&res.success?'✓ Terkirim':'📨 Kirim ke Siswa';}
+            if(status) status.textContent=res&&res.success?(res.message||'Laporan berhasil dikirim ke akun siswa.'):(res&&res.message||'Gagal mengirim laporan.');
+          }).withFailureHandler(function(err){
+            if(btn){btn.disabled=false;btn.textContent='📨 Kirim ke Siswa';}
+            if(status) status.textContent='Gagal mengirim: '+(err&&err.message?err.message:err);
+          }).publishStudent360Report('${esc(student.siswaID || '')}', '${esc(latest?.progressID || '')}', mode);
+        }
+        applySignatureModeButtons();
+      <\/script>
       </body></html>`;
 
       reportWindow.document.open();

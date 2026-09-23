@@ -2,7 +2,7 @@ const COOKIE_NAME = 'legacy_api_session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 const COMMON = new Set([
-  'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile'
+  'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report'
 ]);
 const STUDENT = new Set([...COMMON, 'submitTugasJawaban']);
 const TEACHER = new Set([
@@ -10,7 +10,7 @@ const TEACHER = new Set([
   'saveLearningProgress', 'deleteLearningProgress', 'getLearningProgressPrintLogo',
   'addTugasCombined', 'deleteTugas', 'recordAbsensi', 'updateAbsensi', 'deleteAbsensi',
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
-  'addSiswaCombined', 'deleteSiswa', 'getStudent360Report'
+  'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -172,11 +172,28 @@ async function handleRpc(request, env, ctx) {
 
   if (method === 'getStudent360Report') {
     try {
-      const identifier = String(args[0] || '').trim();
+      const requested = String(args[0] || '').trim();
+      const identifier = session.userType === 'siswa' ? String(session.userID || '').trim() : requested;
       const result = await buildStudent360ReportSupabase(env, session, identifier);
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Student 360 report error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'publishStudent360Report') {
+    try {
+      if (!['guru','admin'].includes(session.userType)) {
+        return json({ ok:true, data:{ success:false, message:'Hanya guru atau admin yang dapat mengirim laporan ke siswa.' } });
+      }
+      const studentId = String(args[0] || '').trim();
+      const progressId = String(args[1] || '').trim();
+      const signatureMode = String(args[2] || '').toLowerCase() === 'manual' ? 'manual' : 'uploaded';
+      const result = await publishStudent360ReportSupabase(env, session, studentId, progressId, signatureMode);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Publish Student 360 report error:', error);
       return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
@@ -1760,7 +1777,59 @@ function activeAnnouncementsForRole(rows, role, student, teacherStudentIds, teac
 }
 
 
-async function buildStudent360ReportSupabase(env, session, identifier) {
+
+async function latestStudent360Publication(env, studentId) {
+  const rows = await sbRows(env, 'student_report_publications', {
+    student_id:`eq.${studentId}`,
+    active:'eq.true',
+    order:'sent_at.desc',
+    limit:'1'
+  });
+  const row = rows[0] || null;
+  if (!row) return null;
+  return {
+    reportID: row.report_id || '',
+    studentID: row.student_id || '',
+    progressID: row.progress_id || '',
+    signatureMode: row.signature_mode === 'manual' ? 'manual' : 'uploaded',
+    sentAt: row.sent_at ? new Date(row.sent_at).toLocaleString('id-ID', { timeZone:'Asia/Jakarta' }) : '',
+    sentBy: row.sent_by_name || ''
+  };
+}
+
+async function publishStudent360ReportSupabase(env, session, studentId, progressId, signatureMode) {
+  if (!studentId) throw new Error('Siswa untuk laporan belum dipilih.');
+
+  // Reuse the existing access check before publishing.
+  await buildStudent360ReportSupabase(env, session, studentId, { ignorePublication:true });
+
+  const response = await supabaseRest(env, '/rest/v1/student_report_publications', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      Prefer:'return=representation'
+    },
+    body:JSON.stringify({
+      student_id: studentId,
+      progress_id: progressId || null,
+      signature_mode: signatureMode === 'manual' ? 'manual' : 'uploaded',
+      sent_by_id: session.userID || null,
+      sent_by_name: session.userName || '',
+      sent_by_role: session.userType || '',
+      active: true
+    })
+  });
+
+  const row = Array.isArray(response) ? response[0] : null;
+  return {
+    success:true,
+    message:'Laporan berhasil dikirim ke akun siswa.',
+    reportID: row && row.report_id ? row.report_id : ''
+  };
+}
+
+
+async function buildStudent360ReportSupabase(env, session, identifier, options = {}) {
   if (!identifier) throw new Error('Identitas siswa tidak ditemukan.');
 
   let studentRows = await sbRows(env, 'students', {
@@ -1779,6 +1848,17 @@ async function buildStudent360ReportSupabase(env, session, identifier) {
   if (!student) throw new Error('Data siswa tidak ditemukan di Supabase.');
 
   const studentId = String(student.student_id || '').trim();
+
+  let publication = null;
+  if (session.userType === 'siswa' && !options.ignorePublication) {
+    if (String(session.userID || '').trim() !== studentId) {
+      throw new Error('Anda tidak memiliki akses ke laporan siswa lain.');
+    }
+    publication = await latestStudent360Publication(env, studentId);
+    if (!publication) {
+      throw new Error('Belum ada Laporan Lengkap yang dikirim oleh guru atau admin.');
+    }
+  }
 
   if (session.userType === 'guru') {
     const allowedClasses = await sbRows(env, 'student_classes', {
@@ -1816,6 +1896,10 @@ async function buildStudent360ReportSupabase(env, session, identifier) {
   const teachers = uniqueText(mappedClasses.map(x => x.guru));
 
   const mappedProgress = progress.map(mapProgress);
+  let latestProgress = mappedProgress[0] || null;
+  if (publication && publication.progressID) {
+    latestProgress = mappedProgress.find(item => String(item.progressID || '') === String(publication.progressID)) || latestProgress;
+  }
 
   return {
     success:true,
@@ -1837,7 +1921,8 @@ async function buildStudent360ReportSupabase(env, session, identifier) {
     attendance:attendance.map(mapAttendance),
     assignments:assignments.map(mapAssignment),
     progress:mappedProgress,
-    latestProgress:mappedProgress[0] || null
+    latestProgress,
+    publication
   };
 }
 
