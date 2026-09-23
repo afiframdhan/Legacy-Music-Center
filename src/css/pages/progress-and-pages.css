@@ -166,7 +166,7 @@
     position: relative;
     z-index: 2;
   }
-  html[data-theme="dark"] .sidebar .sidebar-footer {
+html[data-theme="dark"] .sidebar .sidebar-footer {
   background: #111b2e;
   border-top-color: #26344a;
 }
@@ -183,8 +183,7 @@ html[data-theme="dark"] .sidebar .sidebar-footer .nav-link:hover {
 html[data-theme="dark"] .sidebar .sidebar-footer .nav-link.active {
   background: #382318;
   color: #ff8a50;
-}
-      
+}      
       .content { width: 100%; padding: 12px; overflow-x: hidden; }
       .user-info { display: none; }
       .header-left-group { flex:1 1 auto; min-width:0; }

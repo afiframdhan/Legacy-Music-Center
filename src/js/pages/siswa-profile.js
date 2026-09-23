@@ -192,7 +192,13 @@
         nama: document.getElementById('selfProfileNama').value,
         email: document.getElementById('selfProfileEmail').value,
         noHp: document.getElementById('selfProfileHP').value,
-        instrumen: document.getElementById('selfProfileInstrumen') ? document.getElementById('selfProfileInstrumen').value : '',
+        instrumen: (() => {
+          const input = document.getElementById('selfProfileInstrumen');
+          const typed = input ? String(input.value || '').trim() : '';
+          if (typed) return typed;
+          const existingGuru = currentUser.userType === 'guru' ? (globalGuruList || []).find(g => String(g.id || '').trim() === String(currentUser.userID || '').trim() || String(g.nama || '').trim().toLowerCase() === String(currentUser.userName || '').trim().toLowerCase()) : null;
+          return existingGuru ? String(existingGuru.instrumen || '').trim() : '';
+        })(),
         userType: currentUser.userType
       };
 

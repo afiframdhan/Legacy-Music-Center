@@ -6,7 +6,7 @@
     }
 
     function getAnnouncementTargetLabel(item) {
-      const labels = { semua:'Semua Guru & Siswa', semua_guru:'Semua Guru', semua_siswa:'Semua Siswa', siswa_tertentu:item.targetDetail || 'Siswa Tertentu' };
+      const labels = { semua:'Semua Guru & Siswa', semua_guru:'Semua Guru', guru_tertentu:item.targetDetail || 'Guru Tertentu', semua_siswa:'Semua Siswa', siswa_tertentu:item.targetDetail || 'Siswa Tertentu' };
       return labels[item.target] || 'Semua Guru & Siswa';
     }
 
@@ -123,11 +123,18 @@
     }
 
     function togglePengumumanTargetDetail(targetVal) {
-      const containerDetail = document.getElementById('containerPengumumanSiswaDetail');
-      if (targetVal === 'siswa_tertentu') {
-        containerDetail.style.display = 'block';
-      } else {
-        containerDetail.style.display = 'none';
+      const studentContainer = document.getElementById('containerPengumumanSiswaDetail');
+      const teacherContainer = document.getElementById('containerPengumumanGuruDetail');
+      if (studentContainer) studentContainer.style.display = targetVal === 'siswa_tertentu' ? 'block' : 'none';
+      if (teacherContainer) teacherContainer.style.display = targetVal === 'guru_tertentu' ? 'block' : 'none';
+
+      if (targetVal === 'guru_tertentu') {
+        const select = document.getElementById('pengumumanGuruDetailSelect');
+        if (select) {
+          const previous = select.value;
+          select.innerHTML = '<option value="">Pilih Guru...</option>' + (globalGuruList || []).map(guru => `<option value="${escapeTaskHtml(guru.nama || '')}">${escapeTaskHtml(guru.nama || '-')} (${escapeTaskHtml(guru.instrumen || 'Musik')})</option>`).join('');
+          if ([...select.options].some(option => option.value === previous)) select.value = previous;
+        }
       }
     }
 
@@ -143,6 +150,13 @@
         targetDetailVal = document.getElementById('pengumumanSiswaDetailSelect').value;
         if (!targetDetailVal) {
           alert('Silakan pilih Siswa spesifik terlebih dahulu!');
+          btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
+          return false;
+        }
+      } else if (targetVal === 'guru_tertentu') {
+        targetDetailVal = document.getElementById('pengumumanGuruDetailSelect')?.value || '';
+        if (!targetDetailVal) {
+          alert('Silakan pilih Guru spesifik terlebih dahulu!');
           btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
           return false;
         }
