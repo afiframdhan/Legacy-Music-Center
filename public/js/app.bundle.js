@@ -2578,13 +2578,182 @@ let currentUser = { userType: '', userID: '', userName: '' };
         }
       </style></head><body data-signature-mode="${initialSignatureMode}">
       <div class="toolbar">
-        <button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button>
+        <button class="print" id="savePdfBtn" onclick="saveStudent360Pdf()">💾 Simpan PDF</button><button class="mode" onclick="window.print()">🖨 Cetak</button>
         ${isStudentViewer ? '' : `<button id="sigUploadedBtn" class="mode" onclick="setSignatureMode('uploaded')">✍️ TTD Digital</button><button id="sigManualBtn" class="mode" onclick="setSignatureMode('manual')">🖊 TTD Manual</button><button id="publishReportBtn" class="send" onclick="publishReport()">📨 Kirim ke Siswa</button>`}
         <span id="reportStatus" class="toolbar-status">${isStudentViewer && publication ? `Dikirim ${esc(publication.sentAt || '')}` : ''}</span>
         <button class="close" onclick="window.close()">Tutup</button>
       </div>
       <main class="report-shell">${page1}${page2}</main>
       <script>
+        function loadExternalScript(src, globalCheck){
+          return new Promise(function(resolve,reject){
+            try{
+              if(globalCheck && globalCheck()){
+                resolve();
+                return;
+              }
+              var existing=document.querySelector('script[data-student360-src="'+src+'"]');
+              if(existing){
+                existing.addEventListener('load',function(){resolve();},{once:true});
+                existing.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});
+                return;
+              }
+              var script=document.createElement('script');
+              script.src=src;
+              script.async=true;
+              script.dataset.student360Src=src;
+              script.onload=function(){resolve();};
+              script.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};
+              document.head.appendChild(script);
+            }catch(err){
+              reject(err);
+            }
+          });
+        }
+
+        async function ensureStudent360PdfLibraries(){
+          await loadExternalScript(
+            'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+            function(){return typeof window.html2canvas==='function';}
+          );
+          await loadExternalScript(
+            'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+            function(){return !!(window.jspdf&&window.jspdf.jsPDF);}
+          );
+        }
+
+        function student360PdfFileName(){
+          var rawName='${esc(student.nama || 'Siswa')}';
+          var rawPeriod='${esc(student360PeriodLabel(latest))}';
+          var safeName=String(rawName||'Siswa').replace(/[^a-z0-9_-]+/gi,'-').replace(/^-+|-+$/g,'');
+          var safePeriod=String(rawPeriod||'Laporan').replace(/[^a-z0-9_-]+/gi,'-').replace(/^-+|-+$/g,'');
+          return 'Laporan-Perkembangan-'+(safeName||'Siswa')+'-'+(safePeriod||'Periode')+'.pdf';
+        }
+
+        function student360SetPdfStatus(message){
+          var status=document.getElementById('reportStatus');
+          if(status) status.textContent=message||'';
+        }
+
+        async function waitStudent360Images(root){
+          var images=Array.prototype.slice.call(root.querySelectorAll('img'));
+          await Promise.all(images.map(function(img){
+            if(img.complete) return Promise.resolve();
+            return new Promise(function(resolve){
+              var done=function(){resolve();};
+              img.addEventListener('load',done,{once:true});
+              img.addEventListener('error',done,{once:true});
+              setTimeout(resolve,2500);
+            });
+          }));
+        }
+
+        async function createStudent360PdfBlob(){
+          await ensureStudent360PdfLibraries();
+
+          var pages=Array.prototype.slice.call(document.querySelectorAll('.page'));
+          if(!pages.length) throw new Error('Halaman laporan tidak ditemukan.');
+
+          var jsPDF=window.jspdf.jsPDF;
+          var pdf=new jsPDF({
+            orientation:'portrait',
+            unit:'mm',
+            format:'a4',
+            compress:true
+          });
+
+          for(var i=0;i<pages.length;i++){
+            var page=pages[i];
+            await waitStudent360Images(page);
+
+            var canvas=await window.html2canvas(page,{
+              scale:2,
+              useCORS:true,
+              allowTaint:false,
+              backgroundColor:'#ffffff',
+              logging:false,
+              windowWidth:Math.max(page.scrollWidth,1200),
+              windowHeight:Math.max(page.scrollHeight,1600),
+              scrollX:0,
+              scrollY:0
+            });
+
+            var imageData=canvas.toDataURL('image/jpeg',0.94);
+            if(i>0) pdf.addPage('a4','portrait');
+            pdf.addImage(imageData,'JPEG',0,0,210,297,undefined,'FAST');
+          }
+
+          return pdf.output('blob');
+        }
+
+        async function saveStudent360Pdf(){
+          var btn=document.getElementById('savePdfBtn');
+          var oldText=btn?btn.textContent:'';
+          try{
+            if(btn){
+              btn.disabled=true;
+              btn.textContent='Menyiapkan PDF...';
+            }
+            student360SetPdfStatus('Menyiapkan PDF A4...');
+
+            var blob=await createStudent360PdfBlob();
+            var filename=student360PdfFileName();
+            var file=new File([blob],filename,{type:'application/pdf'});
+            var shared=false;
+
+            try{
+              if(
+                navigator.share &&
+                navigator.canShare &&
+                navigator.canShare({files:[file]})
+              ){
+                await navigator.share({
+                  files:[file],
+                  title:'Laporan Perkembangan Siswa',
+                  text:'Laporan perkembangan siswa Legacy Music Center'
+                });
+                shared=true;
+              }
+            }catch(shareError){
+              // User can cancel share or iOS can reject after async rendering.
+              shared=false;
+            }
+
+            if(!shared){
+              var url=URL.createObjectURL(blob);
+              var a=document.createElement('a');
+              a.href=url;
+              a.download=filename;
+              a.rel='noopener';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+
+              // iOS/Home Screen sometimes ignores download=; opening the Blob
+              // gives the native PDF preview where Share -> Save to Files works.
+              if(/iPad|iPhone|iPod/i.test(navigator.userAgent||'') ||
+                 (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){
+                setTimeout(function(){
+                  try{ window.open(url,'_blank'); }catch(e){}
+                },120);
+              }
+
+              setTimeout(function(){URL.revokeObjectURL(url);},60000);
+            }
+
+            student360SetPdfStatus(shared ? 'PDF siap dibagikan.' : 'PDF berhasil dibuat.');
+          }catch(err){
+            console.error('Student 360 PDF error:',err);
+            student360SetPdfStatus('Gagal membuat PDF: '+(err&&err.message?err.message:err));
+            alert('Gagal membuat PDF. '+(err&&err.message?err.message:err));
+          }finally{
+            if(btn){
+              btn.disabled=false;
+              btn.textContent=oldText||'💾 Simpan PDF';
+            }
+          }
+        }
+
         function student360SignatureFallback(img){
           try{
             var list=JSON.parse(img.getAttribute('data-fallbacks')||'[]');
