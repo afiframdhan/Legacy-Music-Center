@@ -32,7 +32,9 @@
           globalGuruList = gList || [];
           if (data.userType === 'siswa') renderSiswa(data);
           if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
+          if (data.userType === 'guru' && typeof renderStudent360Access === 'function') renderStudent360Access(data);
           renderLearningProgressViews();
+          if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
           setupFilterDropdown();
           renderTabelJadwal();
@@ -169,6 +171,8 @@
       } else {
         container.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Belum ada jadwal pelajaran mendatang.</div>`;
       }
+
+      if (typeof renderStudent360Access === 'function') renderStudent360Access(data);
     }
 
     function renderGuruOrAdmin(data) {

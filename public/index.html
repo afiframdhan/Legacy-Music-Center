@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Legacy Music Center">
 <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Legacy Music Center - Portal</title>
@@ -255,6 +259,9 @@
               <!-- PROGRESS BELAJAR UNIVERSAL: SISWA -->
               <div id="learningProgressDashboardSiswa" class="widget-box lp-widget"></div>
 
+              <!-- LAPORAN PERKEMBANGAN TERBARU: SISWA -->
+              <div id="student360LatestCard" class="widget-box" style="display:none;"></div>
+
               <!-- JADWAL PELAJARAN KHUSUS DASHBOARD SISWA -->
               <div class="widget-box">
                 <div class="widget-header">
@@ -271,6 +278,50 @@
                 <div id="dashboardUpdatesSiswa" class="dashboard-update-grid"></div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- LAPORAN SISWA -->
+        <div class="content-section" id="section-laporan">
+          <div class="task-page-head">
+            <div>
+              <h2>Laporan</h2>
+              <p>Riwayat Laporan Lengkap yang telah dikirim dan tersedia di akun siswa.</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11px;color:#64748b;">Total laporan:</span>
+              <span id="student360ReportCount" style="display:inline-flex;min-width:28px;height:28px;align-items:center;justify-content:center;border-radius:999px;background:#fff0e9;color:#c2410c;font-size:12px;font-weight:850;">0</span>
+            </div>
+          </div>
+          <div id="student360TeacherFilters" class="widget-box" style="display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:end;margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label>Cari Siswa</label>
+              <input id="student360FilterSearch" type="text" placeholder="Nama siswa..." oninput="applyStudent360TeacherFilters()">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Tipe Laporan</label>
+              <select id="student360FilterType" onchange="applyStudent360TeacherFilters()">
+                <option value="">Semua Tipe</option>
+                <option value="bulanan">Bulanan</option>
+                <option value="tiga bulan">Tiga Bulan</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Periode</label>
+              <select id="student360FilterPeriod" onchange="applyStudent360TeacherFilters()">
+                <option value="">Semua Periode</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Instrumen</label>
+              <select id="student360FilterInstrument" onchange="applyStudent360TeacherFilters()">
+                <option value="">Semua Instrumen</option>
+              </select>
+            </div>
+            <div id="student360FilterResult" style="grid-column:1/-1;font-size:10px;color:#718096;"></div>
+          </div>
+          <div id="student360ReportHistory" class="widget-box">
+            <div style="padding:30px 18px;text-align:center;color:#8a98a9;">Memuat laporan...</div>
           </div>
         </div>
 
