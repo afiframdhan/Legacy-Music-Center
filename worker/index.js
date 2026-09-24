@@ -174,7 +174,8 @@ async function handleRpc(request, env, ctx) {
     try {
       const requested = String(args[0] || '').trim();
       const identifier = session.userType === 'siswa' ? String(session.userID || '').trim() : requested;
-      const result = await buildStudent360ReportSupabase(env, session, identifier);
+      const options = session.userType === 'siswa' && requested ? { publicationId:requested } : {};
+      const result = await buildStudent360ReportSupabase(env, session, identifier, options);
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Student 360 report error:', error);
@@ -1778,14 +1779,7 @@ function activeAnnouncementsForRole(rows, role, student, teacherStudentIds, teac
 
 
 
-async function latestStudent360Publication(env, studentId) {
-  const rows = await sbRows(env, 'student_report_publications', {
-    student_id:`eq.${studentId}`,
-    active:'eq.true',
-    order:'sent_at.desc',
-    limit:'1'
-  });
-  const row = rows[0] || null;
+function mapStudent360Publication(row) {
   if (!row) return null;
   return {
     reportID: row.report_id || '',
@@ -1793,8 +1787,36 @@ async function latestStudent360Publication(env, studentId) {
     progressID: row.progress_id || '',
     signatureMode: row.signature_mode === 'manual' ? 'manual' : 'uploaded',
     sentAt: row.sent_at ? new Date(row.sent_at).toLocaleString('id-ID', { timeZone:'Asia/Jakarta' }) : '',
-    sentBy: row.sent_by_name || ''
+    sentAtRaw: row.sent_at || '',
+    sentBy: row.sent_by_name || '',
+    sentByID: row.sent_by_id || '',
+    sentByRole: row.sent_by_role || ''
   };
+}
+
+async function student360Publications(env, studentId) {
+  const rows = await sbRows(env, 'student_report_publications', {
+    student_id:`eq.${studentId}`,
+    active:'eq.true',
+    order:'sent_at.desc'
+  });
+  return rows.map(mapStudent360Publication).filter(Boolean);
+}
+
+async function latestStudent360Publication(env, studentId) {
+  const rows = await student360Publications(env, studentId);
+  return rows[0] || null;
+}
+
+async function student360PublicationById(env, studentId, reportId) {
+  if (!reportId) return latestStudent360Publication(env, studentId);
+  const rows = await sbRows(env, 'student_report_publications', {
+    report_id:`eq.${reportId}`,
+    student_id:`eq.${studentId}`,
+    active:'eq.true',
+    limit:'1'
+  });
+  return mapStudent360Publication(rows[0] || null);
 }
 
 async function publishStudent360ReportSupabase(env, session, studentId, progressId, signatureMode) {
@@ -1854,7 +1876,9 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
     if (String(session.userID || '').trim() !== studentId) {
       throw new Error('Anda tidak memiliki akses ke laporan siswa lain.');
     }
-    publication = await latestStudent360Publication(env, studentId);
+    publication = options.publicationId
+      ? await student360PublicationById(env, studentId, options.publicationId)
+      : await latestStudent360Publication(env, studentId);
     if (!publication) {
       throw new Error('Belum ada Laporan Lengkap yang dikirim oleh guru atau admin.');
     }
@@ -1928,7 +1952,7 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
 
 async function buildStudentDashboardSupabase(env, session) {
   const id = session.userID;
-  const [students, classes, schedules, attendance, assignments, progress, replacements, announcements] =
+  const [students, classes, schedules, attendance, assignments, progress, replacements, announcements, publications] =
     await Promise.all([
       sbRows(env, 'students', { student_id:`eq.${id}`, limit:'1' }),
       sbRows(env, 'student_classes', { student_id:`eq.${id}`, order:'created_at.asc' }),
@@ -1937,7 +1961,8 @@ async function buildStudentDashboardSupabase(env, session) {
       sbRows(env, 'assignments', { student_id:`eq.${id}`, order:'created_at.desc' }),
       sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
       sbRows(env, 'replacement_schedules', { student_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' })
+      sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
+      sbRows(env, 'student_report_publications', { student_id:`eq.${id}`, active:'eq.true', order:'sent_at.desc' })
     ]);
 
   const student = students[0];
@@ -1962,6 +1987,26 @@ async function buildStudentDashboardSupabase(env, session) {
     String(row.status || '').toLowerCase() === 'masuk'
   ).length;
 
+  const mappedProgressList = progress.map(mapProgress);
+  const progressById = new Map(mappedProgressList.map(item => [String(item.progressID || ''), item]));
+  const studentReports = publications.map(row => {
+    const publication = mapStudent360Publication(row);
+    const progressItem = progressById.get(String(publication?.progressID || '')) || null;
+    const matchingClass = kelasList.find(item =>
+      progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
+    ) || kelasList[0] || null;
+
+    return {
+      ...(publication || {}),
+      period: progressItem?.periode || '',
+      periodType: progressItem?.tipePeriode || '',
+      teacher: progressItem?.guru || publication?.sentBy || '',
+      instrument: matchingClass?.instrumen || student.instrument || '',
+      grade: matchingClass?.grade || student.grade || '',
+      status:'Tersedia'
+    };
+  });
+
   return {
     success:true,
     userType:'siswa',
@@ -1982,7 +2027,8 @@ async function buildStudentDashboardSupabase(env, session) {
     absensiList:attendance.map(mapAttendance),
     absensiProgress:{ hadir, total:4 },
     tugasList:assignments.map(mapAssignment),
-    learningProgressList:progress.map(mapProgress),
+    learningProgressList:mappedProgressList,
+    studentReports,
     jadwalPenggantiList:replacements.map(mapReplacement),
     pengumumanList:activeAnnouncementsForRole(
       announcements, 'siswa', student, new Set(), new Set()

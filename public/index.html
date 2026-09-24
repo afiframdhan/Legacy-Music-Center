@@ -255,6 +255,9 @@
               <!-- PROGRESS BELAJAR UNIVERSAL: SISWA -->
               <div id="learningProgressDashboardSiswa" class="widget-box lp-widget"></div>
 
+              <!-- LAPORAN PERKEMBANGAN TERBARU: SISWA -->
+              <div id="student360LatestCard" class="widget-box" style="display:none;"></div>
+
               <!-- JADWAL PELAJARAN KHUSUS DASHBOARD SISWA -->
               <div class="widget-box">
                 <div class="widget-header">
@@ -271,6 +274,23 @@
                 <div id="dashboardUpdatesSiswa" class="dashboard-update-grid"></div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- LAPORAN SISWA -->
+        <div class="content-section" id="section-laporan">
+          <div class="task-page-head">
+            <div>
+              <h2>Laporan</h2>
+              <p>Riwayat laporan perkembangan resmi yang telah dikirim oleh guru.</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11px;color:#64748b;">Total laporan:</span>
+              <span id="student360ReportCount" style="display:inline-flex;min-width:28px;height:28px;align-items:center;justify-content:center;border-radius:999px;background:#fff0e9;color:#c2410c;font-size:12px;font-weight:850;">0</span>
+            </div>
+          </div>
+          <div id="student360ReportHistory" class="widget-box">
+            <div style="padding:30px 18px;text-align:center;color:#8a98a9;">Memuat laporan...</div>
           </div>
         </div>
 

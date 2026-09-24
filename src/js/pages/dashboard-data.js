@@ -170,6 +170,8 @@
       } else {
         container.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Belum ada jadwal pelajaran mendatang.</div>`;
       }
+
+      if (typeof renderStudent360Access === 'function') renderStudent360Access(data);
     }
 
     function renderGuruOrAdmin(data) {

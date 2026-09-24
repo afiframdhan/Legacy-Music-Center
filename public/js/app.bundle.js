@@ -534,6 +534,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         ruang: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 8h2"></path><path d="M13 8h2"></path><path d="M9 12h2"></path><path d="M13 12h2"></path></svg>`,
         progress: `<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
         tugas: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
+        laporan: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -544,6 +545,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
           { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
           { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
@@ -924,6 +926,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
       } else {
         container.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Belum ada jadwal pelajaran mendatang.</div>`;
       }
+
+      if (typeof renderStudent360Access === 'function') renderStudent360Access(data);
     }
 
     function renderGuruOrAdmin(data) {
@@ -2017,7 +2021,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
 
     function openStudent360Report(identifier) {
-      if (!identifier || !['guru', 'admin'].includes(currentUser.userType)) return;
+      if (!['siswa', 'guru', 'admin'].includes(currentUser.userType)) return;
+      if (currentUser.userType !== 'siswa' && !identifier) return;
 
       const reportWindow = window.open('', '_blank', 'width=1180,height=820');
 
@@ -2071,24 +2076,26 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
           let reportRendered = false;
 
+          const fallbackLogoDataUrl = 'https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
+
           const renderReport = (logoDataUrl = '') => {
             if (reportRendered) return;
             reportRendered = true;
-            buildStudent360ReportWindow(data, reportWindow, logoDataUrl);
+            buildStudent360ReportWindow(data, reportWindow, logoDataUrl || fallbackLogoDataUrl);
           };
 
           const logoTimeout = setTimeout(() => {
-            renderReport('');
+            renderReport(fallbackLogoDataUrl);
           }, 2000);
 
           google.script.run
             .withSuccessHandler(logo => {
               clearTimeout(logoTimeout);
-              renderReport(logo && logo.success ? logo.dataUrl : '');
+              renderReport(logo && logo.success && logo.dataUrl ? logo.dataUrl : fallbackLogoDataUrl);
             })
             .withFailureHandler(() => {
               clearTimeout(logoTimeout);
-              renderReport('');
+              renderReport(fallbackLogoDataUrl);
             })
             .getLearningProgressPrintLogo();
         })
@@ -2212,9 +2219,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
         return `<div class="signature"><span>${esc(role)}</span><div class="signature-img">${imageUrl ? `<img src="${esc(imageUrl)}" alt="${esc(role)}" onerror="this.style.display='none'">` : ''}</div><b>${esc(name || '-')}</b></div>`;
       };
 
-      const logo = logoDataUrl
-        ? `<img class="logo" src="${logoDataUrl}" alt="Legacy Music Center">`
-        : `<div class="logo-text"><strong>LEGACY</strong><span>Music Center</span></div>`;
+      const reportLogoUrl = logoDataUrl || 'https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
+      const logo = `<img class="logo" src="${esc(reportLogoUrl)}" alt="Legacy Music Center">`;
 
       const page1 = `
         <section class="page">
@@ -2251,8 +2257,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
             <div class="panel"><h2>Ringkasan Guru</h2><div class="note-block"><b>Guru Pengajar</b><p>${esc(latest?.guru || student.guru || '-')}</p><b>Terakhir Diperbarui</b><p>${esc(latest?.lastUpdated || '-')}</p></div></div>
           </div>
           <div class="signatures">
-            ${sig(latest?.guruSignatureUrl, latest?.guru || student.guru, 'Guru / Coach')}
-            ${sig(latest?.kepalaSekolahSignatureUrl, latest?.kepalaSekolahNama, 'Kepala Sekolah')}
+            ${sig(latest?.guruSignatureUrl, latest?.guruSignatureName || latest?.guru || student.guru, 'Guru / Coach')}
+            ${sig(latest?.kepalaSekolahSignatureUrl, latest?.kepalaSekolahNama || latest?.kepalaSekolahSignatureName, 'Kepala Sekolah')}
           </div>
           <footer>Dokumen resmi Legacy Music Center • Dicetak ${new Date().toLocaleDateString('id-ID')}</footer>
         </section>`;
@@ -2290,7 +2296,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       </style></head><body data-signature-mode="${initialSignatureMode}">
       <div class="toolbar">
         <button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button>
-        ${isStudentViewer ? '' : `<button id="sigUploadedBtn" class="mode" onclick="setSignatureMode('uploaded')">✍️ TTD Upload</button><button id="sigManualBtn" class="mode" onclick="setSignatureMode('manual')">🖊 TTD Manual</button><button id="publishReportBtn" class="send" onclick="publishReport()">📨 Kirim ke Siswa</button>`}
+        ${isStudentViewer ? '' : `<button id="sigUploadedBtn" class="mode" onclick="setSignatureMode('uploaded')">✍️ TTD Digital</button><button id="sigManualBtn" class="mode" onclick="setSignatureMode('manual')">🖊 TTD Manual</button><button id="publishReportBtn" class="send" onclick="publishReport()">📨 Kirim ke Siswa</button>`}
         <span id="reportStatus" class="toolbar-status">${isStudentViewer && publication ? `Dikirim ${esc(publication.sentAt || '')}` : ''}</span>
         <button class="close" onclick="window.close()">Tutup</button>
       </div>
@@ -2330,6 +2336,79 @@ let currentUser = { userType: '', userID: '', userName: '' };
       reportWindow.document.open();
       reportWindow.document.write(report);
       reportWindow.document.close();
+    }
+
+
+    function student360ReportPeriodText(report) {
+      const raw = String(report?.period || '').trim();
+      if (!raw) return 'Periode belum tersedia';
+      if (typeof formatLearningProgressPeriod === 'function') {
+        try { return formatLearningProgressPeriod(raw); } catch (_) {}
+      }
+      return raw;
+    }
+
+    function renderStudent360Access(data) {
+      if (currentUser.userType !== 'siswa') return;
+
+      const reports = Array.isArray(data?.studentReports) ? data.studentReports : [];
+      const latestBox = document.getElementById('student360LatestCard');
+      const historyBox = document.getElementById('student360ReportHistory');
+      const countEl = document.getElementById('student360ReportCount');
+
+      if (countEl) countEl.textContent = String(reports.length);
+
+      const cardHtml = (report, compact = false) => {
+        const reportId = encodeURIComponent(String(report.reportID || ''));
+        const period = escapeTaskHtml(student360ReportPeriodText(report));
+        const teacher = escapeTaskHtml(report.teacher || report.sentBy || '-');
+        const instrument = escapeTaskHtml(report.instrument || '');
+        const sentAt = escapeTaskHtml(report.sentAt || '');
+        const extra = instrument ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">Instrumen: <b style="color:#334155;">${instrument}</b></div>` : '';
+        return `
+          <div style="border:1px solid #f1d8ca;border-radius:14px;background:linear-gradient(135deg,#fffaf7,#fff);padding:${compact ? '14px' : '16px'};">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <div style="min-width:0;">
+                <div style="font-size:10px;font-weight:800;color:#f15a24;text-transform:uppercase;letter-spacing:.04em;">Laporan Perkembangan</div>
+                <div style="font-size:${compact ? '16px' : '18px'};font-weight:850;color:#17232d;margin-top:4px;">${period}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:5px;">Guru: <b style="color:#334155;">${teacher}</b></div>
+                ${extra}
+                <div style="font-size:10px;color:#94a3b8;margin-top:5px;">${sentAt ? `Dikirim ${sentAt}` : ''}</div>
+              </div>
+              <span style="display:inline-flex;align-items:center;padding:6px 9px;border-radius:999px;background:#eaf8ee;color:#16803a;font-size:10px;font-weight:800;">Tersedia</span>
+            </div>
+            <button type="button" onclick="openStudent360Report(decodeURIComponent('${reportId}'))"
+              style="margin-top:12px;border:0;border-radius:9px;background:#f15a24;color:#fff;padding:9px 13px;font-weight:800;cursor:pointer;">
+              Buka Laporan Lengkap
+            </button>
+          </div>`;
+      };
+
+      if (latestBox) {
+        if (reports.length) {
+          latestBox.style.display = 'block';
+          latestBox.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+              <div>
+                <div style="font-size:14px;font-weight:850;color:#17232d;">📄 Laporan Perkembangan Terbaru</div>
+                <div style="font-size:10px;color:#718096;margin-top:2px;">Laporan resmi terbaru yang dikirim guru.</div>
+              </div>
+              <button type="button" onclick="switchTab('section-laporan')" style="border:0;background:transparent;color:#f15a24;font-weight:800;cursor:pointer;">Lihat Semua →</button>
+            </div>
+            ${cardHtml(reports[0], true)}`;
+        } else {
+          latestBox.style.display = 'block';
+          latestBox.innerHTML = `
+            <div style="font-size:14px;font-weight:850;color:#17232d;">📄 Laporan Perkembangan Terbaru</div>
+            <div style="font-size:11px;color:#718096;margin-top:7px;">Belum ada laporan lengkap yang dikirim oleh guru.</div>`;
+        }
+      }
+
+      if (historyBox) {
+        historyBox.innerHTML = reports.length
+          ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => cardHtml(report, false)).join('')}</div>`
+          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
+      }
     }
 
     function applyJadwalFilters() {
