@@ -802,7 +802,7 @@
         }
       </style></head><body data-signature-mode="${initialSignatureMode}">
       <div class="toolbar">
-        <button class="print" id="savePdfBtn" onclick="saveStudent360Pdf()">💾 Simpan PDF</button><button class="mode" onclick="window.print()">🖨 Cetak</button>
+        <button class="print" id="savePdfBtn" onclick="saveStudent360Pdf()">💾 Simpan PDF</button><button class="mode" id="printPdfBtn" onclick="printStudent360Report()">🖨 Cetak</button>
         ${isStudentViewer ? '' : `<button id="sigUploadedBtn" class="mode" onclick="setSignatureMode('uploaded')">✍️ TTD Digital</button><button id="sigManualBtn" class="mode" onclick="setSignatureMode('manual')">🖊 TTD Manual</button><button id="publishReportBtn" class="send" onclick="publishReport()">📨 Kirim ke Siswa</button>`}
         <span id="reportStatus" class="toolbar-status">${isStudentViewer && publication ? `Dikirim ${esc(publication.sentAt || '')}` : ''}</span>
         <button class="close" onclick="window.close()">Tutup</button>
@@ -896,18 +896,127 @@
               allowTaint:false,
               backgroundColor:'#ffffff',
               logging:false,
-              windowWidth:Math.max(page.scrollWidth,1200),
-              windowHeight:Math.max(page.scrollHeight,1600),
+              windowWidth:1200,
+              windowHeight:1600,
               scrollX:0,
-              scrollY:0
+              scrollY:0,
+              onclone:function(clonedDoc){
+                try{
+                  var clonedPages=clonedDoc.querySelectorAll('.page');
+                  var clonedPage=clonedPages[i];
+                  if(clonedPage){
+                    clonedPage.style.boxSizing='border-box';
+                    clonedPage.style.width='794px';
+                    clonedPage.style.minWidth='794px';
+                    clonedPage.style.maxWidth='794px';
+                    clonedPage.style.height='1123px';
+                    clonedPage.style.minHeight='1123px';
+                    clonedPage.style.maxHeight='1123px';
+                    clonedPage.style.margin='0';
+                    clonedPage.style.padding='45px';
+                    clonedPage.style.borderRadius='0';
+                    clonedPage.style.boxShadow='none';
+                    clonedPage.style.overflow='hidden';
+
+                    var logo=clonedPage.querySelector('header .logo');
+                    if(logo){
+                      logo.style.width='auto';
+                      logo.style.height='72px';
+                      logo.style.maxWidth='160px';
+                      logo.style.objectFit='contain';
+                      logo.style.objectPosition='left center';
+                    }
+                  }
+                }catch(e){}
+              }
             });
 
             var imageData=canvas.toDataURL('image/jpeg',0.94);
             if(i>0) pdf.addPage('a4','portrait');
-            pdf.addImage(imageData,'JPEG',0,0,210,297,undefined,'FAST');
+
+            var pageW=210;
+            var pageH=297;
+            var imageRatio=canvas.width/canvas.height;
+            var pageRatio=pageW/pageH;
+            var drawW=pageW;
+            var drawH=pageH;
+            var drawX=0;
+            var drawY=0;
+
+            if(imageRatio>pageRatio){
+              drawH=pageW/imageRatio;
+              drawY=(pageH-drawH)/2;
+            }else if(imageRatio<pageRatio){
+              drawW=pageH*imageRatio;
+              drawX=(pageW-drawW)/2;
+            }
+
+            pdf.addImage(imageData,'JPEG',drawX,drawY,drawW,drawH,undefined,'FAST');
           }
 
           return pdf.output('blob');
+        }
+
+        function isStudent360IOS(){
+          return /iPad|iPhone|iPod/i.test(navigator.userAgent||'') ||
+            (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+        }
+
+        async function openStudent360PdfForPrint(){
+          var btn=document.getElementById('printPdfBtn');
+          var oldText=btn?btn.textContent:'';
+          try{
+            if(btn){
+              btn.disabled=true;
+              btn.textContent='Menyiapkan Cetak...';
+            }
+            student360SetPdfStatus('Menyiapkan 2 halaman A4 untuk dicetak...');
+
+            var blob=await createStudent360PdfBlob();
+            var filename=student360PdfFileName();
+            var file=new File([blob],filename,{type:'application/pdf'});
+
+            if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+              try{
+                await navigator.share({
+                  files:[file],
+                  title:'Cetak Laporan Perkembangan Siswa'
+                });
+                student360SetPdfStatus('Pilih Print/Cetak dari menu berbagi.');
+                return;
+              }catch(shareError){
+                if(shareError && shareError.name==='AbortError'){
+                  student360SetPdfStatus('');
+                  return;
+                }
+              }
+            }
+
+            var url=URL.createObjectURL(blob);
+            var opened=window.open(url,'_blank');
+            if(!opened){
+              window.location.href=url;
+            }
+            setTimeout(function(){URL.revokeObjectURL(url);},120000);
+            student360SetPdfStatus('PDF A4 dibuka. Gunakan Bagikan → Cetak.');
+          }catch(err){
+            console.error('Student 360 print PDF error:',err);
+            student360SetPdfStatus('Gagal menyiapkan cetak: '+(err&&err.message?err.message:err));
+            alert('Gagal menyiapkan cetak. '+(err&&err.message?err.message:err));
+          }finally{
+            if(btn){
+              btn.disabled=false;
+              btn.textContent=oldText||'🖨 Cetak';
+            }
+          }
+        }
+
+        async function printStudent360Report(){
+          if(isStudent360IOS()){
+            await openStudent360PdfForPrint();
+            return;
+          }
+          window.print();
         }
 
         async function saveStudent360Pdf(){
