@@ -288,10 +288,7 @@
 
       google.script.run
         .withSuccessHandler(response => {
-          const data =
-            typeof response === 'string'
-              ? JSON.parse(response)
-              : response;
+          const data = typeof response === 'string' ? JSON.parse(response) : response;
 
           if (!data || data.success === false) {
             reportWindow.document.body.innerHTML = `
@@ -308,12 +305,7 @@
           const renderReport = (logoDataUrl = '') => {
             if (reportRendered) return;
             reportRendered = true;
-
-            buildStudent360ReportWindow(
-              data,
-              reportWindow,
-              logoDataUrl
-            );
+            buildStudent360ReportWindow(data, reportWindow, logoDataUrl);
           };
 
           const logoTimeout = setTimeout(() => {
@@ -323,12 +315,7 @@
           google.script.run
             .withSuccessHandler(logo => {
               clearTimeout(logoTimeout);
-
-              renderReport(
-                logo && logo.success
-                  ? logo.dataUrl
-                  : ''
-              );
+              renderReport(logo && logo.success ? logo.dataUrl : '');
             })
             .withFailureHandler(() => {
               clearTimeout(logoTimeout);
@@ -360,6 +347,26 @@
       m = raw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
       if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
       return null;
+    }
+
+    
+    function student360SignatureDisplayUrl(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+
+      if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) return raw;
+
+      let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+
+      if (match && match[1]) {
+        const id = encodeURIComponent(match[1]);
+        return `https://drive.google.com/uc?export=view&id=${id}`;
+      }
+
+      if (/^https?:\/\//i.test(raw)) return raw;
+
+      return '';
     }
 
     function buildStudent360ReportWindow(data, reportWindow, logoDataUrl) {
