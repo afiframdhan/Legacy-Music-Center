@@ -2508,7 +2508,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
             background:#fff!important;
             overflow:visible!important;
           }
-          .toolbar{display:none!important}
+          *,*::before,*::after{box-sizing:border-box!important}
+          .toolbar,#mobilePrintHelp{display:none!important}
           .report-shell{
             display:block!important;
             padding:0!important;
@@ -2516,17 +2517,20 @@ let currentUser = { userType: '', userID: '', userName: '' };
             overflow:visible!important;
           }
           .page{
+            box-sizing:border-box!important;
             width:194mm!important;
             min-width:194mm!important;
             max-width:194mm!important;
-            height:281mm!important;
-            min-height:281mm!important;
-            max-height:281mm!important;
+            height:279mm!important;
+            min-height:279mm!important;
+            max-height:279mm!important;
             padding:6mm 7mm 5mm!important;
             margin:0!important;
             box-shadow:none!important;
             border-radius:0!important;
             overflow:hidden!important;
+            page-break-inside:avoid!important;
+            break-inside:avoid-page!important;
             page-break-after:always!important;
             break-after:page!important;
           }
@@ -2574,54 +2578,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
         }
       </style></head><body data-signature-mode="${initialSignatureMode}">
       <div class="toolbar">
-        <button class="print" onclick="handleReportPrint()">🖨 Cetak / Simpan PDF</button>
+        <button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button>
         ${isStudentViewer ? '' : `<button id="sigUploadedBtn" class="mode" onclick="setSignatureMode('uploaded')">✍️ TTD Digital</button><button id="sigManualBtn" class="mode" onclick="setSignatureMode('manual')">🖊 TTD Manual</button><button id="publishReportBtn" class="send" onclick="publishReport()">📨 Kirim ke Siswa</button>`}
         <span id="reportStatus" class="toolbar-status">${isStudentViewer && publication ? `Dikirim ${esc(publication.sentAt || '')}` : ''}</span>
         <button class="close" onclick="window.close()">Tutup</button>
       </div>
       <main class="report-shell">${page1}${page2}</main>
       <script>
-        function isIOSReportDevice(){
-          return /iPad|iPhone|iPod/i.test(navigator.userAgent || '') ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        }
-
-        function closeMobilePrintHelp(){
-          var el=document.getElementById('mobilePrintHelp');
-          if(el) el.remove();
-        }
-
-        function showMobilePrintHelp(){
-          if(document.getElementById('mobilePrintHelp')) return;
-          var overlay=document.createElement('div');
-          overlay.id='mobilePrintHelp';
-          overlay.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.68);display:flex;align-items:flex-end;justify-content:center;padding:14px;';
-          overlay.innerHTML=
-            '<div style="width:min(520px,100%);background:#fff;border-radius:18px 18px 12px 12px;padding:18px;color:#17232d;box-shadow:0 18px 50px rgba(0,0,0,.25)">'+
-            '<div style="font-size:17px;font-weight:900;margin-bottom:7px">Simpan PDF di iPhone / iPad</div>'+
-            '<div style="font-size:13px;line-height:1.55;color:#526174">'+
-            'Browser iPhone tidak selalu mengizinkan halaman web membuka dialog cetak secara otomatis. Gunakan menu browser: <b>Bagikan → Cetak</b>. Pada preview cetak, buka preview penuh lalu pilih <b>Bagikan → Simpan ke File</b> untuk PDF.'+
-            '</div>'+
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'+
-            '<button onclick="tryNativePrintAgain()" style="border:0;border-radius:10px;background:#f15a24;color:#fff;padding:10px 13px;font-weight:800">Coba Buka Cetak</button>'+
-            '<button onclick="closeMobilePrintHelp()" style="border:1px solid #d8e0e8;border-radius:10px;background:#fff;color:#334155;padding:10px 13px;font-weight:800">Tutup</button>'+
-            '</div></div>';
-          document.body.appendChild(overlay);
-        }
-
-        function tryNativePrintAgain(){
-          try{ window.print(); }catch(e){}
-        }
-
-        function handleReportPrint(){
-          if(!isIOSReportDevice()){
-            window.print();
-            return;
-          }
-          try{ window.print(); }catch(e){}
-          setTimeout(showMobilePrintHelp,450);
-        }
-
         function student360SignatureFallback(img){
           try{
             var list=JSON.parse(img.getAttribute('data-fallbacks')||'[]');
