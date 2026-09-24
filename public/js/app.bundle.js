@@ -571,6 +571,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
           { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
