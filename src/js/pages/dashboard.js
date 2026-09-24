@@ -536,62 +536,182 @@
         .target-copy{font-size:9px;line-height:1.55;white-space:pre-line;background:#fff7f2;border-radius:9px;padding:4mm;color:#475569}
         .signatures{display:grid;grid-template-columns:1fr 1fr;gap:16mm;margin-top:5mm;text-align:center;page-break-inside:avoid;break-inside:avoid}.signature span{font-size:7.5px;color:#64748b}.signature-img{height:18mm;display:flex;align-items:flex-end;justify-content:center;padding-bottom:1mm}.signature-img img{display:block;max-width:36mm;max-height:15mm;width:auto;height:auto;object-fit:contain;filter:contrast(1.08);mix-blend-mode:multiply}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:1.5mm;font-size:8.5px;min-height:6mm}body[data-signature-mode="manual"] .signature-img img{display:none!important}
         footer{position:absolute;left:12mm;right:12mm;bottom:8mm;border-top:1px solid #e8edf2;padding-top:2mm;font-size:6.5px;color:#94a3b8;text-align:right}
-        @media(max-width:900px){
-          html,body{max-width:100%;overflow-x:hidden;background:#edf1f5}
-          .toolbar{
-            position:sticky;top:0;z-index:20;
-            display:flex;align-items:center;gap:7px;
-            padding:8px;
-            overflow-x:auto;overflow-y:hidden;
-            -webkit-overflow-scrolling:touch;
-            white-space:nowrap;
+        @media screen and (max-width:900px){
+          html,body{
+            width:100%!important;
+            max-width:100%!important;
+            margin:0!important;
+            padding:0!important;
+            overflow-x:hidden!important;
+            background:#edf1f5!important;
           }
-          .toolbar button{flex:0 0 auto;padding:9px 11px;font-size:12px;border-radius:10px}
-          .toolbar-status{display:none}
-          .report-shell{display:block;padding:6px;width:100%;max-width:100%;overflow:hidden}
+          .toolbar{
+            position:sticky!important;
+            top:0!important;
+            z-index:50!important;
+            display:flex!important;
+            justify-content:flex-start!important;
+            align-items:center!important;
+            gap:7px!important;
+            width:100%!important;
+            max-width:100vw!important;
+            padding:8px!important;
+            overflow-x:auto!important;
+            overflow-y:hidden!important;
+            -webkit-overflow-scrolling:touch;
+            white-space:nowrap!important;
+            background:rgba(23,35,45,.96)!important;
+          }
+          .toolbar button{
+            display:inline-flex!important;
+            flex:0 0 auto!important;
+            align-items:center!important;
+            justify-content:center!important;
+            min-height:40px!important;
+            padding:9px 11px!important;
+            font-size:12px!important;
+            line-height:1.15!important;
+            border-radius:10px!important;
+          }
+          .toolbar-status{display:none!important}
+          .report-shell{
+            display:block!important;
+            width:100%!important;
+            max-width:100vw!important;
+            padding:6px!important;
+            margin:0!important;
+            overflow:hidden!important;
+          }
           .page{
-            width:calc(100vw - 12px)!important;
+            display:block!important;
+            width:100%!important;
             min-width:0!important;
             max-width:100%!important;
             height:auto!important;
             min-height:0!important;
+            max-height:none!important;
             margin:0 0 10px!important;
             padding:14px!important;
-            border-radius:12px;
-            overflow:hidden;
+            border-radius:12px!important;
+            overflow:hidden!important;
+            box-shadow:0 4px 18px rgba(15,23,42,.08)!important;
           }
-          header{gap:10px;align-items:flex-start}
-          header .logo{width:96px;height:58px;object-fit:contain}
-          header h1{font-size:24px!important;line-height:1.05!important}
-          header p{font-size:11px!important}
-          .student-grid{grid-template-columns:1fr!important}
-          .student-card{grid-template-columns:78px 1fr!important;gap:12px!important;padding:14px!important}
-          .student-photo{width:74px!important;height:74px!important}
-          .student-info-grid{grid-template-columns:1fr!important;gap:8px!important}
-          .metric-grid{grid-template-columns:1fr 1fr!important;gap:8px!important}
-          .metric{min-height:92px!important;padding:12px!important}
-          .metric b{font-size:24px!important}
-          .two-col{grid-template-columns:1fr!important;gap:10px!important}
-          .panel{padding:12px!important}
-          .progress-row{grid-template-columns:88px 1fr 34px!important;gap:6px!important}
-          .task-grid{grid-template-columns:1fr 1fr!important}
-          .trend-chart{height:150px!important;padding:10px 8px 0!important}
-          .trend-col{height:130px!important;min-width:42px!important}
-          .signatures{grid-template-columns:1fr 1fr!important;gap:10px!important;margin-top:14px!important}
-          .signature-img{height:64px!important}
-          .signature-img img{max-height:58px!important;max-width:120px!important}
-          footer{position:static!important;margin-top:14px!important}
+          header{
+            display:grid!important;
+            grid-template-columns:105px minmax(0,1fr)!important;
+            gap:12px!important;
+            align-items:center!important;
+            width:100%!important;
+            padding-bottom:14px!important;
+            margin-bottom:14px!important;
+          }
+          header .logo{
+            width:100px!important;
+            height:62px!important;
+            object-fit:contain!important;
+            object-position:left center!important;
+          }
+          .header-copy{
+            display:block!important;
+            min-width:0!important;
+            width:100%!important;
+            text-align:left!important;
+          }
+          .header-copy b{
+            display:block!important;
+            font-size:23px!important;
+            line-height:1.08!important;
+            white-space:normal!important;
+            overflow-wrap:anywhere!important;
+          }
+          .header-copy span{
+            display:block!important;
+            font-size:10px!important;
+            line-height:1.35!important;
+            margin-top:5px!important;
+            white-space:normal!important;
+          }
+          .student-card{
+            grid-template-columns:76px minmax(0,1fr)!important;
+            gap:12px!important;
+            padding:14px!important;
+            width:100%!important;
+          }
+          .student-photo{width:72px!important;height:72px!important}
+          .student-name{font-size:21px!important;margin-bottom:10px!important}
+          .student-grid{
+            grid-template-columns:1fr!important;
+            gap:9px!important;
+            min-width:0!important;
+          }
+          .student-grid b{
+            display:block!important;
+            font-size:12px!important;
+            white-space:normal!important;
+            overflow-wrap:anywhere!important;
+          }
+          h2{font-size:16px!important;margin:18px 0 10px!important}
+          .metric-grid{
+            grid-template-columns:1fr 1fr!important;
+            gap:8px!important;
+            width:100%!important;
+          }
+          .metric{min-width:0!important;min-height:100px!important;padding:14px!important}
+          .metric span{font-size:11px!important}
+          .metric b{font-size:27px!important}
+          .metric small{font-size:10px!important}
+          .two-col{
+            grid-template-columns:1fr!important;
+            gap:10px!important;
+            width:100%!important;
+          }
+          .panel{width:100%!important;min-width:0!important;padding:13px!important}
+          .progress-row{width:100%!important}
+          .progress-top{font-size:11px!important;gap:8px!important}
+          ul{padding-left:19px!important}
+          li{font-size:11px!important;line-height:1.55!important}
+          .task-grid{grid-template-columns:1fr 1fr!important;gap:8px!important}
+          .task-grid span{font-size:10px!important}
+          .task-grid b{font-size:20px!important}
+          .trend-chart{
+            height:150px!important;
+            padding:10px 6px 0!important;
+            overflow-x:auto!important;
+            justify-content:flex-start!important;
+            gap:12px!important;
+          }
+          .trend-col{
+            height:132px!important;
+            min-width:48px!important;
+            flex:0 0 48px!important;
+          }
+          .target-copy{font-size:11px!important;padding:12px!important}
+          .signatures{
+            grid-template-columns:1fr 1fr!important;
+            gap:10px!important;
+            margin-top:14px!important;
+          }
+          .signature-img{height:62px!important}
+          .signature-img img{max-height:56px!important;max-width:116px!important}
+          .signature b{font-size:10px!important}
+          footer{
+            position:static!important;
+            margin-top:14px!important;
+            font-size:8px!important;
+          }
         }
-        @media(max-width:520px){
+        @media screen and (max-width:520px){
           .page{padding:10px!important}
-          header{grid-template-columns:92px 1fr!important}
-          header .logo{width:86px!important;height:54px!important}
-          header h1{font-size:21px!important}
-          .student-card{grid-template-columns:64px 1fr!important}
-          .student-photo{width:60px!important;height:60px!important}
-          .metric-grid{grid-template-columns:1fr 1fr!important}
-          .metric{min-height:84px!important}
-          .metric b{font-size:22px!important}
+          header{grid-template-columns:88px minmax(0,1fr)!important;gap:9px!important}
+          header .logo{width:84px!important;height:54px!important}
+          .header-copy b{font-size:19px!important}
+          .header-copy span{font-size:9px!important}
+          .student-card{grid-template-columns:62px minmax(0,1fr)!important;padding:11px!important}
+          .student-photo{width:58px!important;height:58px!important}
+          .student-name{font-size:19px!important}
+          .metric-grid{grid-template-columns:1fr!important}
+          .metric{min-height:88px!important}
+          .task-grid{grid-template-columns:1fr 1fr!important}
           .signatures{grid-template-columns:1fr!important}
         }
         @media print{
@@ -605,7 +725,12 @@
             overflow:visible!important;
           }
           .toolbar{display:none!important}
-          .report-shell{display:block!important;padding:0!important;margin:0!important;overflow:visible!important}
+          .report-shell{
+            display:block!important;
+            padding:0!important;
+            margin:0!important;
+            overflow:visible!important;
+          }
           .page{
             width:194mm!important;
             min-width:194mm!important;
@@ -613,7 +738,7 @@
             height:281mm!important;
             min-height:281mm!important;
             max-height:281mm!important;
-            padding:7mm 8mm 6mm!important;
+            padding:6mm 7mm 5mm!important;
             margin:0!important;
             box-shadow:none!important;
             border-radius:0!important;
@@ -621,58 +746,47 @@
             page-break-after:always!important;
             break-after:page!important;
           }
-          .page:last-child{page-break-after:auto!important;break-after:auto!important}
-          header{padding-bottom:4mm!important;margin-bottom:3mm!important}
-          header .logo{width:31mm!important;height:19mm!important}
-          header h1{font-size:17px!important}
-          h2{margin:3mm 0 2mm!important}
-          .student-card{padding:3.5mm!important}
-          .metric-grid{gap:2.5mm!important}
-          .metric{min-height:22mm!important;padding:3mm!important}
-          .panel{padding:3.5mm!important}
-          .lower{margin-top:2.5mm!important}
-          .trend-panel{margin-top:2.5mm!important}
-          .trend-chart{height:30mm!important}
-          .trend-col{height:26mm!important}
-          .target-copy{padding:3mm!important}
+          .page:last-child{
+            page-break-after:auto!important;
+            break-after:auto!important;
+          }
+          header{
+            padding-bottom:3mm!important;
+            margin-bottom:2.5mm!important;
+          }
+          header .logo{width:29mm!important;height:17mm!important}
+          .header-copy b{font-size:16px!important}
+          .header-copy span{font-size:7px!important}
+          .student-card{padding:3mm!important}
+          .student-photo{width:20mm!important;height:20mm!important}
+          .student-name{font-size:15px!important;margin-bottom:2mm!important}
+          h2{margin:2.5mm 0 1.8mm!important;font-size:10px!important}
+          .metric-grid{gap:2mm!important}
+          .metric{min-height:20mm!important;padding:2.5mm!important}
+          .metric b{font-size:17px!important}
+          .panel{padding:3mm!important}
+          .lower{margin-top:2mm!important}
+          .note-block{font-size:8px!important}
+          .task-grid{gap:2mm!important}
+          .trend-panel{margin-top:2mm!important}
+          .trend-chart{height:27mm!important;padding-top:2mm!important}
+          .trend-col{height:23mm!important}
+          .target-copy{padding:2.5mm!important;font-size:8px!important}
           .signatures{
-            margin-top:2.5mm!important;
-            gap:12mm!important;
+            margin-top:2mm!important;
+            gap:10mm!important;
             break-inside:avoid!important;
             page-break-inside:avoid!important;
           }
-          .signature-img{height:13mm!important}
-          .signature-img img{max-height:11mm!important;max-width:30mm!important}
-          .signature b{font-size:8px!important;padding-top:1mm!important}
-          footer{position:absolute!important;left:8mm!important;right:8mm!important;bottom:3mm!important}
-        }
-          html,body{width:210mm;margin:0!important;padding:0!important;background:#fff!important}
-          .toolbar{display:none!important}
-          .report-shell{display:block!important;padding:0!important;margin:0!important;overflow:visible!important}
-          .page{
-            width:210mm!important;
-            min-width:210mm!important;
-            height:297mm!important;
-            min-height:297mm!important;
-            max-height:297mm!important;
-            padding:9mm 10mm 8mm!important;
-            box-shadow:none!important;
-            margin:0!important;
-            overflow:hidden!important;
-            page-break-after:always;
-            break-after:page;
+          .signature-img{height:11mm!important}
+          .signature-img img{max-height:9.5mm!important;max-width:28mm!important}
+          .signature b{font-size:7.5px!important;padding-top:.8mm!important}
+          footer{
+            position:absolute!important;
+            left:7mm!important;
+            right:7mm!important;
+            bottom:2.5mm!important;
           }
-          .page:last-child{page-break-after:auto;break-after:auto}
-          header{padding-bottom:5mm!important;margin-bottom:4mm!important}
-          h2{margin:4mm 0 2.5mm!important}
-          .lower{margin-top:3mm!important}
-          .trend-panel{margin-top:3mm!important}
-          .trend-chart{height:36mm!important}
-          .trend-col{height:31mm!important}
-          .signatures{margin-top:4mm!important;gap:14mm!important}
-          .signature-img{height:16mm!important}
-          .signature-img img{max-height:14mm!important;max-width:34mm!important}
-          footer{left:10mm!important;right:10mm!important;bottom:5mm!important}
         }
       </style></head><body data-signature-mode="${initialSignatureMode}">
       <div class="toolbar">
