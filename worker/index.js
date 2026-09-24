@@ -179,8 +179,8 @@ async function handleRpc(request, env, ctx) {
 
       if (session.userType !== 'siswa' && requested) {
         const publication = await student360PublicationForStaff(env, session, requested);
-        if (publication && publication.studentDbID) {
-          identifier = publication.studentDbID;
+        if (publication && publication.studentID) {
+          identifier = publication.studentID;
           options = { publicationId:requested };
         }
       }
@@ -1834,7 +1834,7 @@ function mapStudent360Publication(row) {
   return {
     reportID: row.report_id || '',
     studentDbID: row.student_id || '',
-    studentID: '',
+    studentID: row.student_public_id || '',
     progressID: row.progress_id || '',
     signatureMode: row.signature_mode === 'manual' ? 'manual' : 'uploaded',
     sentAt: row.sent_at ? new Date(row.sent_at).toLocaleString('id-ID', { timeZone:'Asia/Jakarta' }) : '',
@@ -1845,27 +1845,29 @@ function mapStudent360Publication(row) {
   };
 }
 
-async function student360Publications(env, studentDbId) {
-  if (!studentDbId || !isUuidLike(studentDbId)) return [];
+async function student360Publications(env, studentPublicId) {
+  const publicId = String(studentPublicId || '').trim();
+  if (!publicId) return [];
   const rows = await sbRows(env, 'student_report_publications', {
-    student_id:`eq.${studentDbId}`,
+    student_public_id:`eq.${publicId}`,
     active:'eq.true',
     order:'sent_at.desc'
   });
   return rows.map(mapStudent360Publication).filter(Boolean);
 }
 
-async function latestStudent360Publication(env, studentDbId) {
-  const rows = await student360Publications(env, studentDbId);
+async function latestStudent360Publication(env, studentPublicId) {
+  const rows = await student360Publications(env, studentPublicId);
   return rows[0] || null;
 }
 
-async function student360PublicationById(env, studentDbId, reportId) {
-  if (!reportId) return latestStudent360Publication(env, studentDbId);
-  if (!studentDbId || !isUuidLike(studentDbId)) return null;
+async function student360PublicationById(env, studentPublicId, reportId) {
+  if (!reportId) return latestStudent360Publication(env, studentPublicId);
+  const publicId = String(studentPublicId || '').trim();
+  if (!publicId || !isUuidLike(reportId)) return null;
   const rows = await sbRows(env, 'student_report_publications', {
     report_id:`eq.${reportId}`,
-    student_id:`eq.${studentDbId}`,
+    student_public_id:`eq.${publicId}`,
     active:'eq.true',
     limit:'1'
   });
@@ -1897,8 +1899,8 @@ async function publishStudent360ReportSupabase(env, session, studentId, progress
   await buildStudent360ReportSupabase(env, session, studentId, { ignorePublication:true });
 
   const student = await resolveStudent360Student(env, studentId);
-  if (!student || !student.id || !isUuidLike(student.id)) {
-    throw new Error('ID internal siswa untuk arsip laporan tidak ditemukan.');
+  if (!student || !student.student_id) {
+    throw new Error('ID siswa untuk arsip laporan tidak ditemukan.');
   }
 
   const response = await supabaseRest(env, '/rest/v1/student_report_publications', {
@@ -1908,7 +1910,8 @@ async function publishStudent360ReportSupabase(env, session, studentId, progress
       Prefer:'return=representation'
     },
     body:JSON.stringify({
-      student_id: student.id,
+      student_id: null,
+      student_public_id: String(student.student_id || '').trim(),
       progress_id: progressId || null,
       signature_mode: signatureMode === 'manual' ? 'manual' : 'uploaded',
       sent_by_id: session.userID || null,
@@ -1969,7 +1972,6 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
   if (!student) throw new Error('Data siswa tidak ditemukan di Supabase.');
 
   const studentId = String(student.student_id || '').trim();
-  const studentDbId = String(student.id || '').trim();
 
   let publication = null;
   if (session.userType === 'siswa' && !options.ignorePublication) {
@@ -1977,13 +1979,13 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
       throw new Error('Anda tidak memiliki akses ke laporan siswa lain.');
     }
     publication = options.publicationId
-      ? await student360PublicationById(env, studentDbId, options.publicationId)
-      : await latestStudent360Publication(env, studentDbId);
+      ? await student360PublicationById(env, studentId, options.publicationId)
+      : await latestStudent360Publication(env, studentId);
     if (!publication) {
       throw new Error('Belum ada Laporan Lengkap yang dikirim oleh guru atau admin.');
     }
   } else if (options.publicationId) {
-    publication = await student360PublicationById(env, studentDbId, options.publicationId);
+    publication = await student360PublicationById(env, studentId, options.publicationId);
     if (!publication) throw new Error('Riwayat laporan yang dipilih tidak ditemukan.');
   }
 
@@ -2070,13 +2072,11 @@ async function buildStudentDashboardSupabase(env, session) {
   const student = students[0];
   if (!student) throw new Error('Data siswa tidak ditemukan di Supabase.');
 
-  const publications = student.id && isUuidLike(student.id)
-    ? await sbRows(env, 'student_report_publications', {
-        student_id:`eq.${student.id}`,
-        active:'eq.true',
-        order:'sent_at.desc'
-      })
-    : [];
+  const publications = await sbRows(env, 'student_report_publications', {
+    student_public_id:`eq.${id}`,
+    active:'eq.true',
+    order:'sent_at.desc'
+  });
 
   const kelasList = classes.map(row => mapClassRow(row, schedules));
   const instruments = uniqueText(kelasList.map(x => x.instrumen));
@@ -2220,7 +2220,7 @@ async function buildTeacherDashboardSupabase(env, session) {
 
   const mappedTeacherProgress = progress.map(mapProgress);
   const progressById = new Map(mappedTeacherProgress.map(item => [String(item.progressID || ''), item]));
-  const studentByDbId = new Map(students.map(item => [String(item.id || ''), item]));
+  const studentByPublicId = new Map(students.map(item => [String(item.student_id || ''), item]));
 
   const teacherReports = publications
     .map(mapStudent360Publication)
@@ -2230,8 +2230,8 @@ async function buildTeacherDashboardSupabase(env, session) {
     )
     .map(publication => {
     const progressItem = progressById.get(String(publication?.progressID || '')) || null;
-    const student = studentByDbId.get(String(publication?.studentDbID || '')) || null;
-    const publicStudentId = String(student?.student_id || '');
+    const publicStudentId = String(publication?.studentID || '');
+    const student = studentByPublicId.get(publicStudentId) || null;
     const studentClassList = teacherStudents.find(item => String(item.siswaID || '') === publicStudentId)?.kelasList || [];
     const matchingClass = studentClassList.find(item =>
       progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
