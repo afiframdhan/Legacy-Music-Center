@@ -536,9 +536,116 @@
         .target-copy{font-size:9px;line-height:1.55;white-space:pre-line;background:#fff7f2;border-radius:9px;padding:4mm;color:#475569}
         .signatures{display:grid;grid-template-columns:1fr 1fr;gap:16mm;margin-top:5mm;text-align:center;page-break-inside:avoid;break-inside:avoid}.signature span{font-size:7.5px;color:#64748b}.signature-img{height:18mm;display:flex;align-items:flex-end;justify-content:center;padding-bottom:1mm}.signature-img img{display:block;max-width:36mm;max-height:15mm;width:auto;height:auto;object-fit:contain;filter:contrast(1.08);mix-blend-mode:multiply}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:1.5mm;font-size:8.5px;min-height:6mm}body[data-signature-mode="manual"] .signature-img img{display:none!important}
         footer{position:absolute;left:12mm;right:12mm;bottom:8mm;border-top:1px solid #e8edf2;padding-top:2mm;font-size:6.5px;color:#94a3b8;text-align:right}
-        @media(max-width:900px){.report-shell{display:block;padding:8px}.page{transform-origin:top left;width:100%;min-width:0;height:auto;min-height:297mm;margin-bottom:14px;padding:18px}.student-grid,.two-col{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.page footer{position:static;margin-top:18px}}
+        @media(max-width:900px){
+          html,body{max-width:100%;overflow-x:hidden;background:#edf1f5}
+          .toolbar{
+            position:sticky;top:0;z-index:20;
+            display:flex;align-items:center;gap:7px;
+            padding:8px;
+            overflow-x:auto;overflow-y:hidden;
+            -webkit-overflow-scrolling:touch;
+            white-space:nowrap;
+          }
+          .toolbar button{flex:0 0 auto;padding:9px 11px;font-size:12px;border-radius:10px}
+          .toolbar-status{display:none}
+          .report-shell{display:block;padding:6px;width:100%;max-width:100%;overflow:hidden}
+          .page{
+            width:calc(100vw - 12px)!important;
+            min-width:0!important;
+            max-width:100%!important;
+            height:auto!important;
+            min-height:0!important;
+            margin:0 0 10px!important;
+            padding:14px!important;
+            border-radius:12px;
+            overflow:hidden;
+          }
+          header{gap:10px;align-items:flex-start}
+          header .logo{width:96px;height:58px;object-fit:contain}
+          header h1{font-size:24px!important;line-height:1.05!important}
+          header p{font-size:11px!important}
+          .student-grid{grid-template-columns:1fr!important}
+          .student-card{grid-template-columns:78px 1fr!important;gap:12px!important;padding:14px!important}
+          .student-photo{width:74px!important;height:74px!important}
+          .student-info-grid{grid-template-columns:1fr!important;gap:8px!important}
+          .metric-grid{grid-template-columns:1fr 1fr!important;gap:8px!important}
+          .metric{min-height:92px!important;padding:12px!important}
+          .metric b{font-size:24px!important}
+          .two-col{grid-template-columns:1fr!important;gap:10px!important}
+          .panel{padding:12px!important}
+          .progress-row{grid-template-columns:88px 1fr 34px!important;gap:6px!important}
+          .task-grid{grid-template-columns:1fr 1fr!important}
+          .trend-chart{height:150px!important;padding:10px 8px 0!important}
+          .trend-col{height:130px!important;min-width:42px!important}
+          .signatures{grid-template-columns:1fr 1fr!important;gap:10px!important;margin-top:14px!important}
+          .signature-img{height:64px!important}
+          .signature-img img{max-height:58px!important;max-width:120px!important}
+          footer{position:static!important;margin-top:14px!important}
+        }
+        @media(max-width:520px){
+          .page{padding:10px!important}
+          header{grid-template-columns:92px 1fr!important}
+          header .logo{width:86px!important;height:54px!important}
+          header h1{font-size:21px!important}
+          .student-card{grid-template-columns:64px 1fr!important}
+          .student-photo{width:60px!important;height:60px!important}
+          .metric-grid{grid-template-columns:1fr 1fr!important}
+          .metric{min-height:84px!important}
+          .metric b{font-size:22px!important}
+          .signatures{grid-template-columns:1fr!important}
+        }
         @media print{
-          @page{size:A4 portrait;margin:0}
+          @page{size:A4 portrait;margin:8mm}
+          html,body{
+            width:auto!important;
+            height:auto!important;
+            margin:0!important;
+            padding:0!important;
+            background:#fff!important;
+            overflow:visible!important;
+          }
+          .toolbar{display:none!important}
+          .report-shell{display:block!important;padding:0!important;margin:0!important;overflow:visible!important}
+          .page{
+            width:194mm!important;
+            min-width:194mm!important;
+            max-width:194mm!important;
+            height:281mm!important;
+            min-height:281mm!important;
+            max-height:281mm!important;
+            padding:7mm 8mm 6mm!important;
+            margin:0!important;
+            box-shadow:none!important;
+            border-radius:0!important;
+            overflow:hidden!important;
+            page-break-after:always!important;
+            break-after:page!important;
+          }
+          .page:last-child{page-break-after:auto!important;break-after:auto!important}
+          header{padding-bottom:4mm!important;margin-bottom:3mm!important}
+          header .logo{width:31mm!important;height:19mm!important}
+          header h1{font-size:17px!important}
+          h2{margin:3mm 0 2mm!important}
+          .student-card{padding:3.5mm!important}
+          .metric-grid{gap:2.5mm!important}
+          .metric{min-height:22mm!important;padding:3mm!important}
+          .panel{padding:3.5mm!important}
+          .lower{margin-top:2.5mm!important}
+          .trend-panel{margin-top:2.5mm!important}
+          .trend-chart{height:30mm!important}
+          .trend-col{height:26mm!important}
+          .target-copy{padding:3mm!important}
+          .signatures{
+            margin-top:2.5mm!important;
+            gap:12mm!important;
+            break-inside:avoid!important;
+            page-break-inside:avoid!important;
+          }
+          .signature-img{height:13mm!important}
+          .signature-img img{max-height:11mm!important;max-width:30mm!important}
+          .signature b{font-size:8px!important;padding-top:1mm!important}
+          footer{position:absolute!important;left:8mm!important;right:8mm!important;bottom:3mm!important}
+        }
           html,body{width:210mm;margin:0!important;padding:0!important;background:#fff!important}
           .toolbar{display:none!important}
           .report-shell{display:block!important;padding:0!important;margin:0!important;overflow:visible!important}
@@ -661,10 +768,17 @@
             </div>
             <span style="display:inline-flex;align-items:center;padding:6px 9px;border-radius:999px;background:#eaf8ee;color:#16803a;font-size:10px;font-weight:800;">Terkirim</span>
           </div>
-          <button type="button" onclick="openStudent360Report(decodeURIComponent('${reportId}'))"
-            style="margin-top:12px;border:0;border-radius:9px;background:#f15a24;color:#fff;padding:9px 13px;font-weight:800;cursor:pointer;">
-            Buka Laporan Lengkap
-          </button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+            <button type="button" onclick="openStudent360Report(decodeURIComponent('${reportId}'))"
+              style="border:0;border-radius:9px;background:#f15a24;color:#fff;padding:9px 13px;font-weight:800;cursor:pointer;">
+              Buka Laporan Lengkap
+            </button>
+            ${currentUser.userType === 'guru' || currentUser.userType === 'admin' ? `
+              <button type="button" onclick="deleteStudent360PublishedReport(decodeURIComponent('${reportId}'))"
+                style="border:1px solid #fecaca;border-radius:9px;background:#fff;color:#dc2626;padding:9px 13px;font-weight:800;cursor:pointer;">
+                Hapus
+              </button>` : ''}
+          </div>
         </div>`;
     }
 
@@ -684,6 +798,25 @@
       instrumentSelect.innerHTML = `<option value="">Semua Instrumen</option>` + instruments.map(item =>
         `<option value="${escapeTaskHtml(item.toLowerCase())}">${escapeTaskHtml(item)}</option>`
       ).join('');
+    }
+
+    function deleteStudent360PublishedReport(reportId) {
+      if (!reportId || !['guru','admin'].includes(currentUser.userType)) return;
+      if (!confirm('Hapus laporan ini dari daftar laporan dan akun siswa?')) return;
+
+      google.script.run
+        .withSuccessHandler(response => {
+          if (response && response.success) {
+            showAlert('alertSuccess', response.message || 'Laporan berhasil dihapus.');
+            fetchDashboardData();
+          } else {
+            showAlert('alertDanger', response?.message || 'Laporan gagal dihapus.');
+          }
+        })
+        .withFailureHandler(error => {
+          showAlert('alertDanger', 'Gagal menghapus laporan: ' + (error?.message || error));
+        })
+        .deleteStudent360Report(reportId);
     }
 
     function applyStudent360TeacherFilters() {

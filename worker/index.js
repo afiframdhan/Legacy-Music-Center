@@ -10,7 +10,7 @@ const TEACHER = new Set([
   'saveLearningProgress', 'deleteLearningProgress', 'getLearningProgressPrintLogo',
   'addTugasCombined', 'deleteTugas', 'recordAbsensi', 'updateAbsensi', 'deleteAbsensi',
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
-  'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report'
+  'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -205,6 +205,20 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Publish Student 360 report error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'deleteStudent360Report') {
+    try {
+      if (!['guru','admin'].includes(session.userType)) {
+        return json({ ok:true, data:{ success:false, message:'Akses hapus laporan ditolak.' } });
+      }
+      const reportId = String(args[0] || '').trim();
+      const result = await deleteStudent360ReportSupabase(env, session, reportId);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Delete Student 360 report error:', error);
       return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
@@ -1909,6 +1923,41 @@ async function publishStudent360ReportSupabase(env, session, studentId, progress
     success:true,
     message:'Laporan berhasil dikirim ke akun siswa.',
     reportID: row && row.report_id ? row.report_id : ''
+  };
+}
+
+
+async function deleteStudent360ReportSupabase(env, session, reportId) {
+  if (!reportId || !isUuidLike(reportId)) throw new Error('ID laporan tidak valid.');
+
+  const rows = await sbRows(env, 'student_report_publications', {
+    report_id:`eq.${reportId}`,
+    active:'eq.true',
+    limit:'1'
+  });
+
+  const row = rows[0] || null;
+  if (!row) throw new Error('Laporan tidak ditemukan atau sudah dihapus.');
+
+  if (
+    session.userType === 'guru' &&
+    String(row.sent_by_id || '').trim() !== String(session.userID || '').trim()
+  ) {
+    throw new Error('Guru hanya dapat menghapus laporan yang dikirim sendiri.');
+  }
+
+  await supabaseRest(env, `/rest/v1/student_report_publications?report_id=eq.${encodeURIComponent(reportId)}`, {
+    method:'PATCH',
+    headers:{
+      'Content-Type':'application/json',
+      Prefer:'return=minimal'
+    },
+    body:JSON.stringify({ active:false })
+  });
+
+  return {
+    success:true,
+    message:'Laporan berhasil dihapus dari daftar laporan dan akun siswa.'
   };
 }
 
