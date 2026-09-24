@@ -353,23 +353,41 @@
     }
 
     
-    function student360SignatureDisplayUrl(value) {
+    function student360SignatureCandidates(value) {
       const raw = String(value || '').trim();
-      if (!raw) return '';
+      if (!raw) return [];
 
-      if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) return raw;
+      const candidates = [];
+      const push = url => {
+        const clean = String(url || '').trim();
+        if (clean && !candidates.includes(clean)) candidates.push(clean);
+      };
+
+      // First try exactly the same URL that Progress Belajar stores/uses.
+      push(raw);
+
+      if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) return candidates;
 
       let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
       if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+      if (!match) match = raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
 
       if (match && match[1]) {
-        const id = encodeURIComponent(match[1]);
-        return `https://drive.google.com/uc?export=view&id=${id}`;
+        const id = match[1];
+        push(`https://lh3.googleusercontent.com/d/${id}`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1200`);
       }
 
-      if (/^https?:\/\//i.test(raw)) return raw;
+      return candidates;
+    }
 
-      return '';
+    function student360SignatureImageHtml(url, name, role) {
+      const candidates = student360SignatureCandidates(url);
+      if (!candidates.length) return '';
+      const src = escapeTaskHtml(candidates[0]);
+      const fallbacks = escapeTaskHtml(JSON.stringify(candidates.slice(1)));
+      return `<img src="${src}" data-fallbacks='${fallbacks}' data-fallback-index="0" alt="${escapeTaskHtml(role || name || 'Tanda tangan')}" onerror="student360SignatureFallback(this)">`;
     }
 
     function buildStudent360ReportWindow(data, reportWindow, logoDataUrl) {
@@ -442,8 +460,8 @@
       }).join('')}</div>` : '<div class="empty">Belum ada riwayat progress.</div>';
 
       const sig = (url,name,role) => {
-        const imageUrl = student360SignatureDisplayUrl(url);
-        return `<div class="signature"><span>${esc(role)}</span><div class="signature-img">${imageUrl ? `<img src="${esc(imageUrl)}" alt="${esc(role)}" onerror="this.style.display='none'">` : ''}</div><b>${esc(name || '-')}</b></div>`;
+        const imageHtml = student360SignatureImageHtml(url, name, role);
+        return `<div class="signature"><span>${esc(role)}</span><div class="signature-img">${imageHtml}</div><b>${esc(name || '-')}</b></div>`;
       };
 
       const reportLogoUrl = logoDataUrl || 'https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
@@ -516,10 +534,39 @@
         .task-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm}.task-grid div{background:#f8fafc;border-radius:9px;padding:4mm}.task-grid span{display:block;font-size:7.5px;color:#718096}.task-grid b{font-size:18px}
         .trend-panel{margin-top:4mm}.trend-chart{height:40mm;display:flex;align-items:flex-end;justify-content:space-around;border-bottom:1px solid #cbd5e1;padding:3mm 5mm 0}.trend-col{height:34mm;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:18mm}.trend-col span{font-size:7px;font-weight:800;margin-bottom:2px}.trend-col i{display:block;width:10mm;background:linear-gradient(#ff9b69,#f15a24);border-radius:4px 4px 0 0}.trend-col b{font-size:6.5px;margin-top:2px;color:#64748b;max-width:18mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .target-copy{font-size:9px;line-height:1.55;white-space:pre-line;background:#fff7f2;border-radius:9px;padding:4mm;color:#475569}
-        .signatures{display:grid;grid-template-columns:1fr 1fr;gap:20mm;margin-top:9mm;text-align:center;page-break-inside:avoid}.signature span{font-size:8px;color:#64748b}.signature-img{height:24mm;display:flex;align-items:flex-end;justify-content:center;padding-bottom:2mm}.signature-img img{display:block;max-width:38mm;max-height:17mm;width:auto;height:auto;object-fit:contain;filter:contrast(1.08);mix-blend-mode:multiply}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:2mm;font-size:9px}body[data-signature-mode="manual"] .signature-img img{display:none!important}
+        .signatures{display:grid;grid-template-columns:1fr 1fr;gap:16mm;margin-top:5mm;text-align:center;page-break-inside:avoid;break-inside:avoid}.signature span{font-size:7.5px;color:#64748b}.signature-img{height:18mm;display:flex;align-items:flex-end;justify-content:center;padding-bottom:1mm}.signature-img img{display:block;max-width:36mm;max-height:15mm;width:auto;height:auto;object-fit:contain;filter:contrast(1.08);mix-blend-mode:multiply}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:1.5mm;font-size:8.5px;min-height:6mm}body[data-signature-mode="manual"] .signature-img img{display:none!important}
         footer{position:absolute;left:12mm;right:12mm;bottom:8mm;border-top:1px solid #e8edf2;padding-top:2mm;font-size:6.5px;color:#94a3b8;text-align:right}
         @media(max-width:900px){.report-shell{display:block;padding:8px}.page{transform-origin:top left;width:100%;min-width:0;height:auto;min-height:297mm;margin-bottom:14px;padding:18px}.student-grid,.two-col{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.page footer{position:static;margin-top:18px}}
-        @media print{@page{size:A4 portrait;margin:0}.toolbar{display:none}.report-shell{display:block;padding:0}.page{width:210mm;min-width:210mm;height:297mm;box-shadow:none;margin:0;page-break-after:always}.page:last-child{page-break-after:auto}}
+        @media print{
+          @page{size:A4 portrait;margin:0}
+          html,body{width:210mm;margin:0!important;padding:0!important;background:#fff!important}
+          .toolbar{display:none!important}
+          .report-shell{display:block!important;padding:0!important;margin:0!important;overflow:visible!important}
+          .page{
+            width:210mm!important;
+            min-width:210mm!important;
+            height:297mm!important;
+            min-height:297mm!important;
+            max-height:297mm!important;
+            padding:9mm 10mm 8mm!important;
+            box-shadow:none!important;
+            margin:0!important;
+            overflow:hidden!important;
+            page-break-after:always;
+            break-after:page;
+          }
+          .page:last-child{page-break-after:auto;break-after:auto}
+          header{padding-bottom:5mm!important;margin-bottom:4mm!important}
+          h2{margin:4mm 0 2.5mm!important}
+          .lower{margin-top:3mm!important}
+          .trend-panel{margin-top:3mm!important}
+          .trend-chart{height:36mm!important}
+          .trend-col{height:31mm!important}
+          .signatures{margin-top:4mm!important;gap:14mm!important}
+          .signature-img{height:16mm!important}
+          .signature-img img{max-height:14mm!important;max-width:34mm!important}
+          footer{left:10mm!important;right:10mm!important;bottom:5mm!important}
+        }
       </style></head><body data-signature-mode="${initialSignatureMode}">
       <div class="toolbar">
         <button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button>
@@ -529,6 +576,18 @@
       </div>
       <main class="report-shell">${page1}${page2}</main>
       <script>
+        function student360SignatureFallback(img){
+          try{
+            var list=JSON.parse(img.getAttribute('data-fallbacks')||'[]');
+            var index=Number(img.getAttribute('data-fallback-index')||0);
+            if(index<list.length){
+              img.setAttribute('data-fallback-index',String(index+1));
+              img.src=list[index];
+              return;
+            }
+          }catch(e){}
+          img.style.visibility='hidden';
+        }
         function applySignatureModeButtons(){
           var mode=document.body.dataset.signatureMode||'uploaded';
           var up=document.getElementById('sigUploadedBtn'), man=document.getElementById('sigManualBtn');
@@ -575,46 +634,95 @@
       return raw;
     }
 
-    function renderStudent360Access(data) {
-      if (currentUser.userType !== 'siswa') return;
+    function student360ReportCardHtml(report, compact = false, showStudent = false) {
+      const reportId = encodeURIComponent(String(report.reportID || ''));
+      const period = escapeTaskHtml(student360ReportPeriodText(report));
+      const teacher = escapeTaskHtml(report.teacher || report.sentBy || '-');
+      const studentName = escapeTaskHtml(report.studentName || report.student || '');
+      const instrument = escapeTaskHtml(report.instrument || '');
+      const grade = escapeTaskHtml(report.grade || '');
+      const sentAt = escapeTaskHtml(report.sentAt || '');
+      const periodType = escapeTaskHtml(report.periodType || '');
 
-      const reports = Array.isArray(data?.studentReports) ? data.studentReports : [];
+      return `
+        <div class="student360-report-card" data-report-search="${escapeTaskHtml(`${studentName} ${period} ${periodType} ${teacher} ${instrument} ${grade}`.toLowerCase())}"
+             data-period-type="${escapeTaskHtml(String(report.periodType || '').toLowerCase())}"
+             data-period="${escapeTaskHtml(String(report.period || '').toLowerCase())}"
+             data-instrument="${escapeTaskHtml(String(report.instrument || '').toLowerCase())}"
+             style="border:1px solid #f1d8ca;border-radius:14px;background:linear-gradient(135deg,#fffaf7,#fff);padding:${compact ? '14px' : '16px'};">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <div style="min-width:0;">
+              ${showStudent && studentName ? `<div style="font-size:15px;font-weight:850;color:#17232d;">${studentName}</div>` : ''}
+              <div style="font-size:10px;font-weight:800;color:#f15a24;text-transform:uppercase;letter-spacing:.04em;margin-top:${showStudent ? '3px' : '0'};">Laporan Perkembangan ${periodType ? `• ${periodType}` : ''}</div>
+              <div style="font-size:${compact ? '16px' : '18px'};font-weight:850;color:#17232d;margin-top:4px;">${period}</div>
+              <div style="font-size:11px;color:#64748b;margin-top:5px;">Guru: <b style="color:#334155;">${teacher}</b></div>
+              ${instrument ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">Instrumen: <b style="color:#334155;">${instrument}${grade ? ` • ${grade}` : ''}</b></div>` : ''}
+              <div style="font-size:10px;color:#94a3b8;margin-top:5px;">${sentAt ? `Dikirim ${sentAt}` : ''}</div>
+            </div>
+            <span style="display:inline-flex;align-items:center;padding:6px 9px;border-radius:999px;background:#eaf8ee;color:#16803a;font-size:10px;font-weight:800;">Terkirim</span>
+          </div>
+          <button type="button" onclick="openStudent360Report(decodeURIComponent('${reportId}'))"
+            style="margin-top:12px;border:0;border-radius:9px;background:#f15a24;color:#fff;padding:9px 13px;font-weight:800;cursor:pointer;">
+            Buka Laporan Lengkap
+          </button>
+        </div>`;
+    }
+
+    function populateStudent360TeacherFilters(reports) {
+      const periodSelect = document.getElementById('student360FilterPeriod');
+      const instrumentSelect = document.getElementById('student360FilterInstrument');
+      if (!periodSelect || !instrumentSelect) return;
+
+      const periods = [...new Set(reports.map(r => String(r.period || '').trim()).filter(Boolean))];
+      periods.sort((a,b) => b.localeCompare(a));
+      periodSelect.innerHTML = `<option value="">Semua Periode</option>` + periods.map(p =>
+        `<option value="${escapeTaskHtml(p.toLowerCase())}">${escapeTaskHtml(student360ReportPeriodText({period:p}))}</option>`
+      ).join('');
+
+      const instruments = [...new Set(reports.map(r => String(r.instrument || '').trim()).filter(Boolean))]
+        .sort((a,b) => a.localeCompare(b, 'id'));
+      instrumentSelect.innerHTML = `<option value="">Semua Instrumen</option>` + instruments.map(item =>
+        `<option value="${escapeTaskHtml(item.toLowerCase())}">${escapeTaskHtml(item)}</option>`
+      ).join('');
+    }
+
+    function applyStudent360TeacherFilters() {
+      const search = String(document.getElementById('student360FilterSearch')?.value || '').trim().toLowerCase();
+      const type = String(document.getElementById('student360FilterType')?.value || '').trim().toLowerCase();
+      const period = String(document.getElementById('student360FilterPeriod')?.value || '').trim().toLowerCase();
+      const instrument = String(document.getElementById('student360FilterInstrument')?.value || '').trim().toLowerCase();
+
+      let visible = 0;
+      document.querySelectorAll('#student360ReportHistory .student360-report-card').forEach(card => {
+        const ok =
+          (!search || String(card.dataset.reportSearch || '').includes(search)) &&
+          (!type || String(card.dataset.periodType || '') === type) &&
+          (!period || String(card.dataset.period || '') === period) &&
+          (!instrument || String(card.dataset.instrument || '').includes(instrument));
+        card.style.display = ok ? 'block' : 'none';
+        if (ok) visible += 1;
+      });
+
+      const result = document.getElementById('student360FilterResult');
+      if (result) result.textContent = `${visible} laporan ditampilkan`;
+    }
+
+    function renderStudent360Access(data) {
+      const reports = currentUser.userType === 'guru'
+        ? (Array.isArray(data?.teacherReports) ? data.teacherReports : [])
+        : (Array.isArray(data?.studentReports) ? data.studentReports : []);
+
       const latestBox = document.getElementById('student360LatestCard');
       const historyBox = document.getElementById('student360ReportHistory');
       const countEl = document.getElementById('student360ReportCount');
+      const filters = document.getElementById('student360TeacherFilters');
 
       if (countEl) countEl.textContent = String(reports.length);
 
-      const cardHtml = (report, compact = false) => {
-        const reportId = encodeURIComponent(String(report.reportID || ''));
-        const period = escapeTaskHtml(student360ReportPeriodText(report));
-        const teacher = escapeTaskHtml(report.teacher || report.sentBy || '-');
-        const instrument = escapeTaskHtml(report.instrument || '');
-        const sentAt = escapeTaskHtml(report.sentAt || '');
-        const extra = instrument ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">Instrumen: <b style="color:#334155;">${instrument}</b></div>` : '';
-        return `
-          <div style="border:1px solid #f1d8ca;border-radius:14px;background:linear-gradient(135deg,#fffaf7,#fff);padding:${compact ? '14px' : '16px'};">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-              <div style="min-width:0;">
-                <div style="font-size:10px;font-weight:800;color:#f15a24;text-transform:uppercase;letter-spacing:.04em;">Laporan Perkembangan</div>
-                <div style="font-size:${compact ? '16px' : '18px'};font-weight:850;color:#17232d;margin-top:4px;">${period}</div>
-                <div style="font-size:11px;color:#64748b;margin-top:5px;">Guru: <b style="color:#334155;">${teacher}</b></div>
-                ${extra}
-                <div style="font-size:10px;color:#94a3b8;margin-top:5px;">${sentAt ? `Dikirim ${sentAt}` : ''}</div>
-              </div>
-              <span style="display:inline-flex;align-items:center;padding:6px 9px;border-radius:999px;background:#eaf8ee;color:#16803a;font-size:10px;font-weight:800;">Tersedia</span>
-            </div>
-            <button type="button" onclick="openStudent360Report(decodeURIComponent('${reportId}'))"
-              style="margin-top:12px;border:0;border-radius:9px;background:#f15a24;color:#fff;padding:9px 13px;font-weight:800;cursor:pointer;">
-              Buka Laporan Lengkap
-            </button>
-          </div>`;
-      };
-
-      if (latestBox) {
-        if (reports.length) {
-          latestBox.style.display = 'block';
-          latestBox.innerHTML = `
+      if (currentUser.userType === 'siswa' && latestBox) {
+        latestBox.style.display = 'block';
+        latestBox.innerHTML = reports.length
+          ? `
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
               <div>
                 <div style="font-size:14px;font-weight:850;color:#17232d;">📄 Laporan Perkembangan Terbaru</div>
@@ -622,20 +730,28 @@
               </div>
               <button type="button" onclick="switchTab('section-laporan')" style="border:0;background:transparent;color:#f15a24;font-weight:800;cursor:pointer;">Lihat Semua →</button>
             </div>
-            ${cardHtml(reports[0], true)}`;
-        } else {
-          latestBox.style.display = 'block';
-          latestBox.innerHTML = `
+            ${student360ReportCardHtml(reports[0], true, false)}`
+          : `
             <div style="font-size:14px;font-weight:850;color:#17232d;">📄 Laporan Perkembangan Terbaru</div>
             <div style="font-size:11px;color:#718096;margin-top:7px;">Belum ada laporan lengkap yang dikirim oleh guru.</div>`;
-        }
       }
 
-      if (historyBox) {
+      if (!historyBox) return;
+
+      if (currentUser.userType === 'guru') {
+        if (filters) filters.style.display = 'grid';
+        populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length
-          ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => cardHtml(report, false)).join('')}</div>`
-          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
+          ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(285px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, true)).join('')}</div>`
+          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
+        applyStudent360TeacherFilters();
+        return;
       }
+
+      if (filters) filters.style.display = 'none';
+      historyBox.innerHTML = reports.length
+        ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, false)).join('')}</div>`
+        : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
     }
 
     function applyJadwalFilters() {
