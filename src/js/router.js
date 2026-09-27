@@ -9,6 +9,7 @@
         progress: `<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
         tugas: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
         laporan: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>`,
+        sertifikat: `<svg viewBox="0 0 24 24"><path d="M12 2l3 2 3-.5.5 3L21 9l-2 3 .5 3-3 .5L14 19l-2 3-2-3-2.5-3.5-3-.5.5-3-2-3 2.5-2.5.5-3 3 .5z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -20,6 +21,7 @@
           { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
+          { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
           { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
           { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
@@ -30,6 +32,7 @@
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
+          { id: 'section-annual-exam', label: 'Ujian & Sertifikat', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
           { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
           { id: 'section-ruang', label: 'Ruang', icon: icons.ruang },
@@ -46,6 +49,7 @@
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
+          { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
           { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
@@ -113,6 +117,10 @@
 
       if (sectionId === 'section-learning-progress') {
         setTimeout(() => refreshLearningProgressPage(), 0);
+      }
+
+      if (sectionId === 'section-annual-exam') {
+        setTimeout(() => loadAnnualExamCenter(), 0);
       }
 
       if (sectionId === 'section-ruang' && currentUser.userType === 'admin') {

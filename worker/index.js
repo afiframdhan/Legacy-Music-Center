@@ -4,13 +4,14 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 const COMMON = new Set([
   'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report'
 ]);
-const STUDENT = new Set([...COMMON, 'submitTugasJawaban']);
+const STUDENT = new Set([...COMMON, 'submitTugasJawaban', 'listAnnualExams', 'getAnnualExam']);
 const TEACHER = new Set([
   ...COMMON,
   'saveLearningProgress', 'deleteLearningProgress', 'getLearningProgressPrintLogo',
   'addTugasCombined', 'deleteTugas', 'recordAbsensi', 'updateAbsensi', 'deleteAbsensi',
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
-  'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report'
+  'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report',
+  'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -219,6 +220,60 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Delete Student 360 report error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+
+  // ANNUAL EXAM + CERTIFICATE (TEST v1)
+  if (method === 'listAnnualExams') {
+    try {
+      return json({ ok:true, data:{ success:true, exams:await listAnnualExamsSupabase(env, session) } });
+    } catch (error) {
+      console.error('Annual exam list error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), exams:[] } });
+    }
+  }
+
+  if (method === 'getAnnualExam') {
+    try {
+      const exam = await getAnnualExamSupabase(env, session, String(args[0] || '').trim());
+      return json({ ok:true, data:{ success:true, exam } });
+    } catch (error) {
+      console.error('Annual exam detail error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'saveAnnualExam') {
+    try {
+      if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat menyimpan penilaian ujian.');
+      const result = await saveAnnualExamSupabase(env, session, args[0] || {});
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Annual exam save error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'publishAnnualExam') {
+    try {
+      if (!['guru','admin'].includes(session.userType)) throw new Error('Akses kirim sertifikat ditolak.');
+      const result = await publishAnnualExamSupabase(env, session, String(args[0] || '').trim());
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Annual exam publish error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'deleteAnnualExam') {
+    try {
+      if (!['guru','admin'].includes(session.userType)) throw new Error('Akses hapus hasil ujian ditolak.');
+      const result = await deleteAnnualExamSupabase(env, session, String(args[0] || '').trim());
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Annual exam delete error:', error);
       return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
@@ -785,6 +840,109 @@ async function handleRpc(request, env, ctx) {
 
   const result = await gasRpc(env, method, safeArgs);
   return json({ ok:true, data:result });
+}
+
+
+
+// ============================================================================
+// ANNUAL EXAM + CERTIFICATE — TEST v1
+// ============================================================================
+function annualExamPredicateServer(score) {
+  const n = Number(score || 0);
+  if (n >= 90) return 'Excellent';
+  if (n >= 80) return 'Very Good';
+  if (n >= 70) return 'Good';
+  if (n >= 60) return 'Fair';
+  return 'Need Improvement';
+}
+
+function annualExamNextGradeServer(grade, passed) {
+  const grades = ['Beginner','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8'];
+  const clean = String(grade || 'Beginner').trim();
+  if (!passed) return clean;
+  const idx = grades.findIndex(x => x.toLowerCase() === clean.toLowerCase());
+  return idx >= 0 && idx < grades.length - 1 ? grades[idx + 1] : clean;
+}
+
+function mapAnnualExamRow(row) {
+  const items = Array.isArray(row.items) ? row.items : [];
+  return {
+    examID: row.exam_id || '', studentID: row.student_public_id || '', studentName: row.student_name_snapshot || '',
+    teacherID: row.teacher_id || '', teacherName: row.teacher_name_snapshot || '', instrument: row.instrument || '',
+    gradeExam: row.grade_exam || '', examDate: formatDbDateIso(row.exam_date), examiner1Name: row.examiner_1_name || '', examiner2Name: row.examiner_2_name || '',
+    notesExaminer1: row.notes_examiner_1 || '', notesExaminer2: row.notes_examiner_2 || '', items,
+    finalScore: Number(row.final_score || 0), predicate: row.predicate || '', resultStatus: row.result_status || '', nextGrade: row.next_grade || '',
+    certificateNo: row.certificate_no || '', published: Boolean(row.published), publishedAt: row.published_at || '', createdAt: row.created_at || '',
+    examiner1SignatureUrl: row.examiner_1_signature_url || '', examiner2SignatureUrl: row.examiner_2_signature_url || '',
+    headmasterName: row.headmaster_name || '', headmasterSignatureUrl: row.headmaster_signature_url || ''
+  };
+}
+
+async function annualExamTeacherCanAccessStudent(env, session, studentId) {
+  if (session.userType === 'admin') return true;
+  if (session.userType !== 'guru') return false;
+  const classes = await sbRows(env, 'student_classes', { student_id:`eq.${studentId}`, teacher_id:`eq.${session.userID}`, limit:'1' });
+  if (classes.length) return true;
+  const students = await sbRows(env, 'students', { student_id:`eq.${studentId}`, limit:'1' });
+  return Boolean(students[0] && String(students[0].teacher_id || '') === String(session.userID || ''));
+}
+
+async function annualExamSignatureForTeacher(env, teacherName) {
+  const name = String(teacherName || '').trim();
+  if (!name) return { url:'', name:'' };
+  const rows = await sbRows(env, 'learning_progress', { teacher_name_snapshot:`eq.${name}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'25' });
+  const row = rows.find(x => x.teacher_signature_url) || rows[0] || null;
+  return row ? { url:row.teacher_signature_url || '', name:row.teacher_signature_name || name } : { url:'', name };
+}
+
+async function annualExamHeadmasterSignature(env, studentId) {
+  let rows = await sbRows(env, 'learning_progress', { student_id:`eq.${studentId}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'25' });
+  let row = rows.find(x => x.headmaster_signature_url || x.headmaster_name) || null;
+  if (!row) {
+    rows = await sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc', limit:'100' });
+    row = rows.find(x => x.headmaster_signature_url || x.headmaster_name) || null;
+  }
+  return {
+    name: row?.headmaster_name || 'Faisal Rahmat Permana, S.Sn., M.Pd',
+    url: row?.headmaster_signature_url || ''
+  };
+}
+
+async function listAnnualExamsSupabase(env, session) {
+  const params = { active:'eq.true', order:'exam_date.desc,created_at.desc' };
+  if (session.userType === 'siswa') { params.student_public_id = `eq.${session.userID}`; params.published = 'eq.true'; }
+  if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+  const rows = await sbRows(env, 'annual_exam_assessments', params);
+  return rows.map(mapAnnualExamRow);
+}
+
+async function getAnnualExamSupabase(env, session, examId) {
+  if (!examId) throw new Error('ID ujian tidak ditemukan.');
+  const rows = await sbRows(env, 'annual_exam_assessments', { exam_id:`eq.${examId}`, active:'eq.true', limit:'1' });
+  const row = rows[0];
+  if (!row) throw new Error('Data ujian tidak ditemukan.');
+  if (session.userType === 'siswa') {
+    if (String(row.student_public_id || '') !== String(session.userID || '') || row.published !== true) throw new Error('Sertifikat ini belum tersedia untuk akun Anda.');
+  } else if (session.userType === 'guru') {
+    const owner = String(row.teacher_id || '') === String(session.userID || '');
+    if (!owner && !(await annualExamTeacherCanAccessStudent(env, session, String(row.student_public_id || '')))) throw new Error('Anda tidak memiliki akses ke hasil ujian ini.');
+  }
+  return mapAnnualExamRow(row);
+}
+
+// Annual Exam save handler is implemented in the v2 block near the end of this file.
+
+
+async function publishAnnualExamSupabase(env, session, examId) {
+  const exam = await getAnnualExamSupabase(env, session, examId);
+  const response = await supabaseRest(env, `/rest/v1/annual_exam_assessments?exam_id=eq.${encodeURIComponent(examId)}`, { method:'PATCH', headers:{'Content-Type':'application/json',Prefer:'return=representation'}, body:JSON.stringify({published:true,published_at:new Date().toISOString(),published_by_id:session.userID||null,published_by_name:session.userName||'',updated_at:new Date().toISOString()}) });
+  return { success:true, message:'Hasil ujian dan sertifikat berhasil dikirim ke akun siswa.' };
+}
+
+async function deleteAnnualExamSupabase(env, session, examId) {
+  await getAnnualExamSupabase(env, session, examId);
+  await supabaseRest(env, `/rest/v1/annual_exam_assessments?exam_id=eq.${encodeURIComponent(examId)}`, { method:'PATCH', headers:{'Content-Type':'application/json',Prefer:'return=minimal'}, body:JSON.stringify({active:false,published:false,updated_at:new Date().toISOString()}) });
+  return { success:true, message:'Hasil ujian berhasil diarsipkan.' };
 }
 
 function hasSupabaseConfig(env) {
@@ -2739,4 +2897,74 @@ function json(data,status=200,headers={}) {
       ...headers
     }
   });
+}
+
+
+// ANNUAL EXAM v2 — editable headmaster + dedicated uploaded signatures.
+async function saveAnnualExamSupabase(env, session, rawPayload) {
+  const p = rawPayload && typeof rawPayload === 'object' ? rawPayload : {};
+  const examId = String(p.examID || '').trim();
+  const studentId = String(p.studentID || '').trim();
+  if (!studentId) throw new Error('Siswa belum dipilih.');
+  if (!(await annualExamTeacherCanAccessStudent(env, session, studentId))) throw new Error('Anda tidak memiliki akses untuk menilai siswa ini.');
+  const studentRows = await sbRows(env, 'students', { student_id:`eq.${studentId}`, limit:'1' });
+  const student = studentRows[0]; if (!student) throw new Error('Data siswa tidak ditemukan.');
+  const existing = examId ? await getAnnualExamSupabase(env, session, examId) : null;
+  const itemsRaw = Array.isArray(p.items) ? p.items : [];
+  if (itemsRaw.length < 1) throw new Error('Aspek penilaian belum tersedia.');
+  const items = itemsRaw.map((item,index) => {
+    const s1 = Math.max(0,Math.min(20,Number(item.scoreExaminer1)||0));
+    const s2 = Math.max(0,Math.min(20,Number(item.scoreExaminer2)||0));
+    return { aspect:String(item.aspect||'Aspek'), description:String(item.description||''), scoreExaminer1:s1, scoreExaminer2:s2, average:Math.round(((s1+s2)/2)*10)/10, maxScore:20, sortOrder:index+1 };
+  });
+  const total = Math.round(Math.min(100,items.reduce((sum,item)=>sum+item.average,0))*10)/10;
+  const passed = total >= 60;
+  const predicate = annualExamPredicateServer(total);
+  const grade = String(p.gradeExam || student.grade || 'Beginner').trim();
+  const nextGrade = annualExamNextGradeServer(grade, passed);
+  const examiner1 = String(p.examiner1Name || '').trim();
+  const examiner2 = String(p.examiner2Name || '').trim();
+  if (!examiner1 || !examiner2) throw new Error('Penguji 1 dan Penguji 2 wajib dipilih.');
+
+  const [auto1,auto2,autoHead] = await Promise.all([
+    annualExamSignatureForTeacher(env,examiner1), annualExamSignatureForTeacher(env,examiner2), annualExamHeadmasterSignature(env,studentId)
+  ]);
+  let sig1 = String(p.examiner1SignatureUrl || existing?.examiner1SignatureUrl || auto1.url || '').trim();
+  let sig2 = String(p.examiner2SignatureUrl || existing?.examiner2SignatureUrl || auto2.url || '').trim();
+  let sigHead = String(p.headmasterSignatureUrl || existing?.headmasterSignatureUrl || autoHead.url || '').trim();
+
+  const uploadOne = async (fileData, label) => {
+    if (!fileData || !fileData.dataUrl) return '';
+    if (!String(fileData.type || '').toLowerCase().startsWith('image/')) throw new Error(label + ' harus berupa gambar.');
+    if (Number(fileData.size || 0) > 5 * 1024 * 1024) throw new Error(label + ' maksimal 5 MB.');
+    const result = await driveUploadFiles(env, [fileData], 'LegacyMusicCenter_Exam_Signatures');
+    if (!result || result.success !== true || !Array.isArray(result.attachments) || !result.attachments[0]) throw new Error('Upload ' + label + ' gagal.');
+    const a=result.attachments[0];
+    return String(a.url || a.previewUrl || a.downloadUrl || '').trim();
+  };
+  if (p.examiner1SignatureFile) sig1 = await uploadOne(p.examiner1SignatureFile,'tanda tangan Penguji 1');
+  if (p.examiner2SignatureFile) sig2 = await uploadOne(p.examiner2SignatureFile,'tanda tangan Penguji 2');
+  if (p.headmasterSignatureFile) sigHead = await uploadOne(p.headmasterSignatureFile,'tanda tangan Kepala Sekolah');
+
+  const teacherName = String(p.teacherName || session.userName || '').trim();
+  const headmasterName = String(p.headmasterName || existing?.headmasterName || autoHead.name || 'Faisal Rahmat Permana, S.Sn., M.Pd').trim();
+  const payload = {
+    student_public_id:studentId, student_name_snapshot:String(student.name||''), teacher_id:session.userType==='guru'?session.userID:(String(p.teacherID||'').trim()||session.userID||null),
+    teacher_name_snapshot:teacherName, instrument:String(p.instrument||student.instrument||'Musik').trim(), grade_exam:grade,
+    exam_date:String(p.examDate||new Date().toISOString().slice(0,10)).slice(0,10), examiner_1_name:examiner1, examiner_2_name:examiner2,
+    examiner_1_signature_url:sig1, examiner_2_signature_url:sig2, notes_examiner_1:String(p.notesExaminer1||''), notes_examiner_2:String(p.notesExaminer2||''),
+    items, final_score:total, predicate, result_status:passed?'Lulus':'Belum Lulus', next_grade:nextGrade,
+    headmaster_name:headmasterName, headmaster_signature_url:sigHead, updated_at:new Date().toISOString()
+  };
+  let row;
+  if (examId) {
+    const response = await supabaseRest(env, `/rest/v1/annual_exam_assessments?exam_id=eq.${encodeURIComponent(examId)}`, { method:'PATCH', headers:{'Content-Type':'application/json',Prefer:'return=representation'}, body:JSON.stringify(payload) });
+    row = Array.isArray(response) ? response[0] : null;
+  } else {
+    payload.certificate_no = `LMC/EXAM/${String(payload.exam_date).slice(0,4)}/${Date.now().toString(36).toUpperCase().slice(-6)}`;
+    payload.created_by_role = session.userType; payload.created_by_id = session.userID || null; payload.active = true; payload.published = false;
+    const response = await supabaseRest(env, '/rest/v1/annual_exam_assessments', { method:'POST', headers:{'Content-Type':'application/json',Prefer:'return=representation'}, body:JSON.stringify(payload) });
+    row = Array.isArray(response) ? response[0] : null;
+  }
+  return { success:true, message:'Hasil ujian tahunan berhasil disimpan.', exam:row?mapAnnualExamRow(row):null };
 }
