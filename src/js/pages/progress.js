@@ -229,21 +229,10 @@
       if (preview) preview.textContent = `Nilai keseluruhan: ${value}/100 (rata-rata komponen)`;
     }
 
-    function learningSignatureDisplayUrl(url) {
-      const raw = String(url || '').trim();
-      if (!raw) return '';
-      const driveId =
-        (raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i) || [])[1] ||
-        (raw.match(/[?&]id=([^&#]+)/i) || [])[1] ||
-        (raw.match(/lh3\.googleusercontent\.com\/d\/([^/?#]+)/i) || [])[1];
-      return driveId ? `https://lh3.googleusercontent.com/d/${driveId}` : raw;
-    }
-
     function renderLearningSignaturePreview(targetId, url, name) {
       const target = document.getElementById(targetId);
       if (!target) return;
-      const displayUrl = learningSignatureDisplayUrl(url);
-      target.innerHTML = displayUrl ? `<img src="${escapeTaskHtml(displayUrl)}" alt="${escapeTaskHtml(name || 'Tanda tangan')}" onerror="this.style.display='none'">` : 'Belum ada gambar';
+      target.innerHTML = url ? `<img src="${escapeTaskHtml(url)}" alt="${escapeTaskHtml(name || 'Tanda tangan')}">` : 'Belum ada gambar';
     }
 
     function previewLearningSignature(input, targetId) {
@@ -318,9 +307,7 @@
         return `<div class="lp-form-component"><div class="lp-form-component-title"><span>${category.icon} ${category.label}</span><span>${percent}/100</span></div><div class="task-status ${percent === 100 ? 'done' : (percent > 0 ? 'open' : '')}" style="display:inline-block;margin-bottom:8px;">${escapeTaskHtml(getLearningComponentStatusText(progress, category.key))}</div><div class="lp-component-bar"><span style="width:${percent}%"></span></div><div style="font-size:11px;line-height:1.55;color:#64748b;margin-top:9px;white-space:pre-line;">${escapeTaskHtml(progress[category.key + 'Catatan'] || 'Belum ada catatan khusus.')}</div></div>`;
       }).join('');
       document.getElementById('lpDetailTitle').textContent = `Progress Belajar • ${progress.namaSiswa}`;
-      const guruSig = learningSignatureDisplayUrl(progress.guruSignatureUrl);
-      const kepalaSig = learningSignatureDisplayUrl(progress.kepalaSekolahSignatureUrl);
-      const signatures = `<div class="lp-detail-notes"><div class="lp-note"><span>Guru / Coach</span>${guruSig ? `<img src="${escapeTaskHtml(guruSig)}" onerror="this.style.display='none'" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.guru || '-')}</p></div><div class="lp-note"><span>Kepala Sekolah</span>${kepalaSig ? `<img src="${escapeTaskHtml(kepalaSig)}" onerror="this.style.display='none'" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.kepalaSekolahNama || '-')}</p></div></div>`;
+      const signatures = `<div class="lp-detail-notes"><div class="lp-note"><span>Guru / Coach</span>${progress.guruSignatureUrl ? `<img src="${escapeTaskHtml(progress.guruSignatureUrl)}" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.guru || '-')}</p></div><div class="lp-note"><span>Kepala Sekolah</span>${progress.kepalaSekolahSignatureUrl ? `<img src="${escapeTaskHtml(progress.kepalaSekolahSignatureUrl)}" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.kepalaSekolahNama || '-')}</p></div></div>`;
       document.getElementById('lpDetailBody').innerHTML = `<div class="lp-summary" style="margin-bottom:18px;"><div class="lp-ring" style="--lp-progress:${overall * 3.6}deg"><div class="lp-ring-value">${overall}</div></div><div class="lp-summary-info"><h3>${escapeTaskHtml(progress.level || '-')}</h3><div class="lp-main-bar"><span style="width:${overall}%"></span></div><div class="lp-period">${escapeTaskHtml(progress.kelas || '-')} • ${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}<br>Diperbarui ${escapeTaskHtml(progress.lastUpdated || '-')} oleh ${escapeTaskHtml(progress.guru || '-')}</div></div><div class="lp-target"><div class="lp-target-icon">◎</div><div><strong>Target Berikutnya</strong><p>${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div></div><div class="lp-form-components">${rows}</div><div class="lp-detail-notes">${progress.kelebihan ? `<div class="lp-note"><span>Kelebihan</span><p>${escapeTaskHtml(progress.kelebihan)}</p></div>` : ''}${progress.perluDitingkatkan ? `<div class="lp-note"><span>Perlu ditingkatkan</span><p>${escapeTaskHtml(progress.perluDitingkatkan)}</p></div>` : ''}</div>${signatures}`;
       document.getElementById('lpDetailEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpDetailDeleteButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
@@ -349,16 +336,39 @@
         .deleteLearningProgress(progress.progressID, currentUser.userName, currentUser.userType);
     }
 
+    function getLearningProgressPrintableLogoData(callback) {
+      const cached = window.__lmcPrintLogoCache || '';
+      if (cached) { callback(cached); return; }
+      let finished = false;
+      const finish = value => {
+        if (finished) return;
+        finished = true;
+        if (value) window.__lmcPrintLogoCache = value;
+        callback(value || '');
+      };
+      const timer = setTimeout(() => finish(''), 1800);
+      try {
+        google.script.run.withSuccessHandler(response => {
+          clearTimeout(timer);
+          finish(response && response.success && response.dataUrl ? response.dataUrl : '');
+        }).withFailureHandler(() => {
+          clearTimeout(timer);
+          finish('');
+        }).getLearningProgressPrintLogo();
+      } catch (error) {
+        clearTimeout(timer);
+        finish('');
+      }
+    }
+
     function printLearningProgressReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
       const progress = getSelectedLearningProgressPageRecord();
       if (!progress) { showAlert('alertDanger', 'Tidak ada laporan pada periode yang dipilih.'); return; }
-      const printWindow = window.open('', '_blank', 'width=900,height=700');
+      const printWindow = window.open('', '_blank', 'width=1020,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
       printWindow.document.write('<!doctype html><html><body style="font-family:Arial;padding:32px;color:#64748b">Menyiapkan laporan...</body></html>');
-      google.script.run.withSuccessHandler(response => {
-        buildLearningProgressPrintWindow(progress, printWindow, response && response.success ? response.dataUrl : '');
-      }).withFailureHandler(() => buildLearningProgressPrintWindow(progress, printWindow, '')).getLearningProgressPrintLogo();
+      getLearningProgressPrintableLogoData(logoDataUrl => buildLearningProgressPrintWindow(progress, printWindow, logoDataUrl));
     }
 
     function buildLearningProgressPrintWindow(progress, printWindow, logoDataUrl) {
@@ -366,12 +376,9 @@
         const score = Math.max(0, Math.min(100, Number(progress[category.key + 'Progress']) || 0));
         return `<tr><td><b>${category.label}</b></td><td>${escapeTaskHtml(progress[category.key + 'Status'] || 'Belum Dimulai')}</td><td class="score">${score}/100</td><td>${escapeTaskHtml(progress[category.key + 'Catatan'] || '-')}</td></tr>`;
       }).join('');
-      const signature = (url, name, role) => {
-        const displayUrl = learningSignatureDisplayUrl(url);
-        return `<div class="signature"><div>${role}</div><div class="signature-image">${displayUrl ? `<img src="${escapeTaskHtml(displayUrl)}" onerror="this.style.display='none'">` : ''}</div><b>${escapeTaskHtml(name || '-')}</b></div>`;
-      };
-      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Laporan Progress ${escapeTaskHtml(progress.namaSiswa)}</title><style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:10.5px}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #f15a24;padding-bottom:10px;margin-bottom:13px;min-height:78px}.brand-logo{width:128px;height:78px;object-fit:contain;object-position:left center}.brand h1{font-size:20px;margin:0 0 5px}.brand strong{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:8px;padding:8px}.meta span{display:block;color:#7b8aa0;font-size:8px;text-transform:uppercase;margin-bottom:3px}.summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.summary b{font-size:23px;color:#f15a24}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:7px;text-align:left}th:nth-child(1){width:20%}th:nth-child(2){width:18%}th:nth-child(3){width:14%}td{border:1px solid #dfe6ee;padding:7px;vertical-align:top;line-height:1.35;word-wrap:break-word}.score{text-align:center;font-weight:bold;white-space:nowrap}.notes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.note{border:1px solid #dfe6ee;border-radius:8px;padding:8px;min-height:52px}.note b{display:block;color:#f15a24;margin-bottom:4px}.signatures{display:flex;justify-content:space-around;gap:28px;margin-top:20px;text-align:center;page-break-inside:avoid}.signature{width:220px}.signature-image{height:76px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}.signature img{display:block;max-width:145px;max-height:58px;width:auto;height:auto;object-fit:contain;filter:contrast(1.08);mix-blend-mode:multiply}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:6px}.footer{margin-top:14px;padding-top:7px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:8px;text-align:right}@media print{button{display:none}}</style></head><body><div class="brand"><div>${logoDataUrl ? `<img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center">` : '<strong>LEGACY MUSIC CENTER</strong>'}</div><div style="text-align:right"><h1>Laporan Progress Belajar</h1><strong>${escapeTaskHtml(getLearningProgressPeriodType(progress))}</strong></div></div><div class="meta"><div><span>Nama Siswa</span><b>${escapeTaskHtml(progress.namaSiswa)}</b></div><div><span>Kelas</span><b>${escapeTaskHtml(progress.kelas || '-')}</b></div><div><span>Level</span><b>${escapeTaskHtml(progress.level || '-')}</b></div><div><span>Periode</span><b>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}</b></div></div><div class="summary"><div><b style="font-size:12px">Nilai Keseluruhan</b><br>Rata-rata dari tujuh komponen</div><b>${Number(progress.overallProgress) || 0}/100</b></div><table><thead><tr><th>Komponen</th><th>Status</th><th>Nilai/Proses</th><th>Catatan</th></tr></thead><tbody>${rows}</tbody></table><div class="notes"><div class="note"><b>Kelebihan</b>${escapeTaskHtml(progress.kelebihan || '-')}</div><div class="note"><b>Perlu Ditingkatkan</b>${escapeTaskHtml(progress.perluDitingkatkan || '-')}</div><div class="note"><b>Target Berikutnya</b>${escapeTaskHtml(progress.targetBerikutnya || '-')}</div><div class="note"><b>Terakhir Diperbarui</b>${escapeTaskHtml(progress.lastUpdated || '-')}</div></div><div class="signatures">${signature(progress.guruSignatureUrl, progress.guru, 'Guru / Coach')}${signature(progress.kepalaSekolahSignatureUrl, progress.kepalaSekolahNama, 'Kepala Sekolah')}</div><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Progress Belajar</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),650));<\/script></body></html>`;
-      const printReadyReport = report.replace('<style>', '<style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}');
-      printWindow.document.open(); printWindow.document.write(printReadyReport); printWindow.document.close();
+      const signature = (url, name, role) => `<div class="signature"><div class="signature-role">${role}</div><div class="signature-image">${url ? `<img src="${escapeTaskHtml(url)}">` : ''}</div><b>${escapeTaskHtml(name || '-')}</b></div>`;
+      const report = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Laporan Progress ${escapeTaskHtml(progress.namaSiswa)}</title><style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;box-sizing:border-box}@page{size:A4 portrait;margin:14mm}body{font-family:Arial,sans-serif;color:#17232d;margin:0;background:#e9eef5;font-size:10.5px}.toolbar{position:sticky;top:0;z-index:30;background:#122033;padding:12px;text-align:center}.toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;margin:0 4px;cursor:pointer}.toolbar .ghost{background:#fff;color:#334155}.toolbar .secondary{background:#fff0e9;color:#c2410c}.toolbar .primary{background:#f15a24;color:#fff}.viewport{padding:18px}.paper{max-width:210mm;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 16px 42px rgba(15,23,42,.14);overflow:hidden}.paper-inner{padding:14mm}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:2.5px solid #f15a24;padding-bottom:10px;margin-bottom:13px;min-height:78px}.brand-logo{width:128px;height:78px;object-fit:contain;object-position:left center}.brand h1{font-size:20px;margin:0 0 5px}.brand strong{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:10px;padding:8px}.meta span{display:block;color:#7b8aa0;font-size:8px;text-transform:uppercase;margin-bottom:3px}.summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.summary b{font-size:23px;color:#f15a24}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:7px;text-align:left}th:nth-child(1){width:20%}th:nth-child(2){width:18%}th:nth-child(3){width:14%}td{border:1px solid #dfe6ee;padding:7px;vertical-align:top;line-height:1.35;word-wrap:break-word}.score{text-align:center;font-weight:bold;white-space:nowrap}.notes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.note{border:1px solid #dfe6ee;border-radius:10px;padding:9px;min-height:52px}.note b{display:block;color:#f15a24;margin-bottom:4px}.signatures{display:flex;justify-content:space-around;gap:28px;margin-top:20px;text-align:center;page-break-inside:avoid}.signature{width:220px}.signature-role{font-size:9px;font-weight:700;color:#64748b;letter-spacing:.4px;text-transform:uppercase;margin-bottom:6px}.signature-image{height:64px;display:flex;align-items:center;justify-content:center}.signature img{max-width:160px;max-height:60px;object-fit:contain}.footer{margin-top:14px;padding-top:7px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:8px;text-align:right}@media(max-width:900px){.viewport{padding:8px}.meta{grid-template-columns:repeat(2,1fr)}.notes{grid-template-columns:1fr}}@media print{body{background:#fff}.toolbar{display:none!important}.viewport{padding:0}.paper{max-width:none;border-radius:0;box-shadow:none}.paper-inner{padding:0}}</style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="window.print()">Simpan PDF</button><button class="primary" onclick="window.print()">Cetak</button></div><div class="viewport"><div class="paper"><div class="paper-inner"><div class="brand"><div>${logoDataUrl ? `<img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center">` : '<strong>LEGACY MUSIC CENTER</strong>'}</div><div style="text-align:right"><h1>Laporan Progress Belajar</h1><strong>${escapeTaskHtml(getLearningProgressPeriodType(progress))}</strong></div></div><div class="meta"><div><span>Nama Siswa</span><b>${escapeTaskHtml(progress.namaSiswa)}</b></div><div><span>Kelas</span><b>${escapeTaskHtml(progress.kelas || '-')}</b></div><div><span>Level</span><b>${escapeTaskHtml(progress.level || '-')}</b></div><div><span>Periode</span><b>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}</b></div></div><div class="summary"><div><b style="font-size:12px">Nilai Keseluruhan</b><br>Rata-rata dari tujuh komponen</div><b>${Number(progress.overallProgress) || 0}/100</b></div><table><thead><tr><th>Komponen</th><th>Status</th><th>Nilai/Proses</th><th>Catatan</th></tr></thead><tbody>${rows}</tbody></table><div class="notes"><div class="note"><b>Kelebihan</b>${escapeTaskHtml(progress.kelebihan || '-')}</div><div class="note"><b>Perlu Ditingkatkan</b>${escapeTaskHtml(progress.perluDitingkatkan || '-')}</div><div class="note"><b>Target Berikutnya</b>${escapeTaskHtml(progress.targetBerikutnya || '-')}</div><div class="note"><b>Terakhir Diperbarui</b>${escapeTaskHtml(progress.lastUpdated || '-')}</div></div><div class="signatures">${signature(progress.guruSignatureUrl, progress.guru, 'Guru / Coach')}${signature(progress.kepalaSekolahSignatureUrl, progress.kepalaSekolahNama, 'Kepala Sekolah')}</div><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Progress Belajar</div></div></div></div></body></html>`;
+      printWindow.document.open();
+      printWindow.document.write(report);
+      printWindow.document.close();
     }
-

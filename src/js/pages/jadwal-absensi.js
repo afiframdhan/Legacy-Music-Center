@@ -327,16 +327,39 @@
       });
     }
 
+    function getAbsensiPrintableLogoData(callback) {
+      const cached = window.__lmcPrintLogoCache || '';
+      if (cached) { callback(cached); return; }
+      let finished = false;
+      const finish = value => {
+        if (finished) return;
+        finished = true;
+        if (value) window.__lmcPrintLogoCache = value;
+        callback(value || '');
+      };
+      const timer = setTimeout(() => finish(''), 1800);
+      try {
+        google.script.run.withSuccessHandler(response => {
+          clearTimeout(timer);
+          finish(response && response.success && response.dataUrl ? response.dataUrl : '');
+        }).withFailureHandler(() => {
+          clearTimeout(timer);
+          finish('');
+        }).getLearningProgressPrintLogo();
+      } catch (error) {
+        clearTimeout(timer);
+        finish('');
+      }
+    }
+
     function printAbsensiReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
       const records = getAbsensiReportData();
       if (!records.length) { showAlert('alertDanger', 'Tidak ada data Absensi pada filter dan periode yang dipilih.'); return; }
-      const printWindow = window.open('', '_blank', 'width=1000,height=760');
+      const printWindow = window.open('', '_blank', 'width=1200,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
       printWindow.document.write('<!doctype html><html><body style="font-family:Arial;padding:32px;color:#64748b">Menyiapkan laporan Absensi...</body></html>');
-      google.script.run.withSuccessHandler(response => {
-        buildAbsensiPrintWindow(records, printWindow, response && response.success ? response.dataUrl : '');
-      }).withFailureHandler(() => buildAbsensiPrintWindow(records, printWindow, '')).getLearningProgressPrintLogo();
+      getAbsensiPrintableLogoData(logoDataUrl => buildAbsensiPrintWindow(records, printWindow, logoDataUrl));
     }
 
     function buildAbsensiPrintWindow(records, printWindow, logoDataUrl) {
@@ -351,11 +374,11 @@
         const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
         return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td>${escapeTaskHtml(item.materi || '-')}</td><td>${escapeTaskHtml(item.lagu || '-')}</td><td>${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
-      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Laporan Materi dan Absensi</title><style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:8.5px}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #f15a24;padding-bottom:8px;margin-bottom:10px;min-height:66px}.brand-logo{width:118px;height:64px;object-fit:contain;object-position:left center}.brand h1{font-size:18px;margin:0 0 4px}.orange{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:7px;padding:7px}.meta span{display:block;color:#7b8aa0;font-size:7px;text-transform:uppercase;margin-bottom:2px}.summary{display:flex;gap:20px;align-items:center;margin-bottom:9px}.summary b{color:#f15a24;font-size:15px}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:6px 4px;text-align:left;font-size:7.5px}td{border:1px solid #dfe6ee;padding:5px 4px;vertical-align:top;line-height:1.3;word-wrap:break-word}th:nth-child(1){width:3%}th:nth-child(2){width:7%}th:nth-child(3){width:5%}th:nth-child(4){width:12%}th:nth-child(5){width:7%}th:nth-child(6){width:17%}th:nth-child(7){width:12%}th:nth-child(8){width:17%}th:nth-child(9),th:nth-child(10){width:10%}.center{text-align:center}.signature{text-align:center}.signature img{max-width:70px;max-height:30px;object-fit:contain}.footer{margin-top:9px;padding-top:6px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:7px;text-align:right}@media print{button{display:none}tr{page-break-inside:avoid}}</style></head><body><div class="brand"><div>${logoDataUrl ? `<img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center">` : '<b class="orange">LEGACY MUSIC CENTER</b>'}</div><div style="text-align:right"><h1>Laporan Materi & Progress</h1><b class="orange">Absensi Siswa</b></div></div><div class="meta"><div><span>Siswa</span><b>${escapeTaskHtml(studentFilter)}</b></div><div><span>Guru</span><b>${escapeTaskHtml(teacherFilter)}</b></div><div><span>Periode</span><b>${escapeTaskHtml(periodLabel)}</b></div><div><span>Tanggal Cetak</span><b>${new Date().toLocaleDateString('id-ID')}</b></div></div><div class="summary"><span>Total Pertemuan <b>${records.length}</b></span><span>Hadir <b>${present}</b></span><span>Tidak Hadir <b>${records.length - present}</b></span></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Ke</th><th>Siswa</th><th>Status</th><th>Materi</th><th>Lagu</th><th>Catatan / Tugas</th><th>TTD Guru</th><th>TTD Siswa</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Materi & Progress</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),650));<\/script></body></html>`;
-      const printReadyReport = report.replace('<style>', '<style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}');
-      printWindow.document.open(); printWindow.document.write(printReadyReport); printWindow.document.close();
+      const report = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Laporan Materi dan Absensi</title><style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;box-sizing:border-box}@page{size:A4 landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#17232d;margin:0;background:#e9eef5;font-size:8.5px}.toolbar{position:sticky;top:0;z-index:30;background:#122033;padding:12px;text-align:center}.toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;margin:0 4px;cursor:pointer}.toolbar .ghost{background:#fff;color:#334155}.toolbar .secondary{background:#fff0e9;color:#c2410c}.toolbar .primary{background:#f15a24;color:#fff}.viewport{padding:18px}.paper{max-width:297mm;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 16px 42px rgba(15,23,42,.14);overflow:hidden}.paper-inner{padding:10mm}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #f15a24;padding-bottom:8px;margin-bottom:10px;min-height:66px}.brand-logo{width:118px;height:64px;object-fit:contain;object-position:left center}.brand h1{font-size:18px;margin:0 0 4px}.orange{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:8px;padding:7px}.meta span{display:block;color:#7b8aa0;font-size:7px;text-transform:uppercase;margin-bottom:2px}.summary{display:flex;gap:20px;align-items:center;margin-bottom:9px}.summary b{color:#f15a24;font-size:15px}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:6px 4px;text-align:left;font-size:7.5px}td{border:1px solid #dfe6ee;padding:5px 4px;vertical-align:top;line-height:1.3;word-wrap:break-word}th:nth-child(1){width:3%}th:nth-child(2){width:7%}th:nth-child(3){width:5%}th:nth-child(4){width:12%}th:nth-child(5){width:7%}th:nth-child(6){width:17%}th:nth-child(7){width:12%}th:nth-child(8){width:17%}th:nth-child(9),th:nth-child(10){width:10%}.center{text-align:center}.signature{text-align:center}.signature img{max-width:70px;max-height:30px;object-fit:contain}.footer{margin-top:9px;padding-top:6px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:7px;text-align:right}tr{page-break-inside:avoid}@media(max-width:1180px){.viewport{padding:8px}.meta{grid-template-columns:repeat(2,1fr)}}@media print{body{background:#fff}.toolbar{display:none!important}.viewport{padding:0}.paper{max-width:none;border-radius:0;box-shadow:none}.paper-inner{padding:0}}</style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="window.print()">Simpan PDF</button><button class="primary" onclick="window.print()">Cetak</button></div><div class="viewport"><div class="paper"><div class="paper-inner"><div class="brand"><div>${logoDataUrl ? `<img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center">` : '<b class="orange">LEGACY MUSIC CENTER</b>'}</div><div style="text-align:right"><h1>Laporan Materi & Progress</h1><b class="orange">Absensi Siswa</b></div></div><div class="meta"><div><span>Siswa</span><b>${escapeTaskHtml(studentFilter)}</b></div><div><span>Guru</span><b>${escapeTaskHtml(teacherFilter)}</b></div><div><span>Periode</span><b>${escapeTaskHtml(periodLabel)}</b></div><div><span>Tanggal Cetak</span><b>${new Date().toLocaleDateString('id-ID')}</b></div></div><div class="summary"><span>Total Pertemuan <b>${records.length}</b></span><span>Hadir <b>${present}</b></span><span>Tidak Hadir <b>${records.length - present}</b></span></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Ke</th><th>Siswa</th><th>Status</th><th>Materi</th><th>Lagu</th><th>Catatan / Tugas</th><th>TTD Guru</th><th>TTD Siswa</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Materi & Progress</div></div></div></div></body></html>`;
+      printWindow.document.open();
+      printWindow.document.write(report);
+      printWindow.document.close();
     }
-
     function openEditAbsensiModal(absensiID) {
       const item = globalAbsensiList.find(a => String(a.absensiID).trim() === String(absensiID).trim());
       if (!item) return;
