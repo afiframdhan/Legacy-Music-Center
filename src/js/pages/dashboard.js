@@ -1863,14 +1863,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       .cert{position:absolute;inset:0;width:297mm;height:210mm;background:#fff;overflow:hidden;box-shadow:0 12px 36px rgba(15,23,42,.16)}
       .template{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;display:block}
       .field{position:absolute;z-index:3;text-align:center;color:#111;line-height:1;white-space:nowrap}
-      .student-name{left:50%;top:43.1%;transform:translate(-50%,-50%);width:67%;font-size:9.5mm;font-weight:750;line-height:1.05;overflow:hidden}
-      .program{left:46.1%;top:58.55%;transform:translate(-50%,-50%);width:17.2%;font-size:4.55mm;font-weight:700}
-      .grade{left:65.5%;top:58.55%;transform:translate(-50%,-50%);width:12%;font-size:4.55mm;font-weight:700}
-      .exam-date{left:59.8%;top:63.0%;transform:translate(-50%,-50%);width:18%;font-size:4.15mm;font-weight:500;color:#f15a24}
-      .score{left:50%;top:74.08%;transform:translate(-50%,-50%);width:28%;font-size:6.9mm;font-weight:750}
-      .signature-img{position:absolute;z-index:3;left:80.2%;top:82.6%;transform:translate(-50%,-50%);width:21%;height:12.8%;display:flex;align-items:flex-end;justify-content:center;overflow:visible}
+      .student-name{left:50%;top:43.55%;transform:translate(-50%,-50%);width:67%;font-size:9.3mm;font-weight:750;line-height:1.05;overflow:hidden}
+      .program{left:46.45%;top:58.95%;transform:translate(-50%,-50%);width:17.6%;font-size:4.4mm;font-weight:700}
+      .grade{left:65.55%;top:58.95%;transform:translate(-50%,-50%);width:12.4%;font-size:4.4mm;font-weight:700}
+      .exam-date{left:60.1%;top:63.55%;transform:translate(-50%,-50%);width:18.6%;font-size:4.0mm;font-weight:500;color:#f15a24}
+      .score{left:50%;top:74.15%;transform:translate(-50%,-50%);width:28%;font-size:6.8mm;font-weight:750}
+      .signature-img{position:absolute;z-index:3;left:79.95%;top:81.75%;transform:translate(-50%,-50%);width:17.5%;height:8.8%;display:flex;align-items:center;justify-content:center;overflow:visible}
       .signature-img img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
-      .headmaster-name{left:80.2%;top:88.55%;transform:translate(-50%,-50%);width:31%;font-size:3.75mm;font-weight:500;line-height:1.08;overflow:hidden;text-overflow:ellipsis}
+      .headmaster-name{left:80.05%;top:88.65%;transform:translate(-50%,-50%);width:33%;font-size:3.45mm;font-weight:500;line-height:1.08;overflow:hidden;text-overflow:ellipsis}
       @media print{html,body{width:297mm;height:210mm;background:#fff;overflow:hidden}.toolbar{display:none!important}.viewport{padding:0;display:block;overflow:visible}.stage{width:297mm!important;height:210mm!important;transform:none!important}.cert{box-shadow:none!important}}
       </style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="lmcSavePdf('cert','landscape','Sertifikat-${safeName}.pdf',this)">Simpan PDF</button><button class="primary" onclick="lmcPrintDoc('cert','landscape','Sertifikat-${safeName}.pdf',this)">Cetak</button></div><div class="viewport" id="viewport"><div class="stage" id="stage"><section class="cert" id="cert"><img class="template" src="${annualExamEscape(templateUrl)}" alt="Template Sertifikat"><div class="field student-name" id="studentNameField">${studentName}</div><div class="field program">${program}</div><div class="field grade">${grade}</div><div class="field exam-date">${annualExamEscape(issue)}</div><div class="field score">${scoreText}</div><div class="signature-img">${signature}</div><div class="field headmaster-name" id="headmasterField">${annualExamEscape(headmaster)}</div></section></div></div><script>
 function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
@@ -1884,7 +1884,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
 function fitText(el,min,max){if(!el)return;var size=max;el.style.fontSize=size+'mm';while(el.scrollWidth>el.clientWidth&&size>min){size-=0.2;el.style.fontSize=size+'mm';}}
 function fitStage(){var s=document.getElementById('stage'),v=document.getElementById('viewport');if(!s||!v||window.matchMedia('print').matches)return;var available=Math.max(320,window.innerWidth-20),scale=Math.min(1,available/s.offsetWidth);s.style.transform='scale('+scale+')';v.style.height=Math.ceil(s.offsetHeight*scale+24)+'px';}
 function annualExamImageFallback(img){try{const a=JSON.parse(img.dataset.examFallbacks||'[]'),i=Number(img.dataset.examFallbackIndex||0);if(i<a.length){img.dataset.examFallbackIndex=String(i+1);img.src=a[i];return}}catch(e){}img.style.display='none'}
-window.addEventListener('load',function(){fitText(document.getElementById('studentNameField'),6.8,9.5);fitText(document.getElementById('headmasterField'),2.8,3.75);fitStage();});window.addEventListener('resize',fitStage);setTimeout(fitStage,120);
+window.addEventListener('load',function(){fitText(document.getElementById('studentNameField'),6.8,9.3);fitText(document.querySelector('.program'),2.8,4.4);fitText(document.querySelector('.grade'),2.8,4.4);fitText(document.querySelector('.exam-date'),2.6,4.0);fitText(document.querySelector('.score'),4.5,6.8);fitText(document.getElementById('headmasterField'),2.7,3.45);fitStage();});window.addEventListener('resize',fitStage);setTimeout(fitStage,120);
 <\/script></body></html>`);
       w.document.close();
     }
