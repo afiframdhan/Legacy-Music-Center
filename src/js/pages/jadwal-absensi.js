@@ -324,6 +324,13 @@
           if (!date || date < startThreeMonths) return false;
         }
         return true;
+      }).sort((a,b) => {
+        const pa = Number(a.pertemuanKe ?? a.pertemuan ?? a.ke ?? 0);
+        const pb = Number(b.pertemuanKe ?? b.pertemuan ?? b.ke ?? 0);
+        if (pa !== pb) return pa - pb;
+        const da = parseAbsensiRecordDate(a.tanggal);
+        const db = parseAbsensiRecordDate(b.tanggal);
+        return (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
       });
     }
     function getAbsensiPrintableLogoData(callback) {
