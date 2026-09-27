@@ -1756,3 +1756,181 @@
       const headmaster=exam.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd';
       w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sertifikat ${annualExamEscape(exam.studentName)}</title><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4 landscape;margin:0}body{margin:0;background:#e9edf2;font-family:Arial,Helvetica,sans-serif;color:#111}.toolbar{position:sticky;top:0;z-index:10;background:#17232d;padding:10px;text-align:center}.toolbar button{border:0;border-radius:9px;padding:10px 16px;font-weight:800;margin:0 4px;cursor:pointer}.toolbar .primary{background:#f15a24;color:#fff}.cert{width:297mm;height:210mm;margin:18px auto;background:#fff;position:relative;overflow:hidden;padding:16mm 18mm;box-shadow:0 12px 45px #0002;border:2px solid #f15a24;border-radius:5mm}.cert:before,.cert:after{content:'';position:absolute;width:160mm;height:58mm;background:linear-gradient(135deg,#d9480f,#ff7a1a);transform:rotate(10deg);z-index:0}.cert:before{right:-28mm;top:-32mm}.cert:after{left:-34mm;bottom:-38mm;transform:rotate(12deg)}.curve1,.curve2{position:absolute;border:5mm solid #fff;border-radius:50%;z-index:1;opacity:.96}.curve1{width:190mm;height:100mm;right:-42mm;top:-64mm}.curve2{width:190mm;height:100mm;left:-44mm;bottom:-68mm}.inner{position:relative;z-index:2;height:100%;border:1px solid #ff8a3d;padding:10mm 14mm;display:flex;flex-direction:column;align-items:center;text-align:center}.logo{position:absolute;left:10mm;top:7mm;width:52mm;height:30mm;object-fit:contain;object-position:left top}.cert-no{position:absolute;right:10mm;top:8mm;color:#8a98a9;font-size:8px}.title{color:#e65116;font-size:28mm;letter-spacing:2.5mm;font-weight:700;margin:22mm 0 1mm}.given{color:#e65116;font-size:5mm;font-weight:800;letter-spacing:.4mm}.name{font-size:13mm;font-weight:800;margin:5mm 0 2mm}.desc{font-size:4.2mm;color:#4b5563;line-height:1.55}.program{display:flex;gap:20mm;margin:6mm 0 2mm;font-size:4.3mm}.program b{font-size:5mm;border-bottom:1px dotted #f15a24;padding:0 8mm 1mm}.date{font-size:4mm;color:#555;margin-top:2mm}.scorebox{margin-top:6mm;border:1.5px solid #f15a24;border-radius:4mm;padding:4mm 18mm;min-width:90mm}.scorebox span{display:block;color:#f15a24;font-size:4mm;font-weight:800;margin-bottom:2mm}.scorebox b{font-size:7mm}.footer{margin-top:auto;width:100%;display:grid;grid-template-columns:1fr 1fr 1fr;align-items:end}.seal{font-size:14mm;color:#f15a24}.signature{text-align:center;grid-column:3}.signature .img{height:18mm;display:flex;align-items:end;justify-content:center}.signature img{max-height:18mm;max-width:55mm;object-fit:contain}.signature .line{border-top:1px solid #f15a24;padding-top:2mm;font-size:3.6mm}.signature strong{display:block;color:#f15a24;margin-top:1mm;font-size:4mm}.status-note{font-size:3.4mm;color:#64748b;margin-top:2mm}@media(max-width:900px){.cert{transform-origin:top left;margin:8px}.toolbar{position:sticky}}@media print{body{background:#fff}.toolbar{display:none}.cert{margin:0;box-shadow:none;border-radius:0}}</style></head><body><div class="toolbar"><button class="primary" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button onclick="window.close()">Tutup</button></div><section class="cert"><div class="curve1"></div><div class="curve2"></div><div class="inner"><img class="logo" src="${logo}"><div class="cert-no">No. ${annualExamEscape(exam.certificateNo||'-')}</div><div class="title">SERTIFIKAT</div><div class="given">— DIBERIKAN KEPADA —</div><div class="name">${annualExamEscape(exam.studentName)}</div><div class="desc">Telah berhasil menyelesaikan dan ${String(exam.resultStatus).toLowerCase()==='lulus'?'lulus':'mengikuti'} ujian tahunan<br>di Legacy Music Center</div><div class="program"><div><span style="color:#f15a24;font-weight:800">PROGRAM</span> <b>${annualExamEscape(exam.instrument)}</b></div><div><span style="color:#f15a24;font-weight:800">GRADE</span> <b>${annualExamEscape(exam.gradeExam)}</b></div></div><div class="date">yang diselenggarakan pada tanggal <b style="color:#f15a24">${annualExamEscape(issue)}</b></div><div class="scorebox"><span>NILAI AKHIR</span><b>${annualExamEscape(exam.finalScore)} (${annualExamEscape(exam.predicate)})</b></div><div class="status-note">Status: ${annualExamEscape(exam.resultStatus)} • Menuju: ${annualExamEscape(exam.nextGrade)}</div><div class="footer"><div></div><div class="seal">🏅</div><div class="signature"><div class="img">${exam.headmasterSignatureUrl?`<img src="${annualExamEscape(exam.headmasterSignatureUrl)}">`:''}</div><div class="line">${annualExamEscape(headmaster)}</div><strong>HEAD MASTER</strong></div></div></div></section></body></html>`);w.document.close();
     }
+
+
+    // ======================================================================
+    // UJIAN TAHUNAN & SERTIFIKAT — TEST MODULE v2 UX / PRINT / SIGNATURES
+    // Overrides v1 helpers without changing existing non-exam features.
+    // ======================================================================
+    function annualExamImageCandidates(value) {
+      const raw=String(value||'').trim();
+      if(!raw) return [];
+      const list=[]; const push=u=>{u=String(u||'').trim();if(u&&!list.includes(u))list.push(u);};
+      push(raw);
+      if(/^data:image\//i.test(raw)||/^blob:/i.test(raw)) return list;
+      let m=raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if(!m)m=raw.match(/[?&]id=([^&#]+)/i);
+      if(!m)m=raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if(m&&m[1]){
+        const id=m[1];
+        push(`https://lh3.googleusercontent.com/d/${id}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1600`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
+      }
+      return list;
+    }
+
+    function annualExamImageHtml(url, alt='', className='') {
+      const candidates=annualExamImageCandidates(url);
+      if(!candidates.length) return '';
+      const src=annualExamEscape(candidates[0]);
+      const fallbacks=annualExamEscape(JSON.stringify(candidates.slice(1)));
+      return `<img class="${annualExamEscape(className)}" src="${src}" data-exam-fallbacks='${fallbacks}' data-exam-fallback-index="0" alt="${annualExamEscape(alt)}" onerror="annualExamImageFallback(this)">`;
+    }
+
+    function annualExamImageFallback(img){
+      try{
+        const arr=JSON.parse(img.dataset.examFallbacks||'[]');
+        const i=Number(img.dataset.examFallbackIndex||0);
+        if(i<arr.length){img.dataset.examFallbackIndex=String(i+1);img.src=arr[i];return;}
+      }catch(_){ }
+      img.style.display='none';
+    }
+
+    function annualExamFilePayload(file){
+      return new Promise((resolve,reject)=>{
+        if(!file){resolve(null);return;}
+        if(!String(file.type||'').toLowerCase().startsWith('image/')){reject(new Error('Tanda tangan harus berupa file gambar.'));return;}
+        if(Number(file.size||0)>5*1024*1024){reject(new Error('Ukuran tanda tangan maksimal 5 MB.'));return;}
+        const reader=new FileReader();
+        reader.onload=()=>resolve({name:file.name||'signature.png',type:file.type||'image/png',size:file.size||0,dataUrl:String(reader.result||'')});
+        reader.onerror=()=>reject(new Error('Gagal membaca file tanda tangan.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function annualExamSignaturePreview(inputId, previewId, existingUrl=''){
+      const input=document.getElementById(inputId); const box=document.getElementById(previewId); if(!box)return;
+      if(input&&input.files&&input.files[0]){
+        const reader=new FileReader();
+        reader.onload=()=>{box.innerHTML=`<img src="${annualExamEscape(reader.result)}" alt="Preview tanda tangan">`;};
+        reader.readAsDataURL(input.files[0]); return;
+      }
+      box.innerHTML=existingUrl?annualExamImageHtml(existingUrl,'Tanda tangan',''): '<span>Belum ada tanda tangan</span>';
+    }
+
+    function openAnnualExamForm(examId=''){
+      if(currentUser.userType==='siswa')return;
+      const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
+      const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
+      const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');
+      const studentOptions=students.map(s=>`<option value="${annualExamEscape(s.siswaID||'')}">${annualExamEscape(s.nama)} — ${annualExamEscape(s.instrumen||'Musik')}</option>`).join('');
+      const examinerOptions=(globalGuruList||[]).map(g=>`<option value="${annualExamEscape(g.nama)}">${annualExamEscape(g.nama)}${g.instrumen?' — '+annualExamEscape(g.instrumen):''}</option>`).join('');
+      const today=new Date().toISOString().slice(0,10);
+      document.getElementById('annualExamFormContent').innerHTML=`
+        <div class="annual-exam-form-grid annual-exam-form-top">
+          <div class="form-group annual-exam-span-2"><label>Nama Siswa</label><select id="annualExamStudent" required onchange="annualExamStudentChanged()"><option value="">Pilih Siswa</option>${studentOptions}</select></div>
+          <div class="form-group"><label>Instrumen</label><select id="annualExamInstrument" required onchange="annualExamInstrumentChanged()"></select></div>
+          <div class="form-group"><label>Grade Ujian</label><select id="annualExamGrade" required onchange="annualExamRecalculate()">${ANNUAL_EXAM_GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Tanggal Ujian</label><input type="date" id="annualExamDate" required value="${annualExamEscape(edit?.examDate||today)}"></div>
+          <div class="form-group"><label>Pengajar</label><input id="annualExamTeacher" readonly value="${annualExamEscape(edit?.teacherName||currentUser.userName||'')}"></div>
+          <div class="form-group"><label>Penguji 1</label><select id="annualExamExaminer1" required><option value="">Pilih Penguji</option>${examinerOptions}</select></div>
+          <div class="form-group"><label>Penguji 2</label><select id="annualExamExaminer2" required><option value="">Pilih Penguji</option>${examinerOptions}</select></div>
+          <div class="form-group annual-exam-span-2"><label>Nama Kepala Sekolah</label><input id="annualExamHeadmasterName" value="${annualExamEscape(edit?.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd')}" placeholder="Boleh diganti atau dibiarkan"></div>
+          <div class="form-group annual-exam-span-2"><label>Status Otomatis</label><input id="annualExamStatusPreview" readonly value="-"></div>
+        </div>
+        <div class="annual-exam-table-wrap"><table class="annual-exam-score-table"><thead><tr><th>Aspek Penilaian</th><th>Deskripsi</th><th>Nilai Penguji 1</th><th>Nilai Penguji 2</th><th>Rata-rata</th></tr></thead><tbody id="annualExamScoreBody"></tbody></table></div>
+        <div class="annual-exam-total-strip"><div><span>Total Nilai Akhir</span><b id="annualExamTotal">0</b></div><div><span>Predikat</span><b id="annualExamPredicate">Need Improvement</b></div><div><span>Status</span><b id="annualExamPassStatus">Belum Lulus</b></div><div><span>Menuju Grade</span><b id="annualExamNextGrade">-</b></div></div>
+        <div class="annual-exam-signature-uploads">
+          <div class="annual-signature-upload"><label>Tanda Tangan Penguji 1</label><input type="file" id="annualExamSig1" accept="image/png,image/jpeg,image/webp" onchange="annualExamSignaturePreview('annualExamSig1','annualExamSig1Preview','${annualExamEscape(edit?.examiner1SignatureUrl||'')}')"><div class="annual-signature-preview" id="annualExamSig1Preview"></div><small>Kosongkan untuk memakai tanda tangan yang sudah tersimpan.</small></div>
+          <div class="annual-signature-upload"><label>Tanda Tangan Kepala Sekolah</label><input type="file" id="annualExamSigHead" accept="image/png,image/jpeg,image/webp" onchange="annualExamSignaturePreview('annualExamSigHead','annualExamSigHeadPreview','${annualExamEscape(edit?.headmasterSignatureUrl||'')}')"><div class="annual-signature-preview" id="annualExamSigHeadPreview"></div><small>PNG transparan resolusi tinggi disarankan.</small></div>
+          <div class="annual-signature-upload"><label>Tanda Tangan Penguji 2</label><input type="file" id="annualExamSig2" accept="image/png,image/jpeg,image/webp" onchange="annualExamSignaturePreview('annualExamSig2','annualExamSig2Preview','${annualExamEscape(edit?.examiner2SignatureUrl||'')}')"><div class="annual-signature-preview" id="annualExamSig2Preview"></div><small>Kosongkan untuk memakai tanda tangan yang sudah tersimpan.</small></div>
+        </div>
+        <div class="annual-exam-notes"><div class="form-group"><label>Catatan Penguji 1</label><textarea id="annualExamNotes1" rows="4">${annualExamEscape(edit?.notesExaminer1||'')}</textarea></div><div class="form-group"><label>Catatan Penguji 2</label><textarea id="annualExamNotes2" rows="4">${annualExamEscape(edit?.notesExaminer2||'')}</textarea></div></div>`;
+      modal.style.display='flex';
+      if(edit)document.getElementById('annualExamStudent').value=edit.studentID||'';
+      else if(students[0])document.getElementById('annualExamStudent').value=students[0].siswaID||'';
+      annualExamStudentChanged(edit);
+      if(edit){document.getElementById('annualExamExaminer1').value=edit.examiner1Name||'';document.getElementById('annualExamExaminer2').value=edit.examiner2Name||'';}
+      annualExamSignaturePreview('annualExamSig1','annualExamSig1Preview',edit?.examiner1SignatureUrl||'');
+      annualExamSignaturePreview('annualExamSig2','annualExamSig2Preview',edit?.examiner2SignatureUrl||'');
+      annualExamSignaturePreview('annualExamSigHead','annualExamSigHeadPreview',edit?.headmasterSignatureUrl||'');
+      annualExamRecalculate();
+    }
+
+    async function saveAnnualExam(event){
+      event.preventDefault(); const btn=document.getElementById('annualExamSaveBtn'); btn.disabled=true; btn.textContent='Menyimpan...';
+      try{
+        const edit=annualExamRecords.find(x=>String(x.examID)===String(annualExamEditingId))||{};
+        const [sig1,sig2,sigHead]=await Promise.all([
+          annualExamFilePayload(document.getElementById('annualExamSig1')?.files?.[0]),
+          annualExamFilePayload(document.getElementById('annualExamSig2')?.files?.[0]),
+          annualExamFilePayload(document.getElementById('annualExamSigHead')?.files?.[0])
+        ]);
+        const payload={
+          examID:annualExamEditingId,
+          studentID:document.getElementById('annualExamStudent').value,
+          instrument:document.getElementById('annualExamInstrument').value,
+          gradeExam:document.getElementById('annualExamGrade').value,
+          examDate:document.getElementById('annualExamDate').value,
+          teacherName:document.getElementById('annualExamTeacher').value,
+          examiner1Name:document.getElementById('annualExamExaminer1').value,
+          examiner2Name:document.getElementById('annualExamExaminer2').value,
+          headmasterName:document.getElementById('annualExamHeadmasterName').value,
+          examiner1SignatureUrl:edit.examiner1SignatureUrl||'',examiner2SignatureUrl:edit.examiner2SignatureUrl||'',headmasterSignatureUrl:edit.headmasterSignatureUrl||'',
+          examiner1SignatureFile:sig1,examiner2SignatureFile:sig2,headmasterSignatureFile:sigHead,
+          notesExaminer1:document.getElementById('annualExamNotes1').value,notesExaminer2:document.getElementById('annualExamNotes2').value,
+          items:annualExamCollectItems()
+        };
+        google.script.run.withSuccessHandler(res=>{btn.disabled=false;btn.textContent='Simpan Hasil Ujian';if(res?.success){closeAnnualExamForm();showAlert('alertSuccess',res.message||'Hasil ujian berhasil disimpan.');loadAnnualExamCenter();}else showAlert('alertDanger',res?.message||'Gagal menyimpan hasil ujian.');}).withFailureHandler(err=>{btn.disabled=false;btn.textContent='Simpan Hasil Ujian';showAlert('alertDanger',err?.message||String(err));}).saveAnnualExam(payload);
+      }catch(err){btn.disabled=false;btn.textContent='Simpan Hasil Ujian';showAlert('alertDanger',err?.message||String(err));}
+      return false;
+    }
+
+    function annualExamLoadPrintAssets(callback){
+      let done=false; const finish=logo=>{if(done)return;done=true;callback(logo||'');};
+      const timer=setTimeout(()=>finish(''),2200);
+      google.script.run.withSuccessHandler(res=>{clearTimeout(timer);finish(res&&res.success&&res.dataUrl?res.dataUrl:'');}).withFailureHandler(()=>{clearTimeout(timer);finish('');}).getLearningProgressPrintLogo();
+    }
+
+    function annualExamOpenPreparedWindow(title){
+      const w=window.open('','_blank','width=1200,height=850');
+      if(!w){showAlert('alertDanger','Popup diblokir. Izinkan popup untuk membuka '+title+'.');return null;}
+      w.document.write(`<!doctype html><html><body style="font-family:Arial;padding:40px;color:#64748b">Menyiapkan ${annualExamEscape(title)}...</body></html>`);
+      return w;
+    }
+
+    function openAnnualExamResult(id){
+      const w=annualExamOpenPreparedWindow('form penilaian'); if(!w)return;
+      google.script.run.withSuccessHandler(res=>{if(!res?.success||!res.exam){w.document.body.innerHTML='<p>Data ujian tidak ditemukan.</p>';return;}annualExamLoadPrintAssets(logo=>buildAnnualExamResultWindow(res.exam,w,logo));}).withFailureHandler(err=>{w.document.body.innerHTML=`<p>${annualExamEscape(err?.message||err)}</p>`;}).getAnnualExam(id);
+    }
+
+    function openAnnualExamCertificate(id){
+      const w=annualExamOpenPreparedWindow('sertifikat'); if(!w)return;
+      google.script.run.withSuccessHandler(res=>{if(!res?.success||!res.exam){w.document.body.innerHTML='<p>Data sertifikat tidak ditemukan.</p>';return;}annualExamLoadPrintAssets(logo=>buildAnnualExamCertificateWindow(res.exam,w,logo));}).withFailureHandler(err=>{w.document.body.innerHTML=`<p>${annualExamEscape(err?.message||err)}</p>`;}).getAnnualExam(id);
+    }
+
+    function buildAnnualExamResultWindow(exam,w,logoDataUrl=''){
+      if(!w||w.closed)return;
+      const items=Array.isArray(exam.items)?exam.items:[];
+      const rows=items.map(i=>`<tr><td><b>${annualExamEscape(i.aspect)}</b></td><td>${annualExamEscape(i.description)}</td><td>${Number(i.scoreExaminer1||0)}</td><td>${Number(i.scoreExaminer2||0)}</td><td><b>${Number(i.average||0)}</b></td></tr>`).join('');
+      const logo=logoDataUrl||'https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
+      const sig=(url,name,label)=>`<div class="sign"><b>${label}</b><div class="sig-img">${annualExamImageHtml(url,label,'')}</div><span>${annualExamEscape(name||'-')}</span></div>`;
+      w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Form Penilaian - ${annualExamEscape(exam.studentName)}</title><style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important} @page{size:A4 portrait;margin:8mm} body{margin:0;background:#e8edf3;font-family:Arial,Helvetica,sans-serif;color:#17232d}.toolbar{position:sticky;top:0;z-index:20;background:#17232d;padding:10px;text-align:center}.toolbar button{border:0;border-radius:9px;padding:10px 16px;font-weight:800;margin:0 4px;cursor:pointer}.print{background:#f15a24;color:#fff}.paper{width:210mm;min-height:297mm;margin:16px auto;background:#fff;padding:10mm;box-shadow:0 12px 36px #0002}.brand{display:grid;grid-template-columns:48mm 1fr;align-items:center;border-bottom:2.5px solid #f15a24;padding-bottom:5mm}.brand img{width:45mm;height:20mm;object-fit:contain;object-position:left center}.brand h1{font-size:17px;margin:0;text-align:right}.brand small{display:block;text-align:right;color:#f15a24;font-weight:800;margin-top:3px}.info{width:100%;border-collapse:collapse;margin:5mm 0}.info td{border:1px solid #cbd5e1;padding:2.6mm;font-size:8.7px}.info b{display:block;color:#64748b;font-size:7px;text-transform:uppercase;margin-bottom:1mm}.score{width:100%;border-collapse:collapse;table-layout:fixed}.score th,.score td{border:1px solid #94a3b8;padding:2.5mm;font-size:8px;text-align:center;line-height:1.35}.score th{background:#f15a24;color:#fff}.score th:nth-child(1){width:17%}.score th:nth-child(2){width:43%}.score td:nth-child(2){text-align:left}.summary{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #cbd5e1;margin-top:5mm;border-radius:2mm;overflow:hidden}.summary div{text-align:center;padding:3mm;border-right:1px solid #cbd5e1}.summary div:last-child{border-right:0}.summary span{display:block;font-size:6.8px;color:#64748b;font-weight:800;text-transform:uppercase}.summary b{display:block;margin-top:1mm;font-size:11px}.notes{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:4mm}.note{border:1px solid #cbd5e1;min-height:26mm;padding:3mm;font-size:8px;border-radius:2mm}.note b{color:#f15a24}.signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10mm;margin-top:8mm}.sign{text-align:center;font-size:7.8px}.sig-img{height:24mm;display:flex;align-items:center;justify-content:center}.sig-img img{max-width:48mm;max-height:23mm;object-fit:contain}.sign span{display:block;border-top:1px solid #475569;padding-top:2mm;font-weight:700}.doc-footer{text-align:center;color:#94a3b8;font-size:6.5px;margin-top:5mm}@media(max-width:700px){body{overflow-x:auto}.paper{margin:8px 0;transform-origin:top left}}@media print{body{background:#fff}.toolbar{display:none}.paper{margin:0;box-shadow:none;width:100%;min-height:0;padding:0}}
+      </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button onclick="window.close()">Tutup</button></div><main class="paper"><div class="brand"><img src="${annualExamEscape(logo)}"><div><h1>FORM PENILAIAN UJIAN TAHUNAN SISWA</h1><small>LEGACY MUSIC CENTER</small></div></div><table class="info"><tr><td><b>Nama Siswa</b>${annualExamEscape(exam.studentName)}</td><td><b>Pengajar</b>${annualExamEscape(exam.teacherName)}</td></tr><tr><td><b>Divisi / Instrumen</b>${annualExamEscape(exam.instrument)}</td><td><b>Penguji 1</b>${annualExamEscape(exam.examiner1Name)}</td></tr><tr><td><b>Grade Ujian</b>${annualExamEscape(exam.gradeExam)}</td><td><b>Penguji 2</b>${annualExamEscape(exam.examiner2Name)}</td></tr></table><table class="score"><thead><tr><th>ASPEK PENILAIAN</th><th>DESKRIPSI PENILAIAN</th><th>NILAI PENGUJI 1</th><th>NILAI PENGUJI 2</th><th>RATA-RATA</th></tr></thead><tbody>${rows}</tbody></table><div class="summary"><div><span>Total Nilai Akhir</span><b>${exam.finalScore}</b></div><div><span>Predikat</span><b>${annualExamEscape(exam.predicate)}</b></div><div><span>Status</span><b>${annualExamEscape(exam.resultStatus)}</b></div><div><span>Menuju Grade</span><b>${annualExamEscape(exam.nextGrade)}</b></div></div><div class="notes"><div class="note"><b>CATATAN PENGUJI 1</b><p>${annualExamEscape(exam.notesExaminer1||'-')}</p></div><div class="note"><b>CATATAN PENGUJI 2</b><p>${annualExamEscape(exam.notesExaminer2||'-')}</p></div></div><div class="signatures">${sig(exam.examiner1SignatureUrl,exam.examiner1Name,'PENGUJI 1')}${sig(exam.headmasterSignatureUrl,exam.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd','KEPALA SEKOLAH')}${sig(exam.examiner2SignatureUrl,exam.examiner2Name,'PENGUJI 2')}</div><div class="doc-footer">Dokumen resmi Legacy Music Center • ${annualExamEscape(formatAcademyDate(exam.examDate||''))}</div></main><script>function annualExamImageFallback(img){try{const a=JSON.parse(img.dataset.examFallbacks||'[]'),i=Number(img.dataset.examFallbackIndex||0);if(i<a.length){img.dataset.examFallbackIndex=String(i+1);img.src=a[i];return}}catch(e){}img.style.display='none'}<\/script></body></html>`);w.document.close();
+    }
+
+    function buildAnnualExamCertificateWindow(exam,w,logoDataUrl=''){
+      if(!w||w.closed)return;
+      const logo=logoDataUrl||'https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
+      const issue=formatAcademyDate(exam.examDate||'');
+      const headmaster=exam.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd';
+      const signature=annualExamImageHtml(exam.headmasterSignatureUrl,'Tanda tangan kepala sekolah','head-signature-img');
+      w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Sertifikat ${annualExamEscape(exam.studentName)}</title><style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important} @page{size:A4 landscape;margin:0} html,body{margin:0;min-height:100%;font-family:Arial,Helvetica,sans-serif;color:#111;background:#e7ebf0}.toolbar{position:sticky;top:0;z-index:30;background:#17232d;padding:10px;text-align:center}.toolbar button{border:0;border-radius:9px;padding:10px 16px;font-weight:800;margin:0 4px;cursor:pointer}.toolbar .primary{background:#f15a24;color:#fff}.viewport{display:flex;justify-content:center;padding:16px;overflow:auto}.stage{width:297mm;height:210mm;position:relative;flex:0 0 auto}.cert{width:297mm;height:210mm;background:#fff;position:absolute;left:0;top:0;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,.16)}.frame{position:absolute;inset:4.5mm;border:1.2px solid #ff7a25;z-index:5;pointer-events:none}.frame:after{content:'';position:absolute;inset:2.2mm;border:.45px solid rgba(241,90,36,.55)}.orange-top{position:absolute;right:-18mm;top:-27mm;width:180mm;height:60mm;background:linear-gradient(135deg,#d8490a 0%,#f15a24 48%,#ff8a2e 100%);transform:rotate(8deg);z-index:1}.orange-bottom{position:absolute;left:-24mm;bottom:-31mm;width:190mm;height:61mm;background:linear-gradient(135deg,#d9480f,#ff7a1a);transform:rotate(9deg);z-index:1}.ribbon-top,.ribbon-bottom{position:absolute;border:4.3mm solid #fff;border-radius:50%;z-index:2}.ribbon-top{width:205mm;height:92mm;right:-48mm;top:-62mm;transform:rotate(4deg)}.ribbon-bottom{width:205mm;height:92mm;left:-50mm;bottom:-64mm;transform:rotate(4deg)}.ribbon-top:after,.ribbon-bottom:after{content:'';position:absolute;inset:-8mm;border:2.2mm solid rgba(255,146,58,.68);border-radius:50%}.music-left,.music-right{position:absolute;color:#f15a24;opacity:.07;font-size:58mm;z-index:2;font-weight:700;line-height:1}.music-left{left:8mm;top:68mm}.music-right{right:8mm;top:70mm;transform:rotate(-12deg)}.content{position:relative;z-index:6;height:100%;padding:15mm 22mm 11mm;display:flex;flex-direction:column;align-items:center;text-align:center}.logo{position:absolute;left:16mm;top:12mm;width:53mm;height:31mm;object-fit:contain;object-position:left top}.cert-no{position:absolute;right:16mm;top:15mm;color:#b4bcc8;font-size:2.8mm;letter-spacing:.15mm}.title{margin-top:34mm;color:#ed571b;font-size:20mm;line-height:.9;letter-spacing:2.8mm;font-weight:800}.given{display:flex;align-items:center;gap:4mm;margin-top:5mm;color:#f15a24;font-size:4.3mm;font-weight:800;letter-spacing:.2mm}.given:before,.given:after{content:'';width:12mm;height:.55mm;background:#f15a24}.name{margin-top:6mm;font-size:10.8mm;font-weight:850;line-height:1.05;max-width:220mm}.desc{margin-top:3mm;font-size:4.1mm;color:#4b5563;line-height:1.5}.program{display:flex;justify-content:center;align-items:end;gap:17mm;margin-top:5mm;font-size:4mm}.program .label{color:#f15a24;font-weight:850;margin-right:2mm}.program .value{display:inline-block;min-width:29mm;padding:0 2mm 1.2mm;border-bottom:.55mm dotted #f15a24;color:#111;font-size:4.9mm;font-weight:750}.date{font-size:3.8mm;color:#565f6d;margin-top:4mm}.date b{color:#f15a24}.score-label{margin-top:5mm;color:#f15a24;font-size:3.8mm;font-weight:850;letter-spacing:.15mm}.scorebox{margin-top:1.8mm;min-width:83mm;border:1px solid #f15a24;border-radius:4mm;padding:3.6mm 11mm}.scorebox b{font-size:6.6mm}.status-note{font-size:3mm;color:#8a94a4;margin-top:2mm}.footer{margin-top:auto;width:100%;height:30mm;display:grid;grid-template-columns:1fr 1fr 1fr;align-items:end}.seal{grid-column:2;justify-self:center;width:23mm;height:23mm;border-radius:50%;border:1.3mm solid #f15a24;display:grid;place-items:center;position:relative;color:#f15a24;font-weight:900;font-size:5mm;background:#fff}.seal:before{content:'★';position:absolute;top:-5mm;color:#f15a24;font-size:5mm}.seal small{display:block;font-size:2.5mm;line-height:1}.signature{grid-column:3;text-align:center;justify-self:end;width:69mm}.signature-img{height:18mm;display:flex;align-items:flex-end;justify-content:center}.signature-img img{max-width:57mm;max-height:18mm;object-fit:contain;image-rendering:auto}.signature-line{border-top:.55px solid #f15a24;padding-top:1.7mm;font-size:3.5mm;white-space:normal}.signature-role{color:#f15a24;font-size:3.9mm;font-weight:850;margin-top:1.5mm}.fit-note{display:none}@media(max-width:900px){.viewport{justify-content:flex-start;padding:8px}.toolbar{padding-top:max(10px,env(safe-area-inset-top))}}@media print{html,body{width:297mm;height:210mm;background:#fff;overflow:hidden}.toolbar{display:none!important}.viewport{padding:0;display:block;overflow:visible}.stage{width:297mm!important;height:210mm!important}.cert{position:absolute!important;left:0!important;top:0!important;transform:none!important;box-shadow:none!important;width:297mm!important;height:210mm!important}}
+      </style></head><body><div class="toolbar"><button class="primary" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button onclick="window.close()">Tutup</button></div><div class="viewport"><div class="stage" id="stage"><section class="cert" id="cert"><div class="orange-top"></div><div class="orange-bottom"></div><div class="ribbon-top"></div><div class="ribbon-bottom"></div><div class="frame"></div><div class="music-left">𝄞</div><div class="music-right">♫</div><div class="content"><img class="logo" src="${annualExamEscape(logo)}" alt="Legacy Music Center"><div class="cert-no">No. ${annualExamEscape(exam.certificateNo||'-')}</div><div class="title">SERTIFIKAT</div><div class="given">DIBERIKAN KEPADA</div><div class="name">${annualExamEscape(exam.studentName)}</div><div class="desc">Telah berhasil menyelesaikan dan ${String(exam.resultStatus).toLowerCase()==='lulus'?'lulus':'mengikuti'} ujian tahunan<br>di Legacy Music Center</div><div class="program"><div><span class="label">PROGRAM</span><span class="value">${annualExamEscape(exam.instrument)}</span></div><div><span class="label">GRADE</span><span class="value">${annualExamEscape(exam.gradeExam)}</span></div></div><div class="date">yang diselenggarakan pada tanggal <b>${annualExamEscape(issue)}</b></div><div class="score-label">NILAI AKHIR</div><div class="scorebox"><b>${annualExamEscape(exam.finalScore)} (${annualExamEscape(exam.predicate)})</b></div><div class="status-note">Status: ${annualExamEscape(exam.resultStatus)} • Menuju: ${annualExamEscape(exam.nextGrade)}</div><div class="footer"><div></div><div class="seal"><span>LMC<small>LEGACY</small></span></div><div class="signature"><div class="signature-img">${signature}</div><div class="signature-line">${annualExamEscape(headmaster)}</div><div class="signature-role">HEAD MASTER</div></div></div></div></section></div></div><script>
+      function annualExamImageFallback(img){try{const a=JSON.parse(img.dataset.examFallbacks||'[]'),i=Number(img.dataset.examFallbackIndex||0);if(i<a.length){img.dataset.examFallbackIndex=String(i+1);img.src=a[i];return}}catch(e){}img.style.display='none'}
+      function fit(){const cert=document.getElementById('cert'),stage=document.getElementById('stage');if(!cert||!stage||window.matchMedia('print').matches)return;const pad=16;const available=Math.max(280,window.innerWidth-pad*2);const scale=Math.min(1,available/cert.offsetWidth);cert.style.transformOrigin='top left';cert.style.transform='scale('+scale+')';stage.style.width=(cert.offsetWidth*scale)+'px';stage.style.height=(cert.offsetHeight*scale)+'px'}window.addEventListener('load',fit);window.addEventListener('resize',fit);
+      <\/script></body></html>`);w.document.close();
+    }
