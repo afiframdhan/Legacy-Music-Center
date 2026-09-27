@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Legacy Music Center">
 <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Legacy Music Center - Portal</title>
@@ -318,6 +322,33 @@
           </div>
           <div id="student360ReportHistory" class="widget-box">
             <div style="padding:30px 18px;text-align:center;color:#8a98a9;">Memuat laporan...</div>
+          </div>
+        </div>
+
+
+
+        <!-- UJIAN TAHUNAN & SERTIFIKAT -->
+        <div class="content-section" id="section-annual-exam">
+          <div class="academy-page-head annual-exam-head">
+            <div>
+              <h2 id="annualExamPageTitle">Ujian Tahunan & Sertifikat</h2>
+              <p id="annualExamPageSubtitle">Penilaian ujian tahunan, hasil ujian, dan sertifikat siswa.</p>
+            </div>
+            <div id="annualExamStaffActions" style="display:none;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary" onclick="openAnnualExamForm()">+ Penilaian Ujian</button>
+            </div>
+          </div>
+
+          <div id="annualExamFilters" class="widget-box annual-exam-filters" style="display:none;">
+            <div class="form-group" style="margin:0;"><label>Cari Siswa</label><input type="search" id="annualExamSearch" placeholder="Nama siswa..." oninput="renderAnnualExamList()"></div>
+            <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="annualExamFilterInstrument" onchange="renderAnnualExamList()"><option value="">Semua Instrumen</option></select></div>
+            <div class="form-group" style="margin:0;"><label>Grade</label><select id="annualExamFilterGrade" onchange="renderAnnualExamList()"><option value="">Semua Grade</option></select></div>
+            <div class="form-group" style="margin:0;"><label>Tahun</label><select id="annualExamFilterYear" onchange="renderAnnualExamList()"><option value="">Semua Tahun</option></select></div>
+          </div>
+
+          <div id="annualExamSummary" class="annual-exam-summary" style="display:none;"></div>
+          <div id="annualExamList" class="widget-box annual-exam-list-box">
+            <div class="annual-exam-empty">Memuat data ujian...</div>
           </div>
         </div>
 

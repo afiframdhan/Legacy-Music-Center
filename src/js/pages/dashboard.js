@@ -1491,3 +1491,268 @@
       printWindow.document.open(); printWindow.document.write(report); printWindow.document.close();
     }
 
+
+
+    // ======================================================================
+    // UJIAN TAHUNAN & SERTIFIKAT — TEST MODULE v1
+    // ======================================================================
+    let annualExamRecords = [];
+    let annualExamEditingId = '';
+
+    const ANNUAL_EXAM_GRADES = ['Beginner','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8'];
+    const ANNUAL_EXAM_INSTRUMENTS = ['Gitar','Piano','Drum','Vocal','Biola','Bass','Cello','Saxophone'];
+
+    function annualExamTemplate(instrument) {
+      const key = String(instrument || '').trim().toLowerCase();
+      const commonTheory = { aspect:'Teori Dasar Musik', description:'Pemahaman beat, rhythm, tempo, dynamics, not, rest, dan simbol musik sesuai level.', maxScore:20 };
+      const templates = {
+        gitar: [
+          {aspect:'Hearing',description:'Kemampuan mendengar dan membedakan tinggi-rendah nada, keras-lembut, cepat-lambat, serta menirukan pola ritme atau bunyi sederhana.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan mengenal staff, simbol musik, nama nada, nilai not, dan pola ritme sesuai grade.',maxScore:20},
+          {aspect:'Performing',description:'Teknik bermain gitar: posisi, fingering, chord/scale, artikulasi, timing, dan kontrol bunyi sesuai grade.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan membawakan repertoire ujian dengan melodi, ritme, chord, tempo, dan musikalitas yang sesuai.',maxScore:20}, commonTheory],
+        piano: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, ritme, dinamika, dan menirukan pola bunyi sederhana.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi treble/bass clef, nilai not, tanda musik, dan ritme sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Postur, fingering, scale/arpeggio, koordinasi tangan, artikulasi, dinamika, dan kontrol tempo.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan akurasi not, ritme, tempo, dinamika, dan interpretasi.',maxScore:20}, commonTheory],
+        drum: [
+          {aspect:'Hearing & Rhythm',description:'Kemampuan mendengar, menirukan, dan menjaga pulse, subdivision, tempo, serta pola ritme.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi drum, nilai not, rest, counting, dan pola ritme sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Grip, stroke, rudiment, koordinasi tangan-kaki, groove, fill-in, dinamika, dan timing.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan lagu/repertoire dengan groove, form, fill, tempo, dan musikalitas yang stabil.',maxScore:20}, commonTheory],
+        vocal: [
+          {aspect:'Hearing & Intonation',description:'Ketepatan pitch, interval, kemampuan menirukan melodi, dan kestabilan intonasi.',maxScore:20},
+          {aspect:'Rhythm & Reading',description:'Kemampuan memahami ritme, tempo, frase, lirik/notasi dasar, dan tanda musik sesuai level.',maxScore:20},
+          {aspect:'Vocal Technique',description:'Breathing, support, artikulasi, resonansi, register, kontrol dinamika, dan kesehatan teknik vokal.',maxScore:20},
+          {aspect:'Song Performance',description:'Pembawaan lagu, ekspresi, phrasing, interpretasi, stage presence, dan konsistensi musikal.',maxScore:20}, commonTheory],
+        biola: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, intonasi, ritme, dan menirukan pola melodi.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi, fingering, ritme, tanda musik, dan posisi sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Postur, bow hold, bowing, fingering, intonasi, tone production, artikulasi, dan scale.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan intonasi, ritme, bowing, tempo, dan ekspresi.',maxScore:20}, commonTheory],
+        bass: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, groove, root movement, dan pola ritme.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi/tab, nilai not, rest, chord symbol, dan ritme sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Fretting, plucking, muting, scale/arpeggio, groove, timing, tone, dan koordinasi tangan.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan bass line/repertoire dengan groove, form, timing, dan musikalitas.',maxScore:20}, commonTheory],
+        cello: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, intonasi, ritme, dan menirukan melodi.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi bass/tenor clef sesuai level, fingering, ritme, dan tanda musik.',maxScore:20},
+          {aspect:'Technique',description:'Postur, bow hold, bowing, fingering, shifting, intonasi, tone production, dan scale.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan intonasi, ritme, bowing, tempo, dan ekspresi.',maxScore:20}, commonTheory],
+        saxophone: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, ritme, articulation pattern, dan menirukan melodi.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi, ritme, tanda musik, key signature, dan phrasing sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Embouchure, breathing, fingering, articulation, tone, scale, intonation, dan kontrol dinamika.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan tone, intonasi, ritme, phrasing, tempo, dan ekspresi.',maxScore:20}, commonTheory]
+      };
+      return (templates[key] || [
+        {aspect:'Hearing',description:'Kemampuan mendengar, mengenali, dan menirukan unsur musik sesuai level.',maxScore:20},
+        {aspect:'Reading',description:'Kemampuan membaca notasi, ritme, dan simbol musik sesuai level.',maxScore:20},
+        {aspect:'Technique',description:'Penguasaan teknik dasar hingga teknik sesuai grade pada instrumen.',maxScore:20},
+        {aspect:'Repertoire / Performance',description:'Kemampuan membawakan repertoire dengan akurasi, tempo, ekspresi, dan musikalitas.',maxScore:20}, commonTheory
+      ]).map((item,index)=>({...item,sortOrder:index+1}));
+    }
+
+    function annualExamEscape(value) { return escapeTaskHtml(String(value ?? '')); }
+    function annualExamPredicate(score) {
+      const n = Number(score || 0);
+      if (n >= 90) return 'Excellent';
+      if (n >= 80) return 'Very Good';
+      if (n >= 70) return 'Good';
+      if (n >= 60) return 'Fair';
+      return 'Need Improvement';
+    }
+    function annualExamNextGrade(grade, passed=true) {
+      const clean=String(grade||'Beginner').trim();
+      if (!passed) return clean;
+      const idx=ANNUAL_EXAM_GRADES.findIndex(g=>g.toLowerCase()===clean.toLowerCase());
+      return idx>=0 && idx<ANNUAL_EXAM_GRADES.length-1 ? ANNUAL_EXAM_GRADES[idx+1] : clean;
+    }
+
+    function loadAnnualExamCenter() {
+      const list=document.getElementById('annualExamList');
+      if (!list) return;
+      const isStudent=currentUser.userType==='siswa';
+      document.getElementById('annualExamPageTitle').textContent=isStudent?'Sertifikat':'Ujian Tahunan & Sertifikat';
+      document.getElementById('annualExamPageSubtitle').textContent=isStudent?'Sertifikat ujian tahunan yang telah diterbitkan untuk kamu.':'Kelola penilaian ujian tahunan, hasil ujian, dan sertifikat siswa.';
+      const staffActions=document.getElementById('annualExamStaffActions');
+      const filters=document.getElementById('annualExamFilters');
+      if(staffActions) staffActions.style.display=isStudent?'none':'flex';
+      if(filters) filters.style.display=isStudent?'none':'grid';
+      list.innerHTML='<div class="annual-exam-empty">Memuat data ujian...</div>';
+      google.script.run.withSuccessHandler(res=>{
+        if(!res||res.success===false){list.innerHTML=`<div class="annual-exam-empty">${annualExamEscape(res?.message||'Data ujian tidak tersedia.')}</div>`;return;}
+        annualExamRecords=Array.isArray(res.exams)?res.exams:[];
+        setupAnnualExamFilters();
+        renderAnnualExamList();
+      }).withFailureHandler(err=>{list.innerHTML=`<div class="annual-exam-empty">Gagal memuat: ${annualExamEscape(err?.message||err)}</div>`;}).listAnnualExams();
+    }
+
+    function setupAnnualExamFilters(){
+      const inst=document.getElementById('annualExamFilterInstrument');
+      const grade=document.getElementById('annualExamFilterGrade');
+      const year=document.getElementById('annualExamFilterYear');
+      if(!inst||!grade||!year)return;
+      const insts=[...new Set(annualExamRecords.map(x=>x.instrument).filter(Boolean))].sort();
+      const grades=[...new Set(annualExamRecords.map(x=>x.gradeExam).filter(Boolean))];
+      const years=[...new Set(annualExamRecords.map(x=>String(x.examDate||'').slice(0,4)).filter(Boolean))].sort().reverse();
+      const keepInst=inst.value,keepGrade=grade.value,keepYear=year.value;
+      inst.innerHTML='<option value="">Semua Instrumen</option>'+insts.map(v=>`<option>${annualExamEscape(v)}</option>`).join('');
+      grade.innerHTML='<option value="">Semua Grade</option>'+grades.map(v=>`<option>${annualExamEscape(v)}</option>`).join('');
+      year.innerHTML='<option value="">Semua Tahun</option>'+years.map(v=>`<option>${annualExamEscape(v)}</option>`).join('');
+      inst.value=keepInst;grade.value=keepGrade;year.value=keepYear;
+    }
+
+    function renderAnnualExamList(){
+      const box=document.getElementById('annualExamList'); if(!box)return;
+      let rows=[...annualExamRecords];
+      if(currentUser.userType!=='siswa'){
+        const q=String(document.getElementById('annualExamSearch')?.value||'').trim().toLowerCase();
+        const inst=String(document.getElementById('annualExamFilterInstrument')?.value||'').trim().toLowerCase();
+        const grade=String(document.getElementById('annualExamFilterGrade')?.value||'').trim().toLowerCase();
+        const year=String(document.getElementById('annualExamFilterYear')?.value||'').trim();
+        if(q)rows=rows.filter(x=>`${x.studentName||''} ${x.instrument||''} ${x.gradeExam||''}`.toLowerCase().includes(q));
+        if(inst)rows=rows.filter(x=>String(x.instrument||'').toLowerCase()===inst);
+        if(grade)rows=rows.filter(x=>String(x.gradeExam||'').toLowerCase()===grade);
+        if(year)rows=rows.filter(x=>String(x.examDate||'').startsWith(year));
+      }
+      renderAnnualExamSummary(rows);
+      if(!rows.length){box.innerHTML=`<div class="annual-exam-empty"><strong>${currentUser.userType==='siswa'?'Belum ada sertifikat':'Belum ada hasil ujian'}</strong><span>${currentUser.userType==='siswa'?'Sertifikat akan muncul setelah guru atau admin mengirimkannya.':'Klik “Penilaian Ujian” untuk membuat hasil ujian tahunan.'}</span></div>`;return;}
+      box.innerHTML=`<div class="annual-exam-grid">${rows.map(annualExamCardHtml).join('')}</div>`;
+    }
+
+    function renderAnnualExamSummary(rows){
+      const summary=document.getElementById('annualExamSummary'); if(!summary)return;
+      if(currentUser.userType==='siswa'){summary.style.display='none';return;}
+      const passed=rows.filter(x=>String(x.resultStatus).toLowerCase()==='lulus').length;
+      const published=rows.filter(x=>x.published).length;
+      const avg=rows.length?Math.round(rows.reduce((a,b)=>a+Number(b.finalScore||0),0)/rows.length):0;
+      summary.style.display='grid';
+      summary.innerHTML=`<div><span>Total Ujian</span><b>${rows.length}</b></div><div><span>Lulus</span><b>${passed}</b></div><div><span>Sertifikat Terkirim</span><b>${published}</b></div><div><span>Rata-rata Nilai</span><b>${avg}</b></div>`;
+    }
+
+    function annualExamCardHtml(exam){
+      const student=annualExamEscape(exam.studentName||'-');
+      const score=Math.round(Number(exam.finalScore||0)*10)/10;
+      const status=String(exam.resultStatus||'').toLowerCase()==='lulus'?'Lulus':'Belum Lulus';
+      const published=Boolean(exam.published);
+      const isStudent=currentUser.userType==='siswa';
+      return `<article class="annual-exam-card">
+        <div class="annual-exam-card-top"><div><span class="annual-exam-kicker">${annualExamEscape(exam.instrument||'Musik')} • ${annualExamEscape(exam.gradeExam||'-')}</span><h3>${student}</h3><p>${annualExamEscape(formatAcademyDate(exam.examDate||''))} • Pengajar: ${annualExamEscape(exam.teacherName||'-')}</p></div><div class="annual-exam-score">${score}</div></div>
+        <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
+        <div class="annual-exam-card-actions">
+          ${!isStudent?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button><button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
+          ${!isStudent&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
+          ${!isStudent?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
+        </div>
+      </article>`;
+    }
+
+    function ensureAnnualExamModal(){
+      let modal=document.getElementById('annualExamModal'); if(modal)return modal;
+      document.body.insertAdjacentHTML('beforeend',`<div id="annualExamModal" class="modal annual-exam-modal" style="display:none;"><div class="modal-content"><div class="modal-header"><h3 id="annualExamModalTitle">Penilaian Ujian Tahunan</h3><button class="close" onclick="closeAnnualExamForm()">×</button></div><div class="annual-exam-modal-body"><form id="annualExamForm" onsubmit="return saveAnnualExam(event)"><div id="annualExamFormContent"></div></form></div><div class="annual-exam-modal-footer"><button type="button" class="btn" onclick="closeAnnualExamForm()">Batal</button><button type="submit" form="annualExamForm" class="btn btn-primary" id="annualExamSaveBtn">Simpan Hasil Ujian</button></div></div></div>`);
+      return document.getElementById('annualExamModal');
+    }
+
+    function annualExamStudentClasses(student){
+      return Array.isArray(student?.kelasList)&&student.kelasList.length?student.kelasList:[{instrumen:student?.instrumen||'Gitar',grade:student?.kelas||'Beginner',guru:student?.guru||''}];
+    }
+
+    function openAnnualExamForm(examId=''){
+      if(currentUser.userType==='siswa')return;
+      const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
+      const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
+      const students=(globalSiswaList||[]).filter(s=>String(s.status||'Aktif').toLowerCase()!=='keluar');
+      const selectedStudent=edit?.studentID||students[0]?.siswaID||'';
+      const studentOptions=students.map(s=>`<option value="${annualExamEscape(s.siswaID||'')}" ${String(s.siswaID)===String(selectedStudent)?'selected':''}>${annualExamEscape(s.nama)} — ${annualExamEscape(s.instrumen||'Musik')}</option>`).join('');
+      const examinerOptions=(globalGuruList||[]).map(g=>`<option value="${annualExamEscape(g.nama)}">${annualExamEscape(g.nama)}${g.instrumen?' — '+annualExamEscape(g.instrumen):''}</option>`).join('');
+      const today=new Date().toISOString().slice(0,10);
+      const content=document.getElementById('annualExamFormContent');
+      content.innerHTML=`
+        <div class="annual-exam-form-grid">
+          <div class="form-group"><label>Nama Siswa</label><select id="annualExamStudent" required onchange="annualExamStudentChanged()">${studentOptions}</select></div>
+          <div class="form-group"><label>Instrumen</label><select id="annualExamInstrument" required onchange="annualExamInstrumentChanged()"></select></div>
+          <div class="form-group"><label>Grade Ujian</label><select id="annualExamGrade" required>${ANNUAL_EXAM_GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Tanggal Ujian</label><input type="date" id="annualExamDate" required value="${annualExamEscape(edit?.examDate||today)}"></div>
+          <div class="form-group"><label>Pengajar</label><input id="annualExamTeacher" readonly value="${annualExamEscape(edit?.teacherName||currentUser.userName||'')}"></div>
+          <div class="form-group"><label>Penguji 1</label><select id="annualExamExaminer1" required><option value="">Pilih Penguji</option>${examinerOptions}</select></div>
+          <div class="form-group"><label>Penguji 2</label><select id="annualExamExaminer2" required><option value="">Pilih Penguji</option>${examinerOptions}</select></div>
+          <div class="form-group"><label>Status Otomatis</label><input id="annualExamStatusPreview" readonly value="-"></div>
+        </div>
+        <div class="annual-exam-table-wrap"><table class="annual-exam-score-table"><thead><tr><th>Aspek Penilaian</th><th>Deskripsi</th><th>Nilai Penguji 1</th><th>Nilai Penguji 2</th><th>Rata-rata</th></tr></thead><tbody id="annualExamScoreBody"></tbody></table></div>
+        <div class="annual-exam-total-strip"><div><span>Total Nilai Akhir</span><b id="annualExamTotal">0</b></div><div><span>Predikat</span><b id="annualExamPredicate">Need Improvement</b></div><div><span>Status</span><b id="annualExamPassStatus">Belum Lulus</b></div><div><span>Menuju Grade</span><b id="annualExamNextGrade">-</b></div></div>
+        <div class="annual-exam-notes"><div class="form-group"><label>Catatan Penguji 1</label><textarea id="annualExamNotes1" rows="4">${annualExamEscape(edit?.notesExaminer1||'')}</textarea></div><div class="form-group"><label>Catatan Penguji 2</label><textarea id="annualExamNotes2" rows="4">${annualExamEscape(edit?.notesExaminer2||'')}</textarea></div></div>`;
+      modal.style.display='flex';
+      annualExamStudentChanged(edit);
+      if(edit){
+        document.getElementById('annualExamExaminer1').value=edit.examiner1Name||'';
+        document.getElementById('annualExamExaminer2').value=edit.examiner2Name||'';
+      }
+    }
+
+    function annualExamStudentChanged(edit=null){
+      const sid=document.getElementById('annualExamStudent')?.value||'';
+      const s=(globalSiswaList||[]).find(x=>String(x.siswaID)===String(sid)); if(!s)return;
+      const classes=annualExamStudentClasses(s);
+      const inst=document.getElementById('annualExamInstrument');
+      inst.innerHTML=classes.map(c=>`<option value="${annualExamEscape(c.instrumen||'Gitar')}">${annualExamEscape(c.instrumen||'Gitar')}</option>`).join('');
+      const targetInst=edit?.instrument||classes[0]?.instrumen||s.instrumen||'Gitar'; inst.value=targetInst;
+      const cls=classes.find(c=>String(c.instrumen).toLowerCase()===String(inst.value).toLowerCase())||classes[0];
+      document.getElementById('annualExamGrade').value=edit?.gradeExam||cls?.grade||s.kelas||'Beginner';
+      document.getElementById('annualExamTeacher').value=edit?.teacherName||cls?.guru||s.guru||currentUser.userName||'';
+      annualExamRenderScoreRows(edit?.items||null);
+    }
+    function annualExamInstrumentChanged(){
+      const sid=document.getElementById('annualExamStudent')?.value||'';
+      const s=(globalSiswaList||[]).find(x=>String(x.siswaID)===String(sid));
+      const inst=document.getElementById('annualExamInstrument')?.value||'Gitar';
+      const cls=annualExamStudentClasses(s).find(c=>String(c.instrumen).toLowerCase()===inst.toLowerCase());
+      if(cls){document.getElementById('annualExamGrade').value=cls.grade||'Beginner';document.getElementById('annualExamTeacher').value=cls.guru||currentUser.userName||'';}
+      annualExamRenderScoreRows();
+    }
+    function annualExamRenderScoreRows(items=null){
+      const inst=document.getElementById('annualExamInstrument')?.value||'Gitar';
+      const source=Array.isArray(items)&&items.length?items:annualExamTemplate(inst);
+      document.getElementById('annualExamScoreBody').innerHTML=source.map((item,i)=>`<tr data-index="${i}"><td><b>${annualExamEscape(item.aspect)}</b></td><td>${annualExamEscape(item.description)}</td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-1" value="${Number(item.scoreExaminer1||0)}" oninput="annualExamRecalculate()"></td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-2" value="${Number(item.scoreExaminer2||0)}" oninput="annualExamRecalculate()"></td><td class="annual-score-avg">0</td><input type="hidden" class="annual-aspect" value="${annualExamEscape(item.aspect)}"><input type="hidden" class="annual-desc" value="${annualExamEscape(item.description)}"></tr>`).join('');
+      annualExamRecalculate();
+    }
+    function annualExamRecalculate(){
+      let total=0;
+      document.querySelectorAll('#annualExamScoreBody tr').forEach(row=>{const a=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-1').value)||0));const b=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-2').value)||0));const avg=(a+b)/2;row.querySelector('.annual-score-avg').textContent=avg.toFixed(avg%1?1:0);total+=avg;});
+      total=Math.round(total*10)/10; const passed=total>=60; const pred=annualExamPredicate(total); const grade=document.getElementById('annualExamGrade')?.value||'Beginner';
+      document.getElementById('annualExamTotal').textContent=total;document.getElementById('annualExamPredicate').textContent=pred;document.getElementById('annualExamPassStatus').textContent=passed?'Lulus':'Belum Lulus';document.getElementById('annualExamNextGrade').textContent=annualExamNextGrade(grade,passed);document.getElementById('annualExamStatusPreview').value=`${total} • ${pred} • ${passed?'Lulus':'Belum Lulus'}`;
+    }
+    function closeAnnualExamForm(){const m=document.getElementById('annualExamModal');if(m)m.style.display='none';annualExamEditingId='';}
+    function annualExamCollectItems(){return [...document.querySelectorAll('#annualExamScoreBody tr')].map((row,i)=>({aspect:row.querySelector('.annual-aspect').value,description:row.querySelector('.annual-desc').value,scoreExaminer1:Number(row.querySelector('.annual-score-1').value)||0,scoreExaminer2:Number(row.querySelector('.annual-score-2').value)||0,sortOrder:i+1,maxScore:20}));}
+    function saveAnnualExam(event){
+      event.preventDefault(); const btn=document.getElementById('annualExamSaveBtn');btn.disabled=true;btn.textContent='Menyimpan...';
+      const payload={examID:annualExamEditingId,studentID:document.getElementById('annualExamStudent').value,instrument:document.getElementById('annualExamInstrument').value,gradeExam:document.getElementById('annualExamGrade').value,examDate:document.getElementById('annualExamDate').value,teacherName:document.getElementById('annualExamTeacher').value,examiner1Name:document.getElementById('annualExamExaminer1').value,examiner2Name:document.getElementById('annualExamExaminer2').value,notesExaminer1:document.getElementById('annualExamNotes1').value,notesExaminer2:document.getElementById('annualExamNotes2').value,items:annualExamCollectItems()};
+      google.script.run.withSuccessHandler(res=>{btn.disabled=false;btn.textContent='Simpan Hasil Ujian';if(res?.success){closeAnnualExamForm();showAlert('alertSuccess',res.message||'Hasil ujian berhasil disimpan.');loadAnnualExamCenter();}else showAlert('alertDanger',res?.message||'Gagal menyimpan hasil ujian.');}).withFailureHandler(err=>{btn.disabled=false;btn.textContent='Simpan Hasil Ujian';showAlert('alertDanger',err?.message||String(err));}).saveAnnualExam(payload);return false;
+    }
+    function publishAnnualExam(id){if(!confirm('Kirim hasil ujian dan sertifikat ini ke akun siswa?'))return;google.script.run.withSuccessHandler(res=>{if(res?.success){showAlert('alertSuccess',res.message||'Sertifikat berhasil dikirim.');loadAnnualExamCenter();}else showAlert('alertDanger',res?.message||'Gagal mengirim sertifikat.');}).publishAnnualExam(id);}
+    function deleteAnnualExam(id){if(!confirm('Hapus/arsipkan hasil ujian ini? Sertifikat juga akan hilang dari akun siswa.'))return;google.script.run.withSuccessHandler(res=>{if(res?.success){showAlert('alertSuccess',res.message||'Hasil ujian dihapus.');loadAnnualExamCenter();}else showAlert('alertDanger',res?.message||'Gagal menghapus.');}).deleteAnnualExam(id);}
+
+    function annualExamFetchDetail(id, callback){google.script.run.withSuccessHandler(res=>{if(res?.success&&res.exam)callback(res.exam);else showAlert('alertDanger',res?.message||'Data ujian tidak ditemukan.');}).withFailureHandler(err=>showAlert('alertDanger',err?.message||String(err))).getAnnualExam(id);}
+    function openAnnualExamResult(id){annualExamFetchDetail(id,exam=>buildAnnualExamResultWindow(exam));}
+    function openAnnualExamCertificate(id){annualExamFetchDetail(id,exam=>buildAnnualExamCertificateWindow(exam));}
+
+    function annualExamOpenWindow(title){const w=window.open('','_blank','width=1200,height=850');if(!w){showAlert('alertDanger','Popup diblokir. Izinkan popup untuk membuka dokumen.');return null;}w.document.write(`<!doctype html><html><body style="font-family:Arial;padding:40px;color:#64748b">Menyiapkan ${annualExamEscape(title)}...</body></html>`);return w;}
+    function buildAnnualExamResultWindow(exam){
+      const w=annualExamOpenWindow('form penilaian');if(!w)return;
+      const items=Array.isArray(exam.items)?exam.items:[];
+      const rows=items.map(i=>`<tr><td><b>${annualExamEscape(i.aspect)}</b></td><td>${annualExamEscape(i.description)}</td><td>${Number(i.scoreExaminer1||0)}</td><td>${Number(i.scoreExaminer2||0)}</td><td>${Number(i.average||0)}</td></tr>`).join('');
+      const logo='https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
+      const sig=(url,name,label)=>`<div class="sign"><b>${label}</b><div class="sig-img">${url?`<img src="${annualExamEscape(url)}">`:''}</div><span>${annualExamEscape(name||'-')}</span></div>`;
+      w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Form Penilaian - ${annualExamEscape(exam.studentName)}</title><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4 portrait;margin:9mm}body{margin:0;background:#eef1f4;font-family:Arial;color:#17232d}.toolbar{position:sticky;top:0;background:#17232d;padding:10px;text-align:center}.toolbar button{border:0;border-radius:8px;padding:9px 16px;font-weight:800;margin:0 4px;cursor:pointer}.print{background:#f15a24;color:#fff}.paper{width:210mm;min-height:297mm;margin:18px auto;background:#fff;padding:10mm;box-shadow:0 10px 35px #0002}.brand{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #f15a24;padding-bottom:6mm}.brand img{width:42mm;height:18mm;object-fit:contain;object-position:left}.brand h1{font-size:17px;margin:0;text-align:right}.info{width:100%;border-collapse:collapse;margin:5mm 0}.info td{border:1px solid #64748b;padding:2.5mm;font-size:9px}.score{width:100%;border-collapse:collapse}.score th,.score td{border:1px solid #475569;padding:2.5mm;font-size:8.2px;text-align:center}.score th{background:#f6f7f9}.score td:nth-child(2){text-align:left}.summary{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #475569;margin-top:5mm}.summary div{text-align:center;padding:3mm;border-right:1px solid #475569}.summary div:last-child{border-right:0}.summary span{display:block;font-size:7px;font-weight:700}.summary b{display:block;margin-top:1mm;font-size:11px}.notes{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:4mm}.note{border:1px solid #475569;min-height:28mm;padding:3mm;font-size:8px}.signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8mm;margin-top:8mm}.sign{text-align:center;font-size:8px}.sig-img{height:22mm;display:flex;align-items:center;justify-content:center}.sig-img img{max-width:42mm;max-height:20mm;object-fit:contain}.sign span{display:block;border-top:1px solid #17232d;padding-top:2mm;font-weight:700}@media print{body{background:#fff}.toolbar{display:none}.paper{margin:0;box-shadow:none;width:auto;min-height:0;padding:0}}</style></head><body><div class="toolbar"><button class="print" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button onclick="window.close()">Tutup</button></div><main class="paper"><div class="brand"><img src="${logo}"><h1>FORM PENILAIAN UJIAN TAHUNAN SISWA</h1></div><table class="info"><tr><td><b>Nama Siswa</b><br>${annualExamEscape(exam.studentName)}</td><td><b>Pengajar</b><br>${annualExamEscape(exam.teacherName)}</td></tr><tr><td><b>Divisi</b><br>${annualExamEscape(exam.instrument)}</td><td><b>Penguji 1</b><br>${annualExamEscape(exam.examiner1Name)}</td></tr><tr><td><b>Grade Ujian</b><br>${annualExamEscape(exam.gradeExam)}</td><td><b>Penguji 2</b><br>${annualExamEscape(exam.examiner2Name)}</td></tr></table><table class="score"><thead><tr><th>ASPEK PENILAIAN</th><th>DESKRIPSI PENILAIAN</th><th>NILAI PENGUJI 1</th><th>NILAI PENGUJI 2</th><th>RATA-RATA</th></tr></thead><tbody>${rows}</tbody></table><div class="summary"><div><span>TOTAL NILAI</span><b>${exam.finalScore}</b></div><div><span>PREDIKAT</span><b>${annualExamEscape(exam.predicate)}</b></div><div><span>STATUS</span><b>${annualExamEscape(exam.resultStatus)}</b></div><div><span>MENUJU GRADE</span><b>${annualExamEscape(exam.nextGrade)}</b></div></div><div class="notes"><div class="note"><b>CATATAN PENGUJI 1</b><p>${annualExamEscape(exam.notesExaminer1||'-')}</p></div><div class="note"><b>CATATAN PENGUJI 2</b><p>${annualExamEscape(exam.notesExaminer2||'-')}</p></div></div><div class="signatures">${sig(exam.examiner1SignatureUrl,exam.examiner1Name,'PENGUJI 1')}${sig(exam.headmasterSignatureUrl,exam.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd','KEPALA SEKOLAH')}${sig(exam.examiner2SignatureUrl,exam.examiner2Name,'PENGUJI 2')}</div></main></body></html>`);w.document.close();
+    }
+
+    function buildAnnualExamCertificateWindow(exam){
+      const w=annualExamOpenWindow('sertifikat');if(!w)return;
+      const logo='https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
+      const issue=formatAcademyDate(exam.examDate||'');
+      const headmaster=exam.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd';
+      w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sertifikat ${annualExamEscape(exam.studentName)}</title><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4 landscape;margin:0}body{margin:0;background:#e9edf2;font-family:Arial,Helvetica,sans-serif;color:#111}.toolbar{position:sticky;top:0;z-index:10;background:#17232d;padding:10px;text-align:center}.toolbar button{border:0;border-radius:9px;padding:10px 16px;font-weight:800;margin:0 4px;cursor:pointer}.toolbar .primary{background:#f15a24;color:#fff}.cert{width:297mm;height:210mm;margin:18px auto;background:#fff;position:relative;overflow:hidden;padding:16mm 18mm;box-shadow:0 12px 45px #0002;border:2px solid #f15a24;border-radius:5mm}.cert:before,.cert:after{content:'';position:absolute;width:160mm;height:58mm;background:linear-gradient(135deg,#d9480f,#ff7a1a);transform:rotate(10deg);z-index:0}.cert:before{right:-28mm;top:-32mm}.cert:after{left:-34mm;bottom:-38mm;transform:rotate(12deg)}.curve1,.curve2{position:absolute;border:5mm solid #fff;border-radius:50%;z-index:1;opacity:.96}.curve1{width:190mm;height:100mm;right:-42mm;top:-64mm}.curve2{width:190mm;height:100mm;left:-44mm;bottom:-68mm}.inner{position:relative;z-index:2;height:100%;border:1px solid #ff8a3d;padding:10mm 14mm;display:flex;flex-direction:column;align-items:center;text-align:center}.logo{position:absolute;left:10mm;top:7mm;width:52mm;height:30mm;object-fit:contain;object-position:left top}.cert-no{position:absolute;right:10mm;top:8mm;color:#8a98a9;font-size:8px}.title{color:#e65116;font-size:28mm;letter-spacing:2.5mm;font-weight:700;margin:22mm 0 1mm}.given{color:#e65116;font-size:5mm;font-weight:800;letter-spacing:.4mm}.name{font-size:13mm;font-weight:800;margin:5mm 0 2mm}.desc{font-size:4.2mm;color:#4b5563;line-height:1.55}.program{display:flex;gap:20mm;margin:6mm 0 2mm;font-size:4.3mm}.program b{font-size:5mm;border-bottom:1px dotted #f15a24;padding:0 8mm 1mm}.date{font-size:4mm;color:#555;margin-top:2mm}.scorebox{margin-top:6mm;border:1.5px solid #f15a24;border-radius:4mm;padding:4mm 18mm;min-width:90mm}.scorebox span{display:block;color:#f15a24;font-size:4mm;font-weight:800;margin-bottom:2mm}.scorebox b{font-size:7mm}.footer{margin-top:auto;width:100%;display:grid;grid-template-columns:1fr 1fr 1fr;align-items:end}.seal{font-size:14mm;color:#f15a24}.signature{text-align:center;grid-column:3}.signature .img{height:18mm;display:flex;align-items:end;justify-content:center}.signature img{max-height:18mm;max-width:55mm;object-fit:contain}.signature .line{border-top:1px solid #f15a24;padding-top:2mm;font-size:3.6mm}.signature strong{display:block;color:#f15a24;margin-top:1mm;font-size:4mm}.status-note{font-size:3.4mm;color:#64748b;margin-top:2mm}@media(max-width:900px){.cert{transform-origin:top left;margin:8px}.toolbar{position:sticky}}@media print{body{background:#fff}.toolbar{display:none}.cert{margin:0;box-shadow:none;border-radius:0}}</style></head><body><div class="toolbar"><button class="primary" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button onclick="window.close()">Tutup</button></div><section class="cert"><div class="curve1"></div><div class="curve2"></div><div class="inner"><img class="logo" src="${logo}"><div class="cert-no">No. ${annualExamEscape(exam.certificateNo||'-')}</div><div class="title">SERTIFIKAT</div><div class="given">— DIBERIKAN KEPADA —</div><div class="name">${annualExamEscape(exam.studentName)}</div><div class="desc">Telah berhasil menyelesaikan dan ${String(exam.resultStatus).toLowerCase()==='lulus'?'lulus':'mengikuti'} ujian tahunan<br>di Legacy Music Center</div><div class="program"><div><span style="color:#f15a24;font-weight:800">PROGRAM</span> <b>${annualExamEscape(exam.instrument)}</b></div><div><span style="color:#f15a24;font-weight:800">GRADE</span> <b>${annualExamEscape(exam.gradeExam)}</b></div></div><div class="date">yang diselenggarakan pada tanggal <b style="color:#f15a24">${annualExamEscape(issue)}</b></div><div class="scorebox"><span>NILAI AKHIR</span><b>${annualExamEscape(exam.finalScore)} (${annualExamEscape(exam.predicate)})</b></div><div class="status-note">Status: ${annualExamEscape(exam.resultStatus)} • Menuju: ${annualExamEscape(exam.nextGrade)}</div><div class="footer"><div></div><div class="seal">🏅</div><div class="signature"><div class="img">${exam.headmasterSignatureUrl?`<img src="${annualExamEscape(exam.headmasterSignatureUrl)}">`:''}</div><div class="line">${annualExamEscape(headmaster)}</div><strong>HEAD MASTER</strong></div></div></div></section></body></html>`);w.document.close();
+    }
