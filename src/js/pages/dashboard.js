@@ -1796,6 +1796,38 @@
       }catch(err){btn.disabled=false;btn.textContent='Simpan Hasil Ujian';showAlert('alertDanger',err?.message||String(err));}
       return false;
     }
+    function publishAnnualExam(id){
+      const examID=String(id||'').trim();
+      if(!examID){showAlert('alertDanger','ID ujian tidak ditemukan.');return;}
+      if(!confirm('Kirim hasil ujian dan sertifikat ini ke akun siswa?')) return;
+      const buttons=[...document.querySelectorAll('.annual-exam-card-actions button')].filter(btn=>String(btn.getAttribute('onclick')||'').includes(`publishAnnualExam('${examID}')`));
+      buttons.forEach(btn=>{btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='Mengirim...';});
+      google.script.run.withSuccessHandler(res=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Kirim ke Siswa';});
+        if(res?.success){showAlert('alertSuccess',res.message||'Hasil ujian dan sertifikat berhasil dikirim ke siswa.');loadAnnualExamCenter();}
+        else showAlert('alertDanger',res?.message||'Gagal mengirim hasil ujian ke siswa.');
+      }).withFailureHandler(err=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Kirim ke Siswa';});
+        showAlert('alertDanger',err?.message||String(err));
+      }).publishAnnualExam(examID);
+    }
+
+    function deleteAnnualExam(id){
+      const examID=String(id||'').trim();
+      if(!examID){showAlert('alertDanger','ID ujian tidak ditemukan.');return;}
+      if(!confirm('Hapus hasil ujian ini? Data akan diarsipkan dan tidak akan tampil lagi di akun siswa.')) return;
+      const buttons=[...document.querySelectorAll('.annual-exam-card-actions button')].filter(btn=>String(btn.getAttribute('onclick')||'').includes(`deleteAnnualExam('${examID}')`));
+      buttons.forEach(btn=>{btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='Menghapus...';});
+      google.script.run.withSuccessHandler(res=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Hapus';});
+        if(res?.success){showAlert('alertSuccess',res.message||'Hasil ujian berhasil dihapus.');loadAnnualExamCenter();}
+        else showAlert('alertDanger',res?.message||'Gagal menghapus hasil ujian.');
+      }).withFailureHandler(err=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Hapus';});
+        showAlert('alertDanger',err?.message||String(err));
+      }).deleteAnnualExam(examID);
+    }
+
     function annualExamFetchDetail(id, callback){google.script.run.withSuccessHandler(res=>{if(res?.success&&res.exam)callback(res.exam);else showAlert('alertDanger',res?.message||'Data ujian tidak ditemukan.');}).withFailureHandler(err=>showAlert('alertDanger',err?.message||String(err))).getAnnualExam(id);}
     function openAnnualExamResult(id){annualExamFetchDetail(id,exam=>buildAnnualExamResultWindow(exam));}
     function openAnnualExamCertificate(id){annualExamFetchDetail(id,exam=>buildAnnualExamCertificateWindow(exam));}
