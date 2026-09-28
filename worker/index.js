@@ -87,6 +87,12 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
+  },
+
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(runClassReminderPush(env).catch(error => {
+      console.error('Scheduled class reminder push failed:', error);
+    }));
   }
 };
 
@@ -579,6 +585,17 @@ async function handleRpc(request, env, ctx) {
           })
         );
       }
+      if (method === 'updateJadwal' && studentId) {
+        ctx.waitUntil((async()=>{
+          const scheduleId=String(result.jadwalID||payload.jadwalID||'').trim();
+          const rows=scheduleId?await sbRows(env,'schedules',{schedule_id:`eq.${scheduleId}`,limit:'1'}).catch(()=>[]):[];
+          const row=rows[0]||{};
+          const note={title:'Jadwal Kelas Diperbarui',body:pushText(`${row.day_name||payload.hari||''} ${formatDbTime(row.start_time)||payload.jamMulai||''} · ${row.room||payload.ruangan||'-'}`),url:'/',tag:'schedule-'+(scheduleId||studentId)};
+          const recipients=[{role:'siswa',id:studentId}];
+          const teacherId=String(row.teacher_id||payload.guruID||'').trim(); if(teacherId) recipients.push({role:'guru',id:teacherId});
+          await pushToUniqueRecipients(env,recipients,note);
+        })().catch(error=>console.error('Schedule push failed:',error)));
+      }
     }
 
     return json({ ok:true, data:result });
@@ -622,6 +639,9 @@ async function handleRpc(request, env, ctx) {
             console.error(`Apps Script attendance shadow failed for ${method}:`, error);
           })
         );
+        const a=result.attendance||{};
+        const studentId=String(a.student_id||a.siswaID||payload.siswaID||'').trim();
+        if(studentId) ctx.waitUntil(sendPushToUser(env,'siswa',studentId,{title:'Absensi Kelas Diperbarui',body:pushText(`Status: ${a.status||payload.status||'-'}${a.material||payload.materi?` · Materi: ${a.material||payload.materi}`:''}`),url:'/',tag:'attendance-'+String(a.attendance_id||a.absensiID||Date.now())}).catch(error=>console.error('Attendance push failed:',error)));
       }
     }
 
@@ -706,6 +726,14 @@ async function handleRpc(request, env, ctx) {
               console.error(`Apps Script task shadow failed for ${method}:`, error);
             })
           );
+          const a=result.assignment||{};
+          if(method==='addTugasCombined'){
+            const studentId=String(a.student_id||a.siswaID||payload.siswaID||'').trim();
+            if(studentId) ctx.waitUntil(sendPushToUser(env,'siswa',studentId,{title:'Tugas Baru',body:pushText(a.title||a.judulTugas||payload.judulTugas||'Ada tugas baru dari guru.'),url:'/',tag:'task-'+String(a.assignment_id||a.tugasID||Date.now())}).catch(error=>console.error('New task push failed:',error)));
+          } else if(method==='submitTugasJawaban'){
+            const teacherId=String(a.teacher_id||a.guruID||payload.guruID||'').trim();
+            if(teacherId) ctx.waitUntil(sendPushToUser(env,'guru',teacherId,{title:'Jawaban Tugas Masuk',body:pushText(`${a.student_name_snapshot||a.namaSiswa||session.userName||'Siswa'} telah mengirim jawaban tugas ${a.title||a.judulTugas||''}.`),url:'/',tag:'task-answer-'+String(a.assignment_id||a.tugasID||Date.now())}).catch(error=>console.error('Task answer push failed:',error)));
+          }
         }
       }
 
@@ -769,6 +797,9 @@ async function handleRpc(request, env, ctx) {
               console.error('Apps Script progress shadow failed:', error);
             })
           );
+          const pr=result.progress||{};
+          const studentId=String(pr.student_id||pr.siswaID||payload.siswaID||'').trim();
+          if(studentId) ctx.waitUntil(sendPushToUser(env,'siswa',studentId,{title:'Progress Belajar Diperbarui',body:pushText(`Progress ${pr.period||pr.periode||payload.periode||''} telah diperbarui oleh guru.`),url:'/',tag:'progress-'+String(pr.progress_id||pr.progressID||Date.now())}).catch(error=>console.error('Progress push failed:',error)));
         }
       }
 
@@ -814,6 +845,14 @@ async function handleRpc(request, env, ctx) {
             console.error('Apps Script replacement shadow failed:', error);
           })
         );
+        const r=result.replacement||{};
+        const studentId=String(r.student_id||r.siswaID||payload.siswaID||'').trim();
+        const teacherId=String(r.teacher_id||r.guruID||payload.guruID||'').trim();
+        const date=formatDbDateIso(r.scheduled_date)||payload.tanggalPelaksanaan||'';
+        const time=formatDbTime(r.start_time)||payload.jamMulai||'';
+        const note={title:'Jadwal Pengganti',body:pushText(`${date} · ${time} · ${r.room||payload.ruangan||'-'}`),url:'/',tag:'replacement-'+String(r.replacement_id||r.penggantiID||Date.now())};
+        const recipients=[]; if(studentId) recipients.push({role:'siswa',id:studentId}); if(teacherId) recipients.push({role:'guru',id:teacherId});
+        ctx.waitUntil(pushToUniqueRecipients(env,recipients,note).catch(error=>console.error('Replacement push failed:',error)));
       }
     }
 
@@ -857,6 +896,7 @@ async function handleRpc(request, env, ctx) {
             console.error('Apps Script announcement shadow failed:', error);
           })
         );
+        ctx.waitUntil(pushAnnouncementAudience(env,result.announcement).catch(error=>console.error('Announcement push failed:',error)));
       }
     }
 
@@ -2912,6 +2952,133 @@ async function gasRpc(env, method, args) {
   return parsed.data;
 }
 
+
+
+function pushText(value, max=180) {
+  const clean = String(value == null ? '' : value).replace(/\s+/g,' ').trim();
+  return clean.length > max ? clean.slice(0, Math.max(1,max-1)) + '…' : clean;
+}
+
+async function pushUsersForRole(env, role) {
+  const rows = await supabaseRest(env, `/rest/v1/push_subscriptions?user_type=eq.${encodeURIComponent(String(role||''))}&active=eq.true&select=user_id`, { method:'GET' });
+  return [...new Set((Array.isArray(rows)?rows:[]).map(r=>String(r.user_id||'').trim()).filter(Boolean))];
+}
+
+async function pushAllActiveUsers(env, notification, roles=['siswa','guru','admin']) {
+  let sent=0, failed=0;
+  for (const role of roles) {
+    const ids = await pushUsersForRole(env, role);
+    for (const id of ids) {
+      const r = await sendPushToUser(env, role, id, notification);
+      sent += Number(r.sent||0); failed += Number(r.failed||0);
+    }
+  }
+  return {sent,failed};
+}
+
+async function pushToUniqueRecipients(env, recipients, notification) {
+  const seen=new Set(); let sent=0, failed=0;
+  for (const item of Array.isArray(recipients)?recipients:[]) {
+    const role=String(item&&item.role||'').trim();
+    const id=String(item&&item.id||'').trim();
+    if(!role||!id) continue;
+    const key=role+':'+id; if(seen.has(key)) continue; seen.add(key);
+    const r=await sendPushToUser(env,role,id,notification);
+    sent += Number(r.sent||0); failed += Number(r.failed||0);
+  }
+  return {sent,failed};
+}
+
+async function findTeacherByIdOrName(env, value) {
+  const v=String(value||'').trim(); if(!v) return null;
+  let rows=await sbRows(env,'teachers',{teacher_id:`eq.${v}`,limit:'1'}).catch(()=>[]);
+  if(rows[0]) return rows[0];
+  rows=await sbRows(env,'teachers',{name:`eq.${v}`,limit:'1'}).catch(()=>[]);
+  return rows[0]||null;
+}
+
+async function findStudentByIdOrName(env, idValue, nameValue='') {
+  const id=String(idValue||'').trim();
+  if(id){const rows=await sbRows(env,'students',{student_id:`eq.${id}`,limit:'1'}).catch(()=>[]); if(rows[0]) return rows[0];}
+  const name=String(nameValue||'').trim();
+  if(name){const rows=await sbRows(env,'students',{name:`eq.${name}`,limit:'1'}).catch(()=>[]); if(rows[0]) return rows[0];}
+  return null;
+}
+
+async function teacherRecipientsForStudent(env, studentId) {
+  const id=String(studentId||'').trim(); if(!id) return [];
+  const rows=await sbRows(env,'student_classes',{student_id:`eq.${id}`,status:'eq.Aktif'}).catch(()=>[]);
+  return [...new Set(rows.map(r=>String(r.teacher_id||'').trim()).filter(Boolean))].map(id=>({role:'guru',id}));
+}
+
+async function pushAnnouncementAudience(env, announcement) {
+  const a=announcement||{};
+  const target=String(a.target||'semua').trim().toLowerCase();
+  const title=pushText(a.title||a.judul||'Pengumuman Legacy Music Center',90);
+  const body=pushText(a.body||a.isi||'Ada pengumuman baru.',220);
+  const notification={title,body,url:'/',tag:'announcement-'+String(a.announcement_id||a.pengumumanID||Date.now())};
+  if(target==='semua') return pushAllActiveUsers(env,notification,['siswa','guru','admin']);
+  const recipients=[];
+  for(const id of await pushUsersForRole(env,'admin')) recipients.push({role:'admin',id});
+  if(target==='semua_siswa') {
+    for(const id of await pushUsersForRole(env,'siswa')) recipients.push({role:'siswa',id});
+  } else if(target==='semua_guru') {
+    for(const id of await pushUsersForRole(env,'guru')) recipients.push({role:'guru',id});
+  } else if(target==='siswa_tertentu') {
+    const student=await findStudentByIdOrName(env,a.target_student_id||a.targetSiswaID,a.target_detail||a.targetDetail);
+    if(student&&student.student_id){
+      recipients.push({role:'siswa',id:student.student_id});
+      recipients.push(...await teacherRecipientsForStudent(env,student.student_id));
+    }
+  } else if(target==='guru_tertentu') {
+    const teacher=await findTeacherByIdOrName(env,a.target_detail||a.targetDetail);
+    if(teacher&&teacher.teacher_id) recipients.push({role:'guru',id:teacher.teacher_id});
+  }
+  return pushToUniqueRecipients(env,recipients,notification);
+}
+
+function jakartaNowParts(date=new Date()) {
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',weekday:'long',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);
+  const out={}; for(const p of parts) if(p.type!=='literal') out[p.type]=p.value;
+  return {date:`${out.year}-${out.month}-${out.day}`,weekday:String(out.weekday||'').toLowerCase(),hour:Number(out.hour||0),minute:Number(out.minute||0)};
+}
+
+function weekdayIndonesianFromEnglish(v){return ({sunday:'minggu',monday:'senin',tuesday:'selasa',wednesday:'rabu',thursday:'kamis',friday:'jumat',saturday:'sabtu'})[String(v||'').toLowerCase()]||'';}
+function dbTimeToMinutes(v){const m=String(v||'').match(/^(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null;}
+
+async function claimPushEvent(env,eventKey,userType,userId){
+  try{
+    await supabaseRest(env,'/rest/v1/push_delivery_events',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({event_key:eventKey,user_type:userType,user_id:userId})});
+    return true;
+  }catch(error){
+    const msg=String(error&&error.message?error.message:error);
+    if(/duplicate|unique|409|23505/i.test(msg)) return false;
+    throw error;
+  }
+}
+
+async function runClassReminderPush(env){
+  if(!hasSupabaseConfig(env)) return {sent:0,failed:0};
+  if(!String(env.VAPID_PUBLIC_KEY||'').trim()||!String(env.VAPID_PRIVATE_KEY||'').trim()) return {sent:0,failed:0,skipped:true};
+  const now=jakartaNowParts(); const day=weekdayIndonesianFromEnglish(now.weekday); if(!day) return {sent:0,failed:0};
+  const rows=(await sbRows(env,'schedules',{}).catch(()=>[])).filter(r=>String(r.day_name||'').trim().toLowerCase()===day&&String(r.status||'Aktif').trim().toLowerCase()!=='nonaktif');
+  const current=now.hour*60+now.minute; let sent=0,failed=0;
+  for(const row of rows){
+    const start=dbTimeToMinutes(row.start_time); if(start==null) continue;
+    const delta=start-current; if(delta<45||delta>60) continue;
+    const label=`${formatDbTime(row.start_time)||''} · ${row.room||'-'}`;
+    const notification={title:'Pengingat Kelas',body:`Kelas ${row.instrument||'musik'} akan dimulai sekitar 1 jam lagi. ${label}`,url:'/',tag:`class-${now.date}-${row.schedule_id||''}`};
+    const recipients=[];
+    if(row.student_id) recipients.push({role:'siswa',id:String(row.student_id)});
+    if(row.teacher_id) recipients.push({role:'guru',id:String(row.teacher_id)});
+    for(const rec of recipients){
+      const eventKey=`class:${now.date}:${row.schedule_id||''}:${rec.role}:${rec.id}`;
+      if(!(await claimPushEvent(env,eventKey,rec.role,rec.id))) continue;
+      const r=await sendPushToUser(env,rec.role,rec.id,notification); sent+=Number(r.sent||0); failed+=Number(r.failed||0);
+    }
+  }
+  return {sent,failed};
+}
 
 async function listPushSubscriptions(env, userType, userId) {
   if (!hasSupabaseConfig(env)) throw new Error('Konfigurasi Supabase belum lengkap.');
