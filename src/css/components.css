@@ -41,3 +41,10 @@
     .fc-daygrid-day-number { font-size: 12px; font-weight: 600; color: #64748b; padding: 4px 8px !important; }
     .fc-day-today { background: #fff7ed !important; }
 
+
+
+/* Push Notification settings */
+.push-settings{border:1px solid #fed7c5;background:linear-gradient(135deg,#fffaf7,#fff);border-radius:16px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.push-settings-copy{display:flex;align-items:flex-start;gap:12px;min-width:0;flex:1}.push-settings-icon{width:44px;height:44px;border-radius:14px;background:#fff0e8;display:grid;place-items:center;font-size:22px;flex:0 0 auto}.push-settings h3{margin:0 0 4px;font-size:16px}.push-settings p{margin:0 0 8px;color:#64748b;font-size:12px;line-height:1.45}.push-status{font-size:11px;font-weight:750;color:#475569}.push-status[data-tone="success"]{color:#15803d}.push-status[data-tone="warning"]{color:#b45309}.push-status[data-tone="danger"]{color:#b91c1c}.push-settings-actions{display:flex;gap:8px;flex-wrap:wrap}.push-settings-help{display:block;width:100%;color:#94a3b8;line-height:1.45}.btn-danger-outline{background:#fff;color:#b91c1c;border:1px solid #fecaca}.btn-secondary{background:#fff0e8;color:#c2410c;border:1px solid #fed7c5}
+html[data-theme="dark"] .push-settings{background:#111b2e;border-color:#34445e}.push-settings h3{color:var(--text,#17232d)}html[data-theme="dark"] .push-settings h3{color:#f8fafc}html[data-theme="dark"] .push-settings p,html[data-theme="dark"] .push-settings-help{color:#94a3b8}html[data-theme="dark"] .push-settings-icon{background:#1e293b}
+@media(max-width:700px){.push-settings{align-items:stretch}.push-settings-actions{display:grid;grid-template-columns:1fr;width:100%}.push-settings-actions .btn{width:100%}}

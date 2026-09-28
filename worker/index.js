@@ -2,7 +2,8 @@ const COOKIE_NAME = 'legacy_api_session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 const COMMON = new Set([
-  'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report'
+  'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
+  'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest'
 ]);
 const STUDENT = new Set([...COMMON, 'submitTugasJawaban', 'listAnnualExams', 'getAnnualExam']);
 const TEACHER = new Set([
@@ -145,6 +146,72 @@ async function handleRpc(request, env, ctx) {
   if (!session) return json({ ok:false, error:'Sesi login tidak valid atau sudah berakhir.' }, 401);
   if (!isAllowed(session.userType, method)) return json({ ok:false, error:'Akses fungsi ditolak.' }, 403);
 
+  if (method === 'getPushConfig') {
+    const publicKey = String(env.VAPID_PUBLIC_KEY || '').trim();
+    return json({ ok:true, data:{
+      success:Boolean(publicKey),
+      publicKey,
+      configured:Boolean(publicKey && String(env.VAPID_PRIVATE_KEY || '').trim()),
+      message:publicKey ? 'Push notification siap digunakan.' : 'VAPID key belum dikonfigurasi.'
+    } });
+  }
+
+  if (method === 'getPushStatus') {
+    try {
+      const rows = await listPushSubscriptions(env, session.userType, session.userID);
+      return json({ ok:true, data:{ success:true, activeCount:rows.length } });
+    } catch (error) {
+      console.error('Push status error:', error);
+      return json({ ok:true, data:{ success:false, activeCount:0, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'savePushSubscription') {
+    try {
+      const result = await savePushSubscriptionSupabase(env, session, args[0] || {});
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Save push subscription error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'removePushSubscription') {
+    try {
+      const result = await removePushSubscriptionSupabase(env, session, String(args[0] || '').trim());
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Remove push subscription error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'sendPushTest') {
+    try {
+      const role = session.userType;
+      const userId = session.userID;
+      const userName = session.userName;
+      const job = (async () => {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const result = await sendPushToUser(env, role, userId, {
+          title:'Legacy Music Center',
+          body:`Halo ${userName || 'User'}, push notification tetap aktif walaupun PWA ditutup.`,
+          url:'/',
+          tag:'legacy-push-test'
+        });
+        console.log('Push test result:', result);
+      })();
+      if (ctx) ctx.waitUntil(job); else await job;
+      return json({ ok:true, data:{
+        success:true,
+        message:'Notifikasi tes akan dikirim sekitar 5 detik lagi. Tutup PWA sekarang untuk menguji notifikasi background.'
+      } });
+    } catch (error) {
+      console.error('Push test error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
   // PHASE 2: guru list is now read from Supabase.
   if (method === 'getGuruList') {
     try {
@@ -203,6 +270,14 @@ async function handleRpc(request, env, ctx) {
       const progressId = String(args[1] || '').trim();
       const signatureMode = String(args[2] || '').toLowerCase() === 'manual' ? 'manual' : 'uploaded';
       const result = await publishStudent360ReportSupabase(env, session, studentId, progressId, signatureMode);
+      if (result && result.success && ctx) {
+        ctx.waitUntil(sendPushToUser(env, 'siswa', studentId, {
+          title:'Laporan Perkembangan Tersedia',
+          body:'Laporan perkembangan terbaru Anda sudah tersedia di Legacy Music Center.',
+          url:'/?open=section-laporan',
+          tag:'student360-' + String(result.reportID || progressId || studentId)
+        }).catch(error => console.error('Student 360 push failed:', error)));
+      }
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Publish Student 360 report error:', error);
@@ -259,7 +334,17 @@ async function handleRpc(request, env, ctx) {
   if (method === 'publishAnnualExam') {
     try {
       if (!['guru','admin'].includes(session.userType)) throw new Error('Akses kirim sertifikat ditolak.');
-      const result = await publishAnnualExamSupabase(env, session, String(args[0] || '').trim());
+      const examId = String(args[0] || '').trim();
+      const examBeforePublish = await getAnnualExamSupabase(env, session, examId);
+      const result = await publishAnnualExamSupabase(env, session, examId);
+      if (result && result.success && ctx && examBeforePublish && examBeforePublish.studentID) {
+        ctx.waitUntil(sendPushToUser(env, 'siswa', examBeforePublish.studentID, {
+          title:'Sertifikat Ujian Tersedia',
+          body:`Hasil ujian ${examBeforePublish.instrument || 'musik'} dan sertifikat Anda sudah tersedia.`,
+          url:'/?open=section-annual-exam',
+          tag:'annual-exam-' + examId
+        }).catch(error => console.error('Annual exam push failed:', error)));
+      }
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Annual exam publish error:', error);
@@ -2825,6 +2910,201 @@ async function gasRpc(env, method, args) {
 
   if (!parsed.ok) throw new Error(parsed.error || 'Apps Script RPC gagal.');
   return parsed.data;
+}
+
+
+async function listPushSubscriptions(env, userType, userId) {
+  if (!hasSupabaseConfig(env)) throw new Error('Konfigurasi Supabase belum lengkap.');
+  const role = String(userType || '').trim();
+  const id = String(userId || '').trim();
+  if (!role || !id) return [];
+  const path = `/rest/v1/push_subscriptions?user_type=eq.${encodeURIComponent(role)}&user_id=eq.${encodeURIComponent(id)}&active=eq.true&select=id,endpoint,p256dh,auth`;
+  const rows = await supabaseRest(env, path, { method:'GET' });
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function savePushSubscriptionSupabase(env, session, payload) {
+  if (!hasSupabaseConfig(env)) throw new Error('Konfigurasi Supabase belum lengkap.');
+  const endpoint = String(payload && payload.endpoint || '').trim();
+  const keys = payload && payload.keys && typeof payload.keys === 'object' ? payload.keys : {};
+  const p256dh = String(keys.p256dh || '').trim();
+  const auth = String(keys.auth || '').trim();
+  if (!endpoint || !p256dh || !auth) throw new Error('Data subscription push tidak lengkap.');
+  if (!/^https:\/\//i.test(endpoint)) throw new Error('Endpoint push tidak valid.');
+
+  const body = {
+    user_id:String(session.userID || '').trim(),
+    user_type:String(session.userType || '').trim(),
+    endpoint,
+    p256dh,
+    auth,
+    expiration_time:payload.expirationTime == null ? null : (Number.isFinite(Number(payload.expirationTime)) ? Number(payload.expirationTime) : null),
+    user_agent:String(payload.userAgent || '').slice(0,500),
+    platform:String(payload.platform || '').slice(0,120),
+    standalone:Boolean(payload.standalone),
+    active:true,
+    updated_at:new Date().toISOString(),
+    last_error:null
+  };
+
+  await supabaseRest(env, '/rest/v1/push_subscriptions?on_conflict=endpoint', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates,return=minimal' },
+    body:JSON.stringify(body)
+  });
+  return { success:true, message:'Push notification aktif di perangkat ini.' };
+}
+
+async function removePushSubscriptionSupabase(env, session, endpoint) {
+  if (!endpoint) return { success:true, message:'Push notification sudah nonaktif.' };
+  const path = `/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}&user_type=eq.${encodeURIComponent(String(session.userType || ''))}&user_id=eq.${encodeURIComponent(String(session.userID || ''))}`;
+  await supabaseRest(env, path, {
+    method:'PATCH',
+    headers:{ 'Content-Type':'application/json', Prefer:'return=minimal' },
+    body:JSON.stringify({ active:false, updated_at:new Date().toISOString() })
+  });
+  return { success:true, message:'Push notification dinonaktifkan di perangkat ini.' };
+}
+
+async function sendPushToUser(env, userType, userId, notification) {
+  if (!String(env.VAPID_PUBLIC_KEY || '').trim() || !String(env.VAPID_PRIVATE_KEY || '').trim()) {
+    return { sent:0, failed:0, skipped:true };
+  }
+  const rows = await listPushSubscriptions(env, userType, userId);
+  let sent = 0, failed = 0;
+  for (const row of rows) {
+    try {
+      const result = await sendWebPush(env, row, notification || {});
+      if (result.ok) {
+        sent++;
+        await updatePushDeliveryState(env, row.endpoint, true, '');
+      } else {
+        failed++;
+        await updatePushDeliveryState(env, row.endpoint, false, `HTTP ${result.status}: ${result.text || ''}`);
+        if (result.status === 404 || result.status === 410) await deactivatePushEndpoint(env, row.endpoint);
+      }
+    } catch (error) {
+      failed++;
+      const message = String(error && error.message ? error.message : error);
+      await updatePushDeliveryState(env, row.endpoint, false, message).catch(() => {});
+    }
+  }
+  return { sent, failed };
+}
+
+async function updatePushDeliveryState(env, endpoint, success, errorMessage) {
+  const path = `/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(String(endpoint || ''))}`;
+  const patch = success
+    ? { last_success_at:new Date().toISOString(), last_error:null, updated_at:new Date().toISOString() }
+    : { last_error:String(errorMessage || '').slice(0,500), updated_at:new Date().toISOString() };
+  await supabaseRest(env, path, { method:'PATCH', headers:{'Content-Type':'application/json',Prefer:'return=minimal'}, body:JSON.stringify(patch) });
+}
+
+async function deactivatePushEndpoint(env, endpoint) {
+  const path = `/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(String(endpoint || ''))}`;
+  await supabaseRest(env, path, { method:'PATCH', headers:{'Content-Type':'application/json',Prefer:'return=minimal'}, body:JSON.stringify({active:false,updated_at:new Date().toISOString()}) });
+}
+
+async function sendWebPush(env, subscription, notification) {
+  const endpoint = String(subscription && subscription.endpoint || '').trim();
+  if (!endpoint) throw new Error('Endpoint push kosong.');
+  const payload = new TextEncoder().encode(JSON.stringify({
+    title:String(notification.title || 'Legacy Music Center'),
+    body:String(notification.body || 'Ada informasi baru untuk Anda.'),
+    url:String(notification.url || '/'),
+    tag:String(notification.tag || 'legacy-notification'),
+    icon:'/icons/icon-192.png',
+    badge:'/icons/icon-192.png'
+  }));
+  const encrypted = await encryptWebPushPayload(payload, String(subscription.p256dh || ''), String(subscription.auth || ''));
+  const authorization = await createVapidAuthorization(endpoint, env);
+  const response = await fetch(endpoint, {
+    method:'POST',
+    headers:{
+      TTL:'2419200',
+      Urgency:'normal',
+      'Content-Type':'application/octet-stream',
+      'Content-Encoding':'aes128gcm',
+      Authorization:authorization
+    },
+    body:encrypted
+  });
+  const text = response.ok ? '' : await response.text().catch(() => '');
+  return { ok:response.ok, status:response.status, text:text.slice(0,300) };
+}
+
+async function createVapidAuthorization(endpoint, env) {
+  const publicRaw = base64urlDecode(String(env.VAPID_PUBLIC_KEY || '').trim());
+  const privateRaw = base64urlDecode(String(env.VAPID_PRIVATE_KEY || '').trim());
+  if (publicRaw.length !== 65 || publicRaw[0] !== 4 || privateRaw.length !== 32) throw new Error('Format VAPID key tidak valid.');
+  const x = publicRaw.slice(1,33), y = publicRaw.slice(33,65);
+  const jwk = { kty:'EC', crv:'P-256', x:base64urlEncode(x), y:base64urlEncode(y), d:base64urlEncode(privateRaw), ext:false, key_ops:['sign'] };
+  const key = await crypto.subtle.importKey('jwk', jwk, {name:'ECDSA',namedCurve:'P-256'}, false, ['sign']);
+  const aud = new URL(endpoint).origin;
+  const now = Math.floor(Date.now()/1000);
+  const header = base64urlEncode(new TextEncoder().encode(JSON.stringify({typ:'JWT',alg:'ES256'})));
+  const body = base64urlEncode(new TextEncoder().encode(JSON.stringify({aud,exp:now + 12*60*60,sub:String(env.VAPID_SUBJECT || 'mailto:admin@legacy.sch.id')})));
+  const signingInput = `${header}.${body}`;
+  const signature = new Uint8Array(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'}, key, new TextEncoder().encode(signingInput)));
+  const jwt = `${signingInput}.${base64urlEncode(signature)}`;
+  return `vapid t=${jwt}, k=${String(env.VAPID_PUBLIC_KEY || '').trim()}`;
+}
+
+async function encryptWebPushPayload(payloadBytes, clientPublicKeyB64, authSecretB64) {
+  const clientPublic = base64urlDecode(clientPublicKeyB64);
+  const authSecret = base64urlDecode(authSecretB64);
+  if (clientPublic.length !== 65 || clientPublic[0] !== 4) throw new Error('p256dh subscription tidak valid.');
+  if (!authSecret.length) throw new Error('Auth secret subscription tidak valid.');
+
+  const clientKey = await crypto.subtle.importKey('raw', clientPublic, {name:'ECDH',namedCurve:'P-256'}, false, []);
+  const serverKeys = await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'}, true, ['deriveBits']);
+  const serverPublic = new Uint8Array(await crypto.subtle.exportKey('raw', serverKeys.publicKey));
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({name:'ECDH',public:clientKey}, serverKeys.privateKey, 256));
+
+  const prkKey = await hkdfExtract(authSecret, shared);
+  const keyInfo = concatBytes(new TextEncoder().encode('WebPush: info\0'), clientPublic, serverPublic);
+  const ikm = await hkdfExpand(prkKey, keyInfo, 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const prk = await hkdfExtract(salt, ikm);
+  const cek = await hkdfExpand(prk, new TextEncoder().encode('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = await hkdfExpand(prk, new TextEncoder().encode('Content-Encoding: nonce\0'), 12);
+  const plaintext = concatBytes(payloadBytes, new Uint8Array([2]));
+  const aesKey = await crypto.subtle.importKey('raw', cek, {name:'AES-GCM'}, false, ['encrypt']);
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,tagLength:128}, aesKey, plaintext));
+
+  const recordSize = 4096;
+  const rs = new Uint8Array(4);
+  new DataView(rs.buffer).setUint32(0, recordSize, false);
+  return concatBytes(salt, rs, new Uint8Array([serverPublic.length]), serverPublic, ciphertext);
+}
+
+async function hkdfExtract(salt, ikm) {
+  return hmacSha256(salt, ikm);
+}
+
+async function hkdfExpand(prk, info, length) {
+  let previous = new Uint8Array(0);
+  let output = new Uint8Array(0);
+  let counter = 1;
+  while (output.length < length) {
+    previous = await hmacSha256(prk, concatBytes(previous, info, new Uint8Array([counter])));
+    output = concatBytes(output, previous);
+    counter++;
+  }
+  return output.slice(0,length);
+}
+
+async function hmacSha256(keyBytes, dataBytes) {
+  const key = await crypto.subtle.importKey('raw', keyBytes, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, dataBytes));
+}
+
+function concatBytes(...arrays) {
+  const total = arrays.reduce((sum,item) => sum + item.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const item of arrays) { out.set(item, offset); offset += item.length; }
+  return out;
 }
 
 function parseCookies(request) {
