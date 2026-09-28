@@ -66,5 +66,6 @@
 
       buildNavigation();
       fetchDashboardData();
+      if (typeof initializePushNotifications === 'function') initializePushNotifications();
     }
 

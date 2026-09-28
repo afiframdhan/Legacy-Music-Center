@@ -2,6 +2,8 @@
 <html>
 <head>
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#F15A24">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Legacy Music Center">
@@ -1053,6 +1055,24 @@
                   <span class="theme-option-icon">◐</span><span class="theme-option-label">Otomatis</span>
                 </button>
               </div>
+            </section>
+
+
+            <section class="push-settings" id="pushNotificationSettings" aria-labelledby="pushNotificationTitle">
+              <div class="push-settings-copy">
+                <div class="push-settings-icon">🔔</div>
+                <div>
+                  <h3 id="pushNotificationTitle">Push Notification</h3>
+                  <p>Aktifkan agar notifikasi Legacy tetap masuk walaupun PWA sedang tidak dibuka.</p>
+                  <div id="pushNotificationStatus" class="push-status" data-tone="neutral">Memeriksa dukungan notifikasi...</div>
+                </div>
+              </div>
+              <div class="push-settings-actions">
+                <button type="button" id="btnEnablePush" class="btn btn-primary" onclick="enablePushNotifications()">Aktifkan Notifikasi</button>
+                <button type="button" id="btnTestPush" class="btn btn-secondary" onclick="sendPushTest()" style="display:none;">Kirim Notifikasi Tes</button>
+                <button type="button" id="btnDisablePush" class="btn btn-danger-outline" onclick="disablePushNotifications()" style="display:none;">Nonaktifkan</button>
+              </div>
+              <small class="push-settings-help">Untuk iPhone: tambahkan aplikasi ke Home Screen, buka dari ikon Home Screen, lalu tekan Aktifkan Notifikasi.</small>
             </section>
 
             <form id="formEditProfileSelf" onsubmit="return handleSaveSelfProfile(event)">

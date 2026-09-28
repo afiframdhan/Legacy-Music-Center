@@ -5,20 +5,36 @@
   "compatibility_date": "2026-09-21",
   "build": {
     "command": "npm run build",
-    "watch_dir": ["src", "public/index.html", "worker"]
+    "watch_dir": [
+      "src",
+      "public/index.html",
+      "worker"
+    ]
   },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
   "env": {
     "test": {
-      "name": "legacy-music-center-test"
+      "name": "legacy-music-center-test",
+      "triggers": {
+        "crons": [
+          "*/15 * * * *"
+        ]
+      }
     },
     "production": {
-      "name": "legacy-music-center"
+      "name": "legacy-music-center",
+      "triggers": {
+        "crons": [
+          "*/15 * * * *"
+        ]
+      }
     }
   }
 }

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 
 const jsSources = [
   'src/js/services/api.js',
+  'src/js/core/push-notifications.js',
   'src/js/state.js',
   'src/js/core/vendor-loader.js',
   'src/js/core/theme-session.js',
