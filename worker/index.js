@@ -31,7 +31,7 @@ export default {
       return json({
         ok: true,
         service: 'legacy-music-center-api',
-        loginBackend: hasSupabaseConfig(env) ? 'supabase-bcrypt+legacy-pbkdf2' : 'unconfigured',
+        loginBackend: hasSupabaseConfig(env) ? 'supabase-bcrypt-optimized' : 'unconfigured',
         guruBackend: hasSupabaseConfig(env) ? 'supabase-direct-write-apps-script-shadow' : 'unconfigured',
         siswaBackend: hasSupabaseConfig(env) ? 'supabase-direct-write-apps-script-shadow' : 'unconfigured',
         jadwalBackend: hasSupabaseConfig(env) ? 'supabase-direct-write-apps-script-shadow' : 'unconfigured',
@@ -1087,47 +1087,48 @@ async function verifyLoginSupabaseRpc(env, args) {
     return { success:false, message:'Username dan password wajib diisi.' };
   }
 
-  // Primary path: verify the stored PBKDF2 credentials directly in the Worker.
-  // Do NOT call verify_legacy_login RPC here because that RPC is known to hit
-  // Supabase statement_timeout when invoked through PostgREST.
-  try {
-    const direct = await verifyImportedPbkdf2Login(env, role, username, password, true);
-    if (direct.success) {
-      const { accountFound, ...publicResult } = direct;
-      return publicResult;
+  // LOGIN v4: Supabase-only.
+  // The SQL function is optimized so PostgreSQL first isolates ONE account,
+  // then runs bcrypt crypt() only for that candidate. This avoids the old
+  // statement-timeout caused by crypt() being evaluated across many rows.
+  const response = await fetch(
+    `${stripTrailingSlash(env.SUPABASE_URL)}/rest/v1/rpc/verify_legacy_login`,
+    {
+      method:'POST',
+      headers:{
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type':'application/json',
+        Accept:'application/json'
+      },
+      body:JSON.stringify({
+        p_role: role,
+        p_username: username,
+        p_password: password
+      })
     }
+  );
 
-    // IMPORTANT: do not reject immediately when the stored PBKDF2 hash does not match.
-    // Some existing accounts still use the legacy/current password source in Apps Script,
-    // while the imported PBKDF2 fields can be stale. Fall through to Apps Script so
-    // existing admin/guru/siswa credentials keep working.
-  } catch (error) {
-    console.error('Direct Supabase PBKDF2 login failed:', error);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Supabase login HTTP ${response.status}: ${text.slice(0,500)}`);
   }
 
-  // Compatibility fallback: use the existing Apps Script login implementation.
-  // This keeps admin/guru/legacy accounts working without depending on the
-  // timeout-prone Supabase login RPC.
-  if (env.APPS_SCRIPT_URL && env.APPS_SCRIPT_TOKEN) {
-    try {
-      const legacy = await gasRpc(env, 'verifyLogin', [role, username, password]);
-      if (legacy && legacy.success === true) {
-        return {
-          success:true,
-          userID:String(legacy.userID || legacy.userId || ''),
-          userName:String(legacy.userName || legacy.nama || username),
-          userType:String(legacy.userType || role)
-        };
-      }
-      if (legacy && legacy.message) {
-        return { success:false, message:String(legacy.message) };
-      }
-    } catch (error) {
-      console.error('Apps Script login fallback failed:', error);
-    }
+  let rows;
+  try { rows = JSON.parse(text); }
+  catch (_) { throw new Error(`Supabase login non-JSON: ${text.slice(0,300)}`); }
+
+  const account = Array.isArray(rows) ? rows[0] : null;
+  if (!account) {
+    return { success:false, message:'Username / Password salah.' };
   }
 
-  return { success:false, message:'Username / Password salah.' };
+  return {
+    success:true,
+    userID:String(account.user_id || ''),
+    userName:String(account.display_name || ''),
+    userType:String(account.role || role)
+  };
 }
 
 async function verifyImportedPbkdf2Login(env, role, username, password, includeInternalState = false) {
