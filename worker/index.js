@@ -1097,11 +1097,10 @@ async function verifyLoginSupabaseRpc(env, args) {
       return publicResult;
     }
 
-    // If the account exists but the password does not match, return immediately.
-    // This avoids falling through to the slow SQL RPC.
-    if (direct.accountFound && direct.verificationCompleted) {
-      return { success:false, message:'Username / Password salah.' };
-    }
+    // IMPORTANT: do not reject immediately when the stored PBKDF2 hash does not match.
+    // Some existing accounts still use the legacy/current password source in Apps Script,
+    // while the imported PBKDF2 fields can be stale. Fall through to Apps Script so
+    // existing admin/guru/siswa credentials keep working.
   } catch (error) {
     console.error('Direct Supabase PBKDF2 login failed:', error);
   }
