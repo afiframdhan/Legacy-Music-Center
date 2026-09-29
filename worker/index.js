@@ -31,7 +31,7 @@ export default {
       return json({
         ok: true,
         service: 'legacy-music-center-api',
-        loginBackend: hasSupabaseConfig(env) ? 'supabase-bcrypt+legacy-pbkdf2' : 'unconfigured',
+        loginBackend: hasSupabaseConfig(env) ? 'supabase-bcrypt-optimized' : 'unconfigured',
         guruBackend: hasSupabaseConfig(env) ? 'supabase-direct-write-apps-script-shadow' : 'unconfigured',
         siswaBackend: hasSupabaseConfig(env) ? 'supabase-direct-write-apps-script-shadow' : 'unconfigured',
         jadwalBackend: hasSupabaseConfig(env) ? 'supabase-direct-write-apps-script-shadow' : 'unconfigured',
@@ -1087,6 +1087,10 @@ async function verifyLoginSupabaseRpc(env, args) {
     return { success:false, message:'Username dan password wajib diisi.' };
   }
 
+  // LOGIN v4: Supabase-only.
+  // The SQL function is optimized so PostgreSQL first isolates ONE account,
+  // then runs bcrypt crypt() only for that candidate. This avoids the old
+  // statement-timeout caused by crypt() being evaluated across many rows.
   const response = await fetch(
     `${stripTrailingSlash(env.SUPABASE_URL)}/rest/v1/rpc/verify_legacy_login`,
     {
@@ -1107,29 +1111,100 @@ async function verifyLoginSupabaseRpc(env, args) {
 
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Supabase RPC HTTP ${response.status}: ${text.slice(0,500)}`);
+    throw new Error(`Supabase login HTTP ${response.status}: ${text.slice(0,500)}`);
   }
 
   let rows;
   try { rows = JSON.parse(text); }
-  catch (_) { throw new Error(`Supabase RPC non-JSON: ${text.slice(0,300)}`); }
+  catch (_) { throw new Error(`Supabase login non-JSON: ${text.slice(0,300)}`); }
 
   const account = Array.isArray(rows) ? rows[0] : null;
-  if (account) {
-    return { success:true, userID:String(account.user_id || ''), userName:String(account.display_name || ''), userType:String(account.role || role) };
+  if (!account) {
+    return { success:false, message:'Username / Password salah.' };
   }
-  return verifyImportedPbkdf2Login(env, role, username, password);
+
+  return {
+    success:true,
+    userID:String(account.user_id || ''),
+    userName:String(account.display_name || ''),
+    userType:String(account.role || role)
+  };
 }
 
-async function verifyImportedPbkdf2Login(env, role, username, password) {
+async function verifyImportedPbkdf2Login(env, role, username, password, includeInternalState = false) {
+  // The table is small, but keep the query limited to the selected role and
+  // active accounts so login stays fast and predictable.
   const rows = await supabaseRest(env, `/rest/v1/auth_accounts?select=user_id,role,display_name,password_hash_b64,password_salt_b64,password_iterations,active&role=eq.${encodeURIComponent(role)}&active=eq.true&limit=500`);
-  const key=String(username||'').trim().toLowerCase();
-  const candidates=(Array.isArray(rows)?rows:[]).filter(row=>String(row.user_id||'').trim().toLowerCase()===key||String(row.display_name||'').trim().toLowerCase()===key);
-  for(const row of candidates){if(await verifyImportedPbkdf2Password(password,row.password_salt_b64,row.password_hash_b64,row.password_iterations)){return {success:true,userID:String(row.user_id||''),userName:String(row.display_name||''),userType:String(row.role||role)};}}
-  return {success:false,message:'Username / Password salah.'};
+  const key = String(username || '').trim().toLowerCase();
+  const candidates = (Array.isArray(rows) ? rows : []).filter(row =>
+    String(row.user_id || '').trim().toLowerCase() === key ||
+    String(row.display_name || '').trim().toLowerCase() === key
+  );
+
+  let verificationCompleted = false;
+  for (const row of candidates) {
+    const hasPbkdf2 = Boolean(row.password_salt_b64 && row.password_hash_b64);
+    if (!hasPbkdf2) continue;
+    try {
+      verificationCompleted = true;
+      if (await verifyImportedPbkdf2Password(password, row.password_salt_b64, row.password_hash_b64, row.password_iterations)) {
+        const result = {
+          success:true,
+          userID:String(row.user_id || ''),
+          userName:String(row.display_name || ''),
+          userType:String(row.role || role)
+        };
+        if (includeInternalState) {
+          result.accountFound = true;
+          result.verificationCompleted = true;
+        }
+        return result;
+      }
+    } catch (error) {
+      console.error('PBKDF2 verification failed for account:', String(row.user_id || row.display_name || ''), error);
+    }
+  }
+
+  const result = { success:false, message:'Username / Password salah.' };
+  if (includeInternalState) {
+    result.accountFound = candidates.length > 0;
+    result.verificationCompleted = verificationCompleted;
+  }
+  return result;
 }
-function importedBase64ToBytes(v){const b=atob(String(v||''));const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
-async function verifyImportedPbkdf2Password(password,saltB64,expectedB64,iterations){if(!saltB64||!expectedB64)return false;const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(String(password||'')),'PBKDF2',false,['deriveBits']);const expected=importedBase64ToBytes(expectedB64);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:importedBase64ToBytes(saltB64),iterations:Number(iterations||210000)},k,expected.length*8);const actual=new Uint8Array(bits);if(actual.length!==expected.length)return false;let diff=0;for(let i=0;i<actual.length;i++)diff|=actual[i]^expected[i];return diff===0;}
+
+function importedBase64ToBytes(value) {
+  let normalized = String(value || '').trim().replace(/-/g, '+').replace(/_/g, '/');
+  while (normalized.length % 4) normalized += '=';
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function verifyImportedPbkdf2Password(password, saltB64, expectedB64, iterations) {
+  if (!saltB64 || !expectedB64) return false;
+  const expected = importedBase64ToBytes(expectedB64);
+  if (!expected.length) return false;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(String(password || '')),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits({
+    name:'PBKDF2',
+    hash:'SHA-256',
+    salt:importedBase64ToBytes(saltB64),
+    iterations:Number(iterations || 210000)
+  }, key, expected.length * 8);
+  const actual = new Uint8Array(bits);
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
+  return diff === 0;
+}
 
 
 async function getGuruListSupabase(env) {
