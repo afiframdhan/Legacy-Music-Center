@@ -1087,6 +1087,17 @@ async function verifyLoginSupabaseRpc(env, args) {
     return { success:false, message:'Username dan password wajib diisi.' };
   }
 
+  // Fast path: verify the PBKDF2 credentials already stored in auth_accounts
+  // inside the Worker. This avoids the database RPC statement timeout that can
+  // occur when verify_legacy_login is called through PostgREST.
+  const fastResult = await verifyImportedPbkdf2Login(env, role, username, password, true);
+  if (fastResult.success || fastResult.accountFound) {
+    const { accountFound, ...publicResult } = fastResult;
+    return publicResult;
+  }
+
+  // Compatibility fallback for accounts that do not use the imported PBKDF2
+  // fields. Existing/newer login implementations can still use the SQL RPC.
   const response = await fetch(
     `${stripTrailingSlash(env.SUPABASE_URL)}/rest/v1/rpc/verify_legacy_login`,
     {
@@ -1118,15 +1129,23 @@ async function verifyLoginSupabaseRpc(env, args) {
   if (account) {
     return { success:true, userID:String(account.user_id || ''), userName:String(account.display_name || ''), userType:String(account.role || role) };
   }
-  return verifyImportedPbkdf2Login(env, role, username, password);
+  return { success:false, message:'Username / Password salah.' };
 }
 
-async function verifyImportedPbkdf2Login(env, role, username, password) {
+async function verifyImportedPbkdf2Login(env, role, username, password, includeInternalState = false) {
   const rows = await supabaseRest(env, `/rest/v1/auth_accounts?select=user_id,role,display_name,password_hash_b64,password_salt_b64,password_iterations,active&role=eq.${encodeURIComponent(role)}&active=eq.true&limit=500`);
   const key=String(username||'').trim().toLowerCase();
   const candidates=(Array.isArray(rows)?rows:[]).filter(row=>String(row.user_id||'').trim().toLowerCase()===key||String(row.display_name||'').trim().toLowerCase()===key);
-  for(const row of candidates){if(await verifyImportedPbkdf2Password(password,row.password_salt_b64,row.password_hash_b64,row.password_iterations)){return {success:true,userID:String(row.user_id||''),userName:String(row.display_name||''),userType:String(row.role||role)};}}
-  return {success:false,message:'Username / Password salah.'};
+  for(const row of candidates){
+    if(await verifyImportedPbkdf2Password(password,row.password_salt_b64,row.password_hash_b64,row.password_iterations)){
+      const result={success:true,userID:String(row.user_id||''),userName:String(row.display_name||''),userType:String(row.role||role)};
+      if(includeInternalState) result.accountFound=true;
+      return result;
+    }
+  }
+  const result={success:false,message:'Username / Password salah.'};
+  if(includeInternalState) result.accountFound=candidates.length>0;
+  return result;
 }
 function importedBase64ToBytes(v){const b=atob(String(v||''));const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
 async function verifyImportedPbkdf2Password(password,saltB64,expectedB64,iterations){if(!saltB64||!expectedB64)return false;const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(String(password||'')),'PBKDF2',false,['deriveBits']);const expected=importedBase64ToBytes(expectedB64);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:importedBase64ToBytes(saltB64),iterations:Number(iterations||210000)},k,expected.length*8);const actual=new Uint8Array(bits);if(actual.length!==expected.length)return false;let diff=0;for(let i=0;i<actual.length;i++)diff|=actual[i]^expected[i];return diff===0;}
