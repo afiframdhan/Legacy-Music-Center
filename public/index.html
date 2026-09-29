@@ -668,9 +668,9 @@
               <div class="form-group"><label>Pertemuan Ke</label><select id="absensiPertemuanKe" required><option value="1">Pertemuan 1</option><option value="2">Pertemuan 2</option><option value="3">Pertemuan 3</option><option value="4">Pertemuan 4</option></select></div>
               <div class="form-group"><label>Tanggal</label><input type="date" id="absensiTanggal" required></div>
               <div class="form-group"><label>Status</label><select id="absensiStatus" required><option value="Masuk">Masuk</option><option value="Sakit">Sakit</option><option value="Izin">Izin</option><option value="Alpa">Alpa</option></select></div>
-              <div class="form-group"><label>Materi</label><input type="text" id="absensiMateri"></div>
-              <div class="form-group"><label>Lagu</label><input type="text" id="absensiLagu"></div>
-              <div class="form-group attendance-span-2"><label>Catatan/Tugas</label><textarea id="absensiCatatan" rows="2"></textarea></div>
+              <div class="form-group"><label>Materi</label><textarea id="absensiMateri" class="attendance-multiline-input" rows="3" placeholder="Tulis materi pertemuan. Tekan Enter untuk baris baru."></textarea></div>
+              <div class="form-group"><label>Lagu</label><textarea id="absensiLagu" class="attendance-multiline-input" rows="3" placeholder="Tulis lagu / repertoar. Tekan Enter untuk baris baru."></textarea></div>
+              <div class="form-group attendance-span-2"><label>Catatan/Tugas</label><textarea id="absensiCatatan" class="attendance-multiline-input attendance-multiline-input-wide" rows="4" placeholder="Tulis catatan atau tugas. Tekan Enter untuk membuat poin / baris baru."></textarea></div>
               
               <!-- TANDA TANGAN DIGITAL DUA KOLOM UNTUK GURU -->
               <div class="filter-grid attendance-span-all" id="guruSignatureGrid" style="margin-bottom:0;">
@@ -1103,9 +1103,9 @@
         <div class="form-group"><label>Pertemuan Ke</label><select id="editAbsensiPertemuanKe" required><option value="1">Pertemuan 1</option><option value="2">Pertemuan 2</option><option value="3">Pertemuan 3</option><option value="4">Pertemuan 4</option></select></div>
         <div class="form-group"><label>Tanggal</label><input type="text" id="editAbsensiTanggal" required placeholder="DD-MM-YYYY"></div>
         <div class="form-group"><label>Status</label><select id="editAbsensiStatus" required><option value="Masuk">Masuk</option><option value="Sakit">Sakit</option><option value="Izin">Izin</option><option value="Alpa">Alpa</option></select></div>
-        <div class="form-group"><label>Materi</label><input type="text" id="editAbsensiMateri"></div>
-        <div class="form-group"><label>Lagu</label><input type="text" id="editAbsensiLagu"></div>
-        <div class="form-group"><label>Catatan/Tugas</label><textarea id="editAbsensiCatatan" rows="2"></textarea></div>
+        <div class="form-group"><label>Materi</label><textarea id="editAbsensiMateri" class="attendance-multiline-input" rows="3" placeholder="Tulis materi pertemuan. Tekan Enter untuk baris baru."></textarea></div>
+        <div class="form-group"><label>Lagu</label><textarea id="editAbsensiLagu" class="attendance-multiline-input" rows="3" placeholder="Tulis lagu / repertoar. Tekan Enter untuk baris baru."></textarea></div>
+        <div class="form-group"><label>Catatan/Tugas</label><textarea id="editAbsensiCatatan" class="attendance-multiline-input attendance-multiline-input-wide" rows="4" placeholder="Tulis catatan atau tugas. Tekan Enter untuk membuat poin / baris baru."></textarea></div>
         
         <div id="modalTtdGuruContainer">
           <div class="form-group">

@@ -627,3 +627,32 @@ html[data-theme="dark"] .lp-signature-preview {
   border-color:#41536f !important;
   color:#9fb0c7 !important;
 }
+
+/* Materi & Progress: catatan multiline yang nyaman */
+.attendance-multiline-input{
+  min-height:96px;
+  padding:14px 15px!important;
+  line-height:1.55;
+  resize:vertical;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  font-family:inherit;
+}
+.attendance-multiline-input-wide{min-height:120px}
+.attendance-multiline-cell{white-space:pre-line!important;line-height:1.5}
+@media (max-width:768px){
+  .attendance-multiline-input{
+    min-height:112px;
+    font-size:16px!important;
+    line-height:1.6;
+    padding:15px!important;
+  }
+  .attendance-multiline-input-wide{min-height:144px}
+}
+html[data-theme="dark"] .attendance-multiline-input{
+  background:#0c1627!important;
+  color:#e5edf7!important;
+  border-color:#34445e!important;
+  caret-color:#f15a24;
+}
+html[data-theme="dark"] .attendance-multiline-input::placeholder{color:#718096!important}
