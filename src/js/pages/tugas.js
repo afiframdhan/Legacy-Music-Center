@@ -28,11 +28,62 @@
       return '📎';
     }
 
+    function getTaskDriveFileId(file) {
+      const candidates = [file && file.fileId, file && file.url, file && file.previewUrl, file && file.downloadUrl];
+      for (const candidate of candidates) {
+        const raw = String(candidate || '').trim();
+        if (!raw) continue;
+        if (/^[a-zA-Z0-9_-]{20,}$/.test(raw) && !raw.includes('/')) return raw;
+        let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+        if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+        if (!match) match = raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+        if (match && match[1]) return decodeURIComponent(match[1]);
+      }
+      return '';
+    }
+
+    function taskAttachmentImageCandidates(file) {
+      const list = [];
+      const push = value => {
+        const clean = String(value || '').trim();
+        if (clean && !list.includes(clean)) list.push(clean);
+      };
+      const driveId = getTaskDriveFileId(file);
+      if (driveId) {
+        // Google Drive download links often cannot be rendered directly by <img> on iOS.
+        // Use Google's image/thumbnail endpoints first, then keep the original links as fallbacks.
+        push(`https://lh3.googleusercontent.com/d/${driveId}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(driveId)}&sz=w1600`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(driveId)}`);
+      }
+      push(file && file.downloadUrl);
+      push(file && file.url);
+      return list;
+    }
+
+    function taskAttachmentImageFallback(img) {
+      if (!img) return;
+      try {
+        const list = JSON.parse(img.dataset.fallbacks || '[]');
+        const index = Number(img.dataset.fallbackIndex || 0);
+        if (index < list.length) {
+          img.dataset.fallbackIndex = String(index + 1);
+          img.src = list[index];
+          return;
+        }
+      } catch (_) {}
+      img.classList.add('attachment-image-error');
+      img.removeAttribute('src');
+      img.alt = 'Preview tidak tersedia. Gunakan tombol Buka atau Download.';
+    }
+
     function renderTaskAttachment(file) {
       if (!file || !file.url) return '';
       const name = escapeTaskHtml(file.name || 'File lampiran');
       const url = escapeTaskHtml(file.url);
-      const previewUrl = escapeTaskHtml(file.previewUrl || file.url);
+      const driveId = getTaskDriveFileId(file);
+      const previewRaw = driveId ? `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview` : (file.previewUrl || file.url);
+      const previewUrl = escapeTaskHtml(previewRaw);
       const downloadUrl = escapeTaskHtml(file.downloadUrl || file.url);
       const type = String(file.type || '').toLowerCase();
       const rawName = String(file.name || '').toLowerCase();
@@ -45,7 +96,12 @@
       } else if (isVideo) {
         preview = `<iframe class="attachment-preview-frame video" src="${previewUrl}" allow="autoplay; fullscreen" allowfullscreen title="Putar ${name}"></iframe>`;
       } else if (isImage) {
-        preview = `<img class="attachment-image" loading="lazy" src="${downloadUrl}" alt="${name}">`;
+        const candidates = taskAttachmentImageCandidates(file);
+        if (candidates.length) {
+          const first = escapeTaskHtml(candidates[0]);
+          const fallbacks = escapeTaskHtml(JSON.stringify(candidates.slice(1)));
+          preview = `<img class="attachment-image" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
+        }
       }
       return `<div class="attachment-box">
         <div class="attachment-head">

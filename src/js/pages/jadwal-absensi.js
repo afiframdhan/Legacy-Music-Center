@@ -279,15 +279,15 @@
           <td data-label="Pertemuan">Ke-${escapeTaskHtml(item.pertemuanKe || '-')}</td>
           <td data-label="Siswa"><b>${escapeTaskHtml(displayName)}</b></td>
           <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span></td>
-          <td data-label="Materi">${escapeTaskHtml(item.materi||'-')}</td>
-          <td data-label="Lagu">${escapeTaskHtml(item.lagu||'-')}</td>
+          <td data-label="Materi" class="attendance-multiline-cell">${escapeTaskHtml(item.materi||'-')}</td>
+          <td data-label="Lagu" class="attendance-multiline-cell">${escapeTaskHtml(item.lagu||'-')}</td>
           <td data-label="TTD Guru">${ttdGuruHtml}</td>`;
         
         if (isGuru) {
           rowHtml += `<td data-label="TTD Siswa">${ttdSiswaHtml}</td>`;
         }
 
-        rowHtml += `<td data-label="Catatan">${escapeTaskHtml(item.catatan||'-')}</td>`;
+        rowHtml += `<td data-label="Catatan" class="attendance-multiline-cell">${escapeTaskHtml(item.catatan||'-')}</td>`;
         
         if (!isSiswa) {
           rowHtml += `<td data-label="Aksi">
@@ -358,7 +358,7 @@
       const present = records.filter(item => item.status === 'Masuk').length;
       const rows = records.map((item, index) => {
         const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
-        return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td>${escapeTaskHtml(item.materi || '-')}</td><td>${escapeTaskHtml(item.lagu || '-')}</td><td>${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
+        return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.materi || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.lagu || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
       const safeName = String(studentFilter || 'Semua-Siswa').replace(/[^a-z0-9_-]+/gi,'-');
       const report = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Laporan Materi dan Absensi</title><style>

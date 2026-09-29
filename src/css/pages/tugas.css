@@ -107,3 +107,68 @@
     .task-detail-empty { color:#94a3b8; font-size:12px; padding:12px; border:1px dashed #dce3eb; border-radius:10px; text-align:center; }
     .task-detail-footer { display:flex; justify-content:flex-end; gap:8px; padding:15px 20px; border-top:1px solid #edf1f5; background:#fbfcfd; flex:0 0 auto; }
 
+
+/* DARK MODE COMPLETION — Tugas / lampiran */
+html[data-theme="dark"] .task-page-head h2,
+html[data-theme="dark"] .task-card h3,
+html[data-theme="dark"] .task-detail-heading h3,
+html[data-theme="dark"] .task-detail-section-title,
+html[data-theme="dark"] .task-answer-title,
+html[data-theme="dark"] .task-deadline strong,
+html[data-theme="dark"] .task-empty strong,
+html[data-theme="dark"] .attachment-name,
+html[data-theme="dark"] .task-youtube-compact { color:#e8eef7 !important; }
+html[data-theme="dark"] .task-status-tabs,
+html[data-theme="dark"] .task-detail-info,
+html[data-theme="dark"] .attachment-box,
+html[data-theme="dark"] .task-youtube-compact,
+html[data-theme="dark"] .task-empty {
+  background:#111b2e !important;
+  border-color:#31415a !important;
+}
+html[data-theme="dark"] .task-detail-description,
+html[data-theme="dark"] .task-answer-text {
+  background:#0d1728 !important;
+  border-color:#3a4559 !important;
+  color:#cbd5e1 !important;
+}
+html[data-theme="dark"] .task-detail-info span,
+html[data-theme="dark"] .task-detail-info strong,
+html[data-theme="dark"] .task-description,
+html[data-theme="dark"] .task-meta,
+html[data-theme="dark"] .task-deadline,
+html[data-theme="dark"] .task-deadline-label,
+html[data-theme="dark"] .task-deadline small,
+html[data-theme="dark"] .task-help,
+html[data-theme="dark"] .task-youtube-compact small { color:#9aaac0 !important; }
+html[data-theme="dark"] .task-detail-info strong { color:#dbe5f2 !important; }
+html[data-theme="dark"] .task-detail-footer {
+  background:#0b1424 !important;
+  border-color:#31415a !important;
+}
+html[data-theme="dark"] .task-detail-modal .modal-header,
+html[data-theme="dark"] .task-answer,
+html[data-theme="dark"] .task-deadline,
+html[data-theme="dark"] .task-card-side { border-color:#31415a !important; }
+html[data-theme="dark"] .attachment-link,
+html[data-theme="dark"] .task-mini-action {
+  background:#17243a !important;
+  border-color:#52637c !important;
+  color:#ff8a50 !important;
+}
+html[data-theme="dark"] .attachment-image {
+  background:#0b1424 !important;
+  border:1px solid #31415a;
+}
+.attachment-image-error {
+  min-height:120px;
+  padding:18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#94a3b8;
+  font-size:11px;
+  text-align:center;
+  background:#f8fafc;
+}
+html[data-theme="dark"] .attachment-image-error { background:#0b1424 !important; color:#94a3b8 !important; }
