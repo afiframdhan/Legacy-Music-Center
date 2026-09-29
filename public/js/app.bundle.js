@@ -535,6 +535,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         progress: `<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
         tugas: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
         laporan: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>`,
+        sertifikat: `<svg viewBox="0 0 24 24"><path d="M12 2l3 2 3-.5.5 3L21 9l-2 3 .5 3-3 .5L14 19l-2 3-2-3-2.5-3.5-3-.5.5-3-2-3 2.5-2.5.5-3 3 .5z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -546,6 +547,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
+          { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
           { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
           { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
@@ -556,6 +558,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
+          { id: 'section-annual-exam', label: 'Ujian & Sertifikat', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
           { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
           { id: 'section-ruang', label: 'Ruang', icon: icons.ruang },
@@ -572,6 +575,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
+          { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
           { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
@@ -639,6 +643,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (sectionId === 'section-learning-progress') {
         setTimeout(() => refreshLearningProgressPage(), 0);
+      }
+
+      if (sectionId === 'section-annual-exam') {
+        setTimeout(() => loadAnnualExamCenter(), 0);
       }
 
       if (sectionId === 'section-ruang' && currentUser.userType === 'admin') {
@@ -1286,21 +1294,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (preview) preview.textContent = `Nilai keseluruhan: ${value}/100 (rata-rata komponen)`;
     }
 
-    function learningSignatureDisplayUrl(url) {
-      const raw = String(url || '').trim();
-      if (!raw) return '';
-      const driveId =
-        (raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i) || [])[1] ||
-        (raw.match(/[?&]id=([^&#]+)/i) || [])[1] ||
-        (raw.match(/lh3\.googleusercontent\.com\/d\/([^/?#]+)/i) || [])[1];
-      return driveId ? `https://lh3.googleusercontent.com/d/${driveId}` : raw;
-    }
-
     function renderLearningSignaturePreview(targetId, url, name) {
       const target = document.getElementById(targetId);
       if (!target) return;
-      const displayUrl = learningSignatureDisplayUrl(url);
-      target.innerHTML = displayUrl ? `<img src="${escapeTaskHtml(displayUrl)}" alt="${escapeTaskHtml(name || 'Tanda tangan')}" onerror="this.style.display='none'">` : 'Belum ada gambar';
+      target.innerHTML = url ? `<img src="${escapeTaskHtml(url)}" alt="${escapeTaskHtml(name || 'Tanda tangan')}">` : 'Belum ada gambar';
     }
 
     function previewLearningSignature(input, targetId) {
@@ -1375,9 +1372,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         return `<div class="lp-form-component"><div class="lp-form-component-title"><span>${category.icon} ${category.label}</span><span>${percent}/100</span></div><div class="task-status ${percent === 100 ? 'done' : (percent > 0 ? 'open' : '')}" style="display:inline-block;margin-bottom:8px;">${escapeTaskHtml(getLearningComponentStatusText(progress, category.key))}</div><div class="lp-component-bar"><span style="width:${percent}%"></span></div><div style="font-size:11px;line-height:1.55;color:#64748b;margin-top:9px;white-space:pre-line;">${escapeTaskHtml(progress[category.key + 'Catatan'] || 'Belum ada catatan khusus.')}</div></div>`;
       }).join('');
       document.getElementById('lpDetailTitle').textContent = `Progress Belajar • ${progress.namaSiswa}`;
-      const guruSig = learningSignatureDisplayUrl(progress.guruSignatureUrl);
-      const kepalaSig = learningSignatureDisplayUrl(progress.kepalaSekolahSignatureUrl);
-      const signatures = `<div class="lp-detail-notes"><div class="lp-note"><span>Guru / Coach</span>${guruSig ? `<img src="${escapeTaskHtml(guruSig)}" onerror="this.style.display='none'" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.guru || '-')}</p></div><div class="lp-note"><span>Kepala Sekolah</span>${kepalaSig ? `<img src="${escapeTaskHtml(kepalaSig)}" onerror="this.style.display='none'" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.kepalaSekolahNama || '-')}</p></div></div>`;
+      const signatures = `<div class="lp-detail-notes"><div class="lp-note"><span>Guru / Coach</span>${progress.guruSignatureUrl ? `<img src="${escapeTaskHtml(progress.guruSignatureUrl)}" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.guru || '-')}</p></div><div class="lp-note"><span>Kepala Sekolah</span>${progress.kepalaSekolahSignatureUrl ? `<img src="${escapeTaskHtml(progress.kepalaSekolahSignatureUrl)}" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.kepalaSekolahNama || '-')}</p></div></div>`;
       document.getElementById('lpDetailBody').innerHTML = `<div class="lp-summary" style="margin-bottom:18px;"><div class="lp-ring" style="--lp-progress:${overall * 3.6}deg"><div class="lp-ring-value">${overall}</div></div><div class="lp-summary-info"><h3>${escapeTaskHtml(progress.level || '-')}</h3><div class="lp-main-bar"><span style="width:${overall}%"></span></div><div class="lp-period">${escapeTaskHtml(progress.kelas || '-')} • ${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}<br>Diperbarui ${escapeTaskHtml(progress.lastUpdated || '-')} oleh ${escapeTaskHtml(progress.guru || '-')}</div></div><div class="lp-target"><div class="lp-target-icon">◎</div><div><strong>Target Berikutnya</strong><p>${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div></div><div class="lp-form-components">${rows}</div><div class="lp-detail-notes">${progress.kelebihan ? `<div class="lp-note"><span>Kelebihan</span><p>${escapeTaskHtml(progress.kelebihan)}</p></div>` : ''}${progress.perluDitingkatkan ? `<div class="lp-note"><span>Perlu ditingkatkan</span><p>${escapeTaskHtml(progress.perluDitingkatkan)}</p></div>` : ''}</div>${signatures}`;
       document.getElementById('lpDetailEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpDetailDeleteButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
@@ -1405,33 +1400,40 @@ let currentUser = { userType: '', userID: '', userName: '' };
       }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus progress: ' + error.message))
         .deleteLearningProgress(progress.progressID, currentUser.userName, currentUser.userType);
     }
+    function getLearningProgressPrintableLogoData(callback) {
+      const url = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+      if (typeof callback === 'function') callback(url);
+    }
+
 
     function printLearningProgressReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
       const progress = getSelectedLearningProgressPageRecord();
       if (!progress) { showAlert('alertDanger', 'Tidak ada laporan pada periode yang dipilih.'); return; }
-      const printWindow = window.open('', '_blank', 'width=900,height=700');
+      const printWindow = window.open('', '_blank', 'width=1020,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
-      printWindow.document.write('<!doctype html><html><body style="font-family:Arial;padding:32px;color:#64748b">Menyiapkan laporan...</body></html>');
-      google.script.run.withSuccessHandler(response => {
-        buildLearningProgressPrintWindow(progress, printWindow, response && response.success ? response.dataUrl : '');
-      }).withFailureHandler(() => buildLearningProgressPrintWindow(progress, printWindow, '')).getLearningProgressPrintLogo();
+      const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+      buildLearningProgressPrintWindow(progress, printWindow, logoDataUrl);
     }
 
     function buildLearningProgressPrintWindow(progress, printWindow, logoDataUrl) {
       const rows = learningProgressCategories.map(category => {
-        const score = Math.max(0, Math.min(100, Number(progress[category.key + 'Progress']) || 0));
-        return `<tr><td><b>${category.label}</b></td><td>${escapeTaskHtml(progress[category.key + 'Status'] || 'Belum Dimulai')}</td><td class="score">${score}/100</td><td>${escapeTaskHtml(progress[category.key + 'Catatan'] || '-')}</td></tr>`;
+        const score=Math.max(0,Math.min(100,Number(progress[category.key+'Progress'])||0));
+        return `<tr><td><b>${escapeTaskHtml(category.label)}</b></td><td>${escapeTaskHtml(progress[category.key+'Status']||'Belum Dimulai')}</td><td class="score">${score}/100</td><td>${escapeTaskHtml(progress[category.key+'Catatan']||'-')}</td></tr>`;
       }).join('');
-      const signature = (url, name, role) => {
-        const displayUrl = learningSignatureDisplayUrl(url);
-        return `<div class="signature"><div>${role}</div><div class="signature-image">${displayUrl ? `<img src="${escapeTaskHtml(displayUrl)}" onerror="this.style.display='none'">` : ''}</div><b>${escapeTaskHtml(name || '-')}</b></div>`;
-      };
-      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Laporan Progress ${escapeTaskHtml(progress.namaSiswa)}</title><style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:10.5px}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #f15a24;padding-bottom:10px;margin-bottom:13px;min-height:78px}.brand-logo{width:128px;height:78px;object-fit:contain;object-position:left center}.brand h1{font-size:20px;margin:0 0 5px}.brand strong{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:8px;padding:8px}.meta span{display:block;color:#7b8aa0;font-size:8px;text-transform:uppercase;margin-bottom:3px}.summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.summary b{font-size:23px;color:#f15a24}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:7px;text-align:left}th:nth-child(1){width:20%}th:nth-child(2){width:18%}th:nth-child(3){width:14%}td{border:1px solid #dfe6ee;padding:7px;vertical-align:top;line-height:1.35;word-wrap:break-word}.score{text-align:center;font-weight:bold;white-space:nowrap}.notes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.note{border:1px solid #dfe6ee;border-radius:8px;padding:8px;min-height:52px}.note b{display:block;color:#f15a24;margin-bottom:4px}.signatures{display:flex;justify-content:space-around;gap:28px;margin-top:20px;text-align:center;page-break-inside:avoid}.signature{width:220px}.signature-image{height:76px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}.signature img{display:block;max-width:145px;max-height:58px;width:auto;height:auto;object-fit:contain;filter:contrast(1.08);mix-blend-mode:multiply}.signature b{display:block;border-top:1px solid #94a3b8;padding-top:6px}.footer{margin-top:14px;padding-top:7px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:8px;text-align:right}@media print{button{display:none}}</style></head><body><div class="brand"><div>${logoDataUrl ? `<img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center">` : '<strong>LEGACY MUSIC CENTER</strong>'}</div><div style="text-align:right"><h1>Laporan Progress Belajar</h1><strong>${escapeTaskHtml(getLearningProgressPeriodType(progress))}</strong></div></div><div class="meta"><div><span>Nama Siswa</span><b>${escapeTaskHtml(progress.namaSiswa)}</b></div><div><span>Kelas</span><b>${escapeTaskHtml(progress.kelas || '-')}</b></div><div><span>Level</span><b>${escapeTaskHtml(progress.level || '-')}</b></div><div><span>Periode</span><b>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}</b></div></div><div class="summary"><div><b style="font-size:12px">Nilai Keseluruhan</b><br>Rata-rata dari tujuh komponen</div><b>${Number(progress.overallProgress) || 0}/100</b></div><table><thead><tr><th>Komponen</th><th>Status</th><th>Nilai/Proses</th><th>Catatan</th></tr></thead><tbody>${rows}</tbody></table><div class="notes"><div class="note"><b>Kelebihan</b>${escapeTaskHtml(progress.kelebihan || '-')}</div><div class="note"><b>Perlu Ditingkatkan</b>${escapeTaskHtml(progress.perluDitingkatkan || '-')}</div><div class="note"><b>Target Berikutnya</b>${escapeTaskHtml(progress.targetBerikutnya || '-')}</div><div class="note"><b>Terakhir Diperbarui</b>${escapeTaskHtml(progress.lastUpdated || '-')}</div></div><div class="signatures">${signature(progress.guruSignatureUrl, progress.guru, 'Guru / Coach')}${signature(progress.kepalaSekolahSignatureUrl, progress.kepalaSekolahNama, 'Kepala Sekolah')}</div><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Progress Belajar</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),650));<\/script></body></html>`;
-      const printReadyReport = report.replace('<style>', '<style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}');
-      printWindow.document.open(); printWindow.document.write(printReadyReport); printWindow.document.close();
+      const signature=(url,name,role)=>`<div class="signature"><div class="signature-role">${role}</div><div class="signature-image">${url?`<img src="${escapeTaskHtml(url)}">`:''}</div><b>${escapeTaskHtml(name||'-')}</b></div>`;
+      const safeName=String(progress.namaSiswa||'Siswa').replace(/[^a-z0-9_-]+/gi,'-');
+      const report=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Laporan Progress ${escapeTaskHtml(progress.namaSiswa)}</title><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4 portrait;margin:14mm}html,body{margin:0;background:#e6edf5;font-family:Arial,sans-serif;color:#17232d}.toolbar{position:sticky;top:0;z-index:30;background:#122033;padding:12px;text-align:center}.toolbar button{border:0;border-radius:12px;padding:11px 16px;font-weight:800;margin:0 4px;font-size:15px}.ghost{background:#fff;color:#334155}.secondary{background:#fff0e9;color:#c2410c}.primary{background:#f15a24;color:#fff}.viewport{padding:14px;overflow:auto}.paper{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:14mm;box-shadow:0 12px 36px #0002;transform-origin:top left}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:2.5px solid #f15a24;padding-bottom:10px;margin-bottom:13px;min-height:78px}.brand-logo{width:128px;height:78px;object-fit:contain;object-position:left center}.brand h1{font-size:20px;margin:0 0 5px}.brand strong{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:10px;padding:8px}.meta span{display:block;color:#7b8aa0;font-size:8px;text-transform:uppercase;margin-bottom:3px}.summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.summary b{font-size:23px;color:#f15a24}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:7px;text-align:left}th:nth-child(1){width:20%}th:nth-child(2){width:18%}th:nth-child(3){width:14%}td{border:1px solid #dfe6ee;padding:7px;vertical-align:top;line-height:1.35;word-wrap:break-word}.score{text-align:center;font-weight:bold;white-space:nowrap}.notes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.note{border:1px solid #dfe6ee;border-radius:10px;padding:9px;min-height:52px}.note b{display:block;color:#f15a24;margin-bottom:4px}.signatures{display:flex;justify-content:space-around;gap:28px;margin-top:20px;text-align:center}.signature{width:220px}.signature-role{font-size:9px;font-weight:700;color:#64748b;margin-bottom:6px}.signature-image{height:64px;display:flex;align-items:center;justify-content:center}.signature img{max-width:160px;max-height:60px;object-fit:contain}.footer{margin-top:14px;padding-top:7px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:8px;text-align:right}@media print{html,body{background:#fff}.toolbar{display:none!important}.viewport{padding:0;overflow:visible}.paper{box-shadow:none;transform:none!important}}</style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="lmcSavePdf('paper','portrait','Laporan-Progress-${safeName}.pdf',this)">Simpan PDF</button><button class="primary" onclick="lmcPrintDoc('paper','portrait','Laporan-Progress-${safeName}.pdf',this)">Cetak</button></div><div class="viewport" id="viewport"><div class="paper" id="paper"><div class="brand"><img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center"><div style="text-align:right"><h1>Laporan Progress Belajar</h1><strong>${escapeTaskHtml(getLearningProgressPeriodType(progress))}</strong></div></div><div class="meta"><div><span>Nama Siswa</span><b>${escapeTaskHtml(progress.namaSiswa)}</b></div><div><span>Kelas</span><b>${escapeTaskHtml(progress.kelas||'-')}</b></div><div><span>Level</span><b>${escapeTaskHtml(progress.level||'-')}</b></div><div><span>Periode</span><b>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}</b></div></div><div class="summary"><div><b style="font-size:12px">Nilai Keseluruhan</b><br>Rata-rata dari tujuh komponen</div><b>${Number(progress.overallProgress)||0}/100</b></div><table><thead><tr><th>Komponen</th><th>Status</th><th>Nilai/Proses</th><th>Catatan</th></tr></thead><tbody>${rows}</tbody></table><div class="notes"><div class="note"><b>Kelebihan</b>${escapeTaskHtml(progress.kelebihan||'-')}</div><div class="note"><b>Perlu Ditingkatkan</b>${escapeTaskHtml(progress.perluDitingkatkan||'-')}</div><div class="note"><b>Target Berikutnya</b>${escapeTaskHtml(progress.targetBerikutnya||'-')}</div><div class="note"><b>Terakhir Diperbarui</b>${escapeTaskHtml(progress.lastUpdated||'-')}</div></div><div class="signatures">${signature(progress.guruSignatureUrl,progress.guru,'Guru / Coach')}${signature(progress.kepalaSekolahSignatureUrl,progress.kepalaSekolahNama,'Kepala Sekolah')}</div><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Progress Belajar</div></div></div><script>function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
+async function lmcEnsurePdf(){await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',function(){return typeof window.html2canvas==='function';});await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){return !!(window.jspdf&&window.jspdf.jsPDF);});}
+function lmcIsIOS(){return /iPad|iPhone|iPod/i.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+async function lmcWaitImages(root){var imgs=Array.prototype.slice.call(root.querySelectorAll('img'));await Promise.all(imgs.map(function(img){if(img.complete)return Promise.resolve();return new Promise(function(resolve){var done=function(){resolve();};img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(resolve,1800);});}));}
+async function lmcCreatePdf(targetId,orientation,filename){await lmcEnsurePdf();var target=document.getElementById(targetId);if(!target)throw new Error('Dokumen tidak ditemukan.');await lmcWaitImages(target);var oldTransform=target.style.transform;var oldOrigin=target.style.transformOrigin;target.style.transform='none';target.style.transformOrigin='top left';var canvas=await window.html2canvas(target,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0,windowWidth:Math.max(document.documentElement.scrollWidth,target.scrollWidth),windowHeight:Math.max(document.documentElement.scrollHeight,target.scrollHeight)});target.style.transform=oldTransform;target.style.transformOrigin=oldOrigin;var jsPDF=window.jspdf.jsPDF;var landscape=orientation==='landscape';var pageW=landscape?297:210,pageH=landscape?210:297;var pdf=new jsPDF({orientation:landscape?'landscape':'portrait',unit:'mm',format:'a4',compress:true});var sliceH=Math.floor(canvas.width*(pageH/pageW));var y=0,pageIndex=0;while(y<canvas.height){var h=Math.min(sliceH,canvas.height-y);var slice=document.createElement('canvas');slice.width=canvas.width;slice.height=h;var ctx=slice.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,slice.width,slice.height);ctx.drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);var data=slice.toDataURL('image/jpeg',0.94);if(pageIndex>0)pdf.addPage('a4',landscape?'landscape':'portrait');var drawH=pageW*(h/canvas.width);pdf.addImage(data,'JPEG',0,0,pageW,Math.min(drawH,pageH),undefined,'FAST');y+=h;pageIndex++;}return {blob:pdf.output('blob'),filename:filename};}
+async function lmcShareOrDownload(blob,filename,title,preferPrint){var file=new File([blob],filename,{type:'application/pdf'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:title||filename,text:preferPrint?'Pilih Print/Cetak dari menu berbagi.':''});return true;}catch(e){if(e&&e.name==='AbortError')return true;}}var url=URL.createObjectURL(blob);if(preferPrint&&lmcIsIOS()){var opened=window.open(url,'_blank');if(!opened)window.location.href=url;setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}var a=document.createElement('a');a.href=url;a.download=filename;a.rel='noopener';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}
+async function lmcSavePdf(targetId,orientation,filename,button){var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan PDF...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Legacy Music Center',false);}catch(e){alert('Gagal membuat PDF: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Simpan PDF';}}}
+async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS()){window.print();return;}var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan Cetak...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Cetak dokumen Legacy Music Center',true);}catch(e){alert('Gagal menyiapkan cetak: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Cetak';}}}
+function fitPaper(){var p=document.getElementById('paper'),v=document.getElementById('viewport');if(!p||!v||window.matchMedia('print').matches)return;var available=Math.max(320,window.innerWidth-20),scale=Math.min(1,available/p.offsetWidth);p.style.transform='scale('+scale+')';v.style.height=Math.ceil(p.offsetHeight*scale+24)+'px';}window.addEventListener('load',fitPaper);window.addEventListener('resize',fitPaper);setTimeout(fitPaper,100);<\/script></body></html>`;
+      printWindow.document.open();printWindow.document.write(report);printWindow.document.close();
     }
-
 
     function formatAcademyDate(value) {
       const text = String(value || '').trim();
@@ -2076,31 +2078,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
             `;
             return;
           }
-
-          let reportRendered = false;
-
-          const fallbackLogoDataUrl = 'https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
-
-          const renderReport = (logoDataUrl = '') => {
-            if (reportRendered) return;
-            reportRendered = true;
-            buildStudent360ReportWindow(data, reportWindow, logoDataUrl || fallbackLogoDataUrl);
-          };
-
-          const logoTimeout = setTimeout(() => {
-            renderReport(fallbackLogoDataUrl);
-          }, 2000);
-
-          google.script.run
-            .withSuccessHandler(logo => {
-              clearTimeout(logoTimeout);
-              renderReport(logo && logo.success && logo.dataUrl ? logo.dataUrl : fallbackLogoDataUrl);
-            })
-            .withFailureHandler(() => {
-              clearTimeout(logoTimeout);
-              renderReport(fallbackLogoDataUrl);
-            })
-            .getLearningProgressPrintLogo();
+          const localLogoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+          buildStudent360ReportWindow(data, reportWindow, localLogoUrl);
         })
         .withFailureHandler(error => {
           reportWindow.document.body.innerHTML = `
@@ -2248,7 +2227,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         return `<div class="signature"><span>${esc(role)}</span><div class="signature-img">${imageHtml}</div><b>${esc(displayName)}</b></div>`;
       };
 
-      const reportLogoUrl = logoDataUrl || 'https://lh3.googleusercontent.com/d/1Boahvm7lsJN7AYlMj2DSY5mDVEhgekBT';
+      const reportLogoUrl = logoDataUrl || new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
       const logo = `<img class="logo" src="${esc(reportLogoUrl)}" alt="Legacy Music Center">`;
 
       const page1 = `
@@ -2578,7 +2557,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         }
       </style></head><body data-signature-mode="${initialSignatureMode}">
       <div class="toolbar">
-        <button class="print" id="savePdfBtn" onclick="saveStudent360Pdf()">💾 Simpan PDF</button><button class="mode" id="printPdfBtn" onclick="printStudent360Report()">🖨 Cetak</button>
+        <button class="print" id="savePdfBtn" onclick="saveStudent360Pdf()">Simpan PDF</button><button class="mode" id="printPdfBtn" onclick="printStudent360Report()">Cetak</button>
         ${isStudentViewer ? '' : `<button id="sigUploadedBtn" class="mode" onclick="setSignatureMode('uploaded')">✍️ TTD Digital</button><button id="sigManualBtn" class="mode" onclick="setSignatureMode('manual')">🖊 TTD Manual</button><button id="publishReportBtn" class="send" onclick="publishReport()">📨 Kirim ke Siswa</button>`}
         <span id="reportStatus" class="toolbar-status">${isStudentViewer && publication ? `Dikirim ${esc(publication.sentAt || '')}` : ''}</span>
         <button class="close" onclick="window.close()">Tutup</button>
@@ -3232,7 +3211,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const printWindow = window.open('', '_blank', 'width=1100,height=760');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
       printWindow.document.write('<!doctype html><html><body style="font-family:Arial;padding:32px;color:#64748b">Menyiapkan laporan siswa...</body></html>');
-      google.script.run.withSuccessHandler(response => buildStudentReportPrint(mode, printWindow, response && response.success ? response.dataUrl : '')).withFailureHandler(() => buildStudentReportPrint(mode, printWindow, '')).getLearningProgressPrintLogo();
+      buildStudentReportPrint(mode, printWindow, new URL('/assets/logo/legacy-logo.png', window.location.origin).href);
     }
 
     function buildStudentReportPrint(mode, printWindow, logoDataUrl) {
@@ -3267,6 +3246,458 @@ let currentUser = { userType: '', userID: '', userName: '' };
       printWindow.document.open(); printWindow.document.write(report); printWindow.document.close();
     }
 
+
+
+    // ======================================================================
+    // UJIAN TAHUNAN & SERTIFIKAT — TEST MODULE v1
+    // ======================================================================
+    let annualExamRecords = [];
+    let annualExamEditingId = '';
+
+    const ANNUAL_EXAM_GRADES = ['Beginner','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8'];
+    const ANNUAL_EXAM_INSTRUMENTS = ['Gitar','Piano','Drum','Vocal','Biola','Bass','Cello','Saxophone'];
+
+    function annualExamTemplate(instrument) {
+      const key = String(instrument || '').trim().toLowerCase();
+      const commonTheory = { aspect:'Teori Dasar Musik', description:'Pemahaman beat, rhythm, tempo, dynamics, not, rest, dan simbol musik sesuai level.', maxScore:20 };
+      const templates = {
+        gitar: [
+          {aspect:'Hearing',description:'Kemampuan mendengar dan membedakan tinggi-rendah nada, keras-lembut, cepat-lambat, serta menirukan pola ritme atau bunyi sederhana.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan mengenal staff, simbol musik, nama nada, nilai not, dan pola ritme sesuai grade.',maxScore:20},
+          {aspect:'Performing',description:'Teknik bermain gitar: posisi, fingering, chord/scale, artikulasi, timing, dan kontrol bunyi sesuai grade.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan membawakan repertoire ujian dengan melodi, ritme, chord, tempo, dan musikalitas yang sesuai.',maxScore:20}, commonTheory],
+        piano: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, ritme, dinamika, dan menirukan pola bunyi sederhana.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi treble/bass clef, nilai not, tanda musik, dan ritme sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Postur, fingering, scale/arpeggio, koordinasi tangan, artikulasi, dinamika, dan kontrol tempo.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan akurasi not, ritme, tempo, dinamika, dan interpretasi.',maxScore:20}, commonTheory],
+        drum: [
+          {aspect:'Hearing & Rhythm',description:'Kemampuan mendengar, menirukan, dan menjaga pulse, subdivision, tempo, serta pola ritme.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi drum, nilai not, rest, counting, dan pola ritme sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Grip, stroke, rudiment, koordinasi tangan-kaki, groove, fill-in, dinamika, dan timing.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan lagu/repertoire dengan groove, form, fill, tempo, dan musikalitas yang stabil.',maxScore:20}, commonTheory],
+        vocal: [
+          {aspect:'Hearing & Intonation',description:'Ketepatan pitch, interval, kemampuan menirukan melodi, dan kestabilan intonasi.',maxScore:20},
+          {aspect:'Rhythm & Reading',description:'Kemampuan memahami ritme, tempo, frase, lirik/notasi dasar, dan tanda musik sesuai level.',maxScore:20},
+          {aspect:'Vocal Technique',description:'Breathing, support, artikulasi, resonansi, register, kontrol dinamika, dan kesehatan teknik vokal.',maxScore:20},
+          {aspect:'Song Performance',description:'Pembawaan lagu, ekspresi, phrasing, interpretasi, stage presence, dan konsistensi musikal.',maxScore:20}, commonTheory],
+        biola: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, intonasi, ritme, dan menirukan pola melodi.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi, fingering, ritme, tanda musik, dan posisi sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Postur, bow hold, bowing, fingering, intonasi, tone production, artikulasi, dan scale.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan intonasi, ritme, bowing, tempo, dan ekspresi.',maxScore:20}, commonTheory],
+        bass: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, groove, root movement, dan pola ritme.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi/tab, nilai not, rest, chord symbol, dan ritme sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Fretting, plucking, muting, scale/arpeggio, groove, timing, tone, dan koordinasi tangan.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan bass line/repertoire dengan groove, form, timing, dan musikalitas.',maxScore:20}, commonTheory],
+        cello: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, intonasi, ritme, dan menirukan melodi.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi bass/tenor clef sesuai level, fingering, ritme, dan tanda musik.',maxScore:20},
+          {aspect:'Technique',description:'Postur, bow hold, bowing, fingering, shifting, intonasi, tone production, dan scale.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan intonasi, ritme, bowing, tempo, dan ekspresi.',maxScore:20}, commonTheory],
+        saxophone: [
+          {aspect:'Hearing',description:'Kemampuan mengenali pitch, interval, ritme, articulation pattern, dan menirukan melodi.',maxScore:20},
+          {aspect:'Reading',description:'Kemampuan membaca notasi, ritme, tanda musik, key signature, dan phrasing sesuai grade.',maxScore:20},
+          {aspect:'Technique',description:'Embouchure, breathing, fingering, articulation, tone, scale, intonation, dan kontrol dinamika.',maxScore:20},
+          {aspect:'Song Repertoire',description:'Kemampuan memainkan repertoire dengan tone, intonasi, ritme, phrasing, tempo, dan ekspresi.',maxScore:20}, commonTheory]
+      };
+      return (templates[key] || [
+        {aspect:'Hearing',description:'Kemampuan mendengar, mengenali, dan menirukan unsur musik sesuai level.',maxScore:20},
+        {aspect:'Reading',description:'Kemampuan membaca notasi, ritme, dan simbol musik sesuai level.',maxScore:20},
+        {aspect:'Technique',description:'Penguasaan teknik dasar hingga teknik sesuai grade pada instrumen.',maxScore:20},
+        {aspect:'Repertoire / Performance',description:'Kemampuan membawakan repertoire dengan akurasi, tempo, ekspresi, dan musikalitas.',maxScore:20}, commonTheory
+      ]).map((item,index)=>({...item,sortOrder:index+1}));
+    }
+
+    function annualExamEscape(value) { return escapeTaskHtml(String(value ?? '')); }
+    function annualExamPredicate(score) {
+      const n = Number(score || 0);
+      if (n >= 90) return 'Excellent';
+      if (n >= 80) return 'Very Good';
+      if (n >= 70) return 'Good';
+      if (n >= 60) return 'Fair';
+      return 'Need Improvement';
+    }
+    function annualExamNextGrade(grade, passed=true) {
+      const clean=String(grade||'Beginner').trim();
+      if (!passed) return clean;
+      const idx=ANNUAL_EXAM_GRADES.findIndex(g=>g.toLowerCase()===clean.toLowerCase());
+      return idx>=0 && idx<ANNUAL_EXAM_GRADES.length-1 ? ANNUAL_EXAM_GRADES[idx+1] : clean;
+    }
+
+    function loadAnnualExamCenter() {
+      const list=document.getElementById('annualExamList');
+      if (!list) return;
+      const isStudent=currentUser.userType==='siswa';
+      document.getElementById('annualExamPageTitle').textContent=isStudent?'Sertifikat':'Ujian Tahunan & Sertifikat';
+      document.getElementById('annualExamPageSubtitle').textContent=isStudent?'Sertifikat ujian tahunan yang telah diterbitkan untuk kamu.':'Kelola penilaian ujian tahunan, hasil ujian, dan sertifikat siswa.';
+      const staffActions=document.getElementById('annualExamStaffActions');
+      const filters=document.getElementById('annualExamFilters');
+      if(staffActions) staffActions.style.display=isStudent?'none':'flex';
+      if(filters) filters.style.display=isStudent?'none':'grid';
+      list.innerHTML='<div class="annual-exam-empty">Memuat data ujian...</div>';
+      google.script.run.withSuccessHandler(res=>{
+        if(!res||res.success===false){list.innerHTML=`<div class="annual-exam-empty">${annualExamEscape(res?.message||'Data ujian tidak tersedia.')}</div>`;return;}
+        annualExamRecords=Array.isArray(res.exams)?res.exams:[];
+        setupAnnualExamFilters();
+        renderAnnualExamList();
+      }).withFailureHandler(err=>{list.innerHTML=`<div class="annual-exam-empty">Gagal memuat: ${annualExamEscape(err?.message||err)}</div>`;}).listAnnualExams();
+    }
+
+    function setupAnnualExamFilters(){
+      const inst=document.getElementById('annualExamFilterInstrument');
+      const grade=document.getElementById('annualExamFilterGrade');
+      const year=document.getElementById('annualExamFilterYear');
+      if(!inst||!grade||!year)return;
+      const insts=[...new Set(annualExamRecords.map(x=>x.instrument).filter(Boolean))].sort();
+      const grades=[...new Set(annualExamRecords.map(x=>x.gradeExam).filter(Boolean))];
+      const years=[...new Set(annualExamRecords.map(x=>String(x.examDate||'').slice(0,4)).filter(Boolean))].sort().reverse();
+      const keepInst=inst.value,keepGrade=grade.value,keepYear=year.value;
+      inst.innerHTML='<option value="">Semua Instrumen</option>'+insts.map(v=>`<option>${annualExamEscape(v)}</option>`).join('');
+      grade.innerHTML='<option value="">Semua Grade</option>'+grades.map(v=>`<option>${annualExamEscape(v)}</option>`).join('');
+      year.innerHTML='<option value="">Semua Tahun</option>'+years.map(v=>`<option>${annualExamEscape(v)}</option>`).join('');
+      inst.value=keepInst;grade.value=keepGrade;year.value=keepYear;
+    }
+
+    function renderAnnualExamList(){
+      const box=document.getElementById('annualExamList'); if(!box)return;
+      let rows=[...annualExamRecords];
+      if(currentUser.userType!=='siswa'){
+        const q=String(document.getElementById('annualExamSearch')?.value||'').trim().toLowerCase();
+        const inst=String(document.getElementById('annualExamFilterInstrument')?.value||'').trim().toLowerCase();
+        const grade=String(document.getElementById('annualExamFilterGrade')?.value||'').trim().toLowerCase();
+        const year=String(document.getElementById('annualExamFilterYear')?.value||'').trim();
+        if(q)rows=rows.filter(x=>`${x.studentName||''} ${x.instrument||''} ${x.gradeExam||''}`.toLowerCase().includes(q));
+        if(inst)rows=rows.filter(x=>String(x.instrument||'').toLowerCase()===inst);
+        if(grade)rows=rows.filter(x=>String(x.gradeExam||'').toLowerCase()===grade);
+        if(year)rows=rows.filter(x=>String(x.examDate||'').startsWith(year));
+      }
+      renderAnnualExamSummary(rows);
+      if(!rows.length){box.innerHTML=`<div class="annual-exam-empty"><strong>${currentUser.userType==='siswa'?'Belum ada sertifikat':'Belum ada hasil ujian'}</strong><span>${currentUser.userType==='siswa'?'Sertifikat akan muncul setelah guru atau admin mengirimkannya.':'Klik “Penilaian Ujian” untuk membuat hasil ujian tahunan.'}</span></div>`;return;}
+      box.innerHTML=`<div class="annual-exam-grid">${rows.map(annualExamCardHtml).join('')}</div>`;
+    }
+
+    function renderAnnualExamSummary(rows){
+      const summary=document.getElementById('annualExamSummary'); if(!summary)return;
+      if(currentUser.userType==='siswa'){summary.style.display='none';return;}
+      const passed=rows.filter(x=>String(x.resultStatus).toLowerCase()==='lulus').length;
+      const published=rows.filter(x=>x.published).length;
+      const avg=rows.length?Math.round(rows.reduce((a,b)=>a+Number(b.finalScore||0),0)/rows.length):0;
+      summary.style.display='grid';
+      summary.innerHTML=`<div><span>Total Ujian</span><b>${rows.length}</b></div><div><span>Lulus</span><b>${passed}</b></div><div><span>Sertifikat Terkirim</span><b>${published}</b></div><div><span>Rata-rata Nilai</span><b>${avg}</b></div>`;
+    }
+
+    function annualExamCardHtml(exam){
+      const student=annualExamEscape(exam.studentName||'-');
+      const score=Math.round(Number(exam.finalScore||0)*10)/10;
+      const status=String(exam.resultStatus||'').toLowerCase()==='lulus'?'Lulus':'Belum Lulus';
+      const published=Boolean(exam.published);
+      const isStudent=currentUser.userType==='siswa';
+      return `<article class="annual-exam-card">
+        <div class="annual-exam-card-top"><div><span class="annual-exam-kicker">${annualExamEscape(exam.instrument||'Musik')} • ${annualExamEscape(exam.gradeExam||'-')}</span><h3>${student}</h3><p>${annualExamEscape(formatAcademyDate(exam.examDate||''))} • Pengajar: ${annualExamEscape(exam.teacherName||'-')}</p></div><div class="annual-exam-score">${score}</div></div>
+        <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
+        <div class="annual-exam-card-actions">
+          ${!isStudent?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button><button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
+          ${!isStudent&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
+          ${!isStudent?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
+        </div>
+      </article>`;
+    }
+
+    function ensureAnnualExamModal(){
+      let modal=document.getElementById('annualExamModal'); if(modal)return modal;
+      document.body.insertAdjacentHTML('beforeend',`<div id="annualExamModal" class="modal annual-exam-modal" style="display:none;"><div class="modal-content"><div class="modal-header"><h3 id="annualExamModalTitle">Penilaian Ujian Tahunan</h3><button class="close" onclick="closeAnnualExamForm()">×</button></div><div class="annual-exam-modal-body"><form id="annualExamForm" onsubmit="return saveAnnualExam(event)"><div id="annualExamFormContent"></div></form></div><div class="annual-exam-modal-footer"><button type="button" class="btn" onclick="closeAnnualExamForm()">Batal</button><button type="submit" form="annualExamForm" class="btn btn-primary" id="annualExamSaveBtn">Simpan Hasil Ujian</button></div></div></div>`);
+      return document.getElementById('annualExamModal');
+    }
+
+    function annualExamStudentClasses(student){
+      return Array.isArray(student?.kelasList)&&student.kelasList.length?student.kelasList:[{instrumen:student?.instrumen||'Gitar',grade:student?.kelas||'Beginner',guru:student?.guru||''}];
+    }
+
+    function annualExamImageCandidates(value) {
+      const raw=String(value||'').trim();
+      if(!raw) return [];
+      const list=[]; const push=u=>{u=String(u||'').trim();if(u&&!list.includes(u))list.push(u);};
+      push(raw);
+      if(/^data:image\//i.test(raw)||/^blob:/i.test(raw)) return list;
+      let m=raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if(!m)m=raw.match(/[?&]id=([^&#]+)/i);
+      if(!m)m=raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if(m&&m[1]){
+        const id=m[1];
+        push(`https://lh3.googleusercontent.com/d/${id}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1600`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
+      }
+      return list;
+    }
+
+    function annualExamImageHtml(url, alt='', className='') {
+      const candidates=annualExamImageCandidates(url);
+      if(!candidates.length) return '';
+      const src=annualExamEscape(candidates[0]);
+      const fallbacks=annualExamEscape(JSON.stringify(candidates.slice(1)));
+      return `<img class="${annualExamEscape(className)}" src="${src}" data-exam-fallbacks='${fallbacks}' data-exam-fallback-index="0" alt="${annualExamEscape(alt)}" onerror="annualExamImageFallback(this)">`;
+    }
+
+    function annualExamImageFallback(img){
+      try{
+        const arr=JSON.parse(img.dataset.examFallbacks||'[]');
+        const i=Number(img.dataset.examFallbackIndex||0);
+        if(i<arr.length){img.dataset.examFallbackIndex=String(i+1);img.src=arr[i];return;}
+      }catch(_){ }
+      img.style.display='none';
+    }
+
+    function annualExamFilePayload(file){
+      return new Promise((resolve,reject)=>{
+        if(!file){resolve(null);return;}
+        if(!String(file.type||'').toLowerCase().startsWith('image/')){reject(new Error('Tanda tangan harus berupa file gambar.'));return;}
+        if(Number(file.size||0)>5*1024*1024){reject(new Error('Ukuran tanda tangan maksimal 5 MB.'));return;}
+        const reader=new FileReader();
+        reader.onload=()=>resolve({name:file.name||'signature.png',type:file.type||'image/png',size:file.size||0,dataUrl:String(reader.result||'')});
+        reader.onerror=()=>reject(new Error('Gagal membaca file tanda tangan.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function annualExamSignaturePreview(inputId, previewId, existingUrl=''){
+      const input=document.getElementById(inputId); const box=document.getElementById(previewId); if(!box)return;
+      if(input&&input.files&&input.files[0]){
+        const reader=new FileReader();
+        reader.onload=()=>{box.innerHTML=`<img src="${annualExamEscape(reader.result)}" alt="Preview tanda tangan">`;};
+        reader.readAsDataURL(input.files[0]); return;
+      }
+      box.innerHTML=existingUrl?annualExamImageHtml(existingUrl,'Tanda tangan',''): '<span>Belum ada tanda tangan</span>';
+    }
+
+    function openAnnualExamForm(examId=''){
+      if(currentUser.userType==='siswa')return;
+      const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
+      const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
+      const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');
+      const studentOptions=students.map(s=>`<option value="${annualExamEscape(s.siswaID||'')}">${annualExamEscape(s.nama)} — ${annualExamEscape(s.instrumen||'Musik')}</option>`).join('');
+      const examinerOptions=(globalGuruList||[]).map(g=>`<option value="${annualExamEscape(g.nama)}">${annualExamEscape(g.nama)}${g.instrumen?' — '+annualExamEscape(g.instrumen):''}</option>`).join('');
+      const today=new Date().toISOString().slice(0,10);
+      document.getElementById('annualExamFormContent').innerHTML=`
+        <div class="annual-exam-form-grid annual-exam-form-top">
+          <div class="form-group annual-exam-span-2"><label>Nama Siswa</label><select id="annualExamStudent" required onchange="annualExamStudentChanged()"><option value="">Pilih Siswa</option>${studentOptions}</select></div>
+          <div class="form-group"><label>Instrumen</label><select id="annualExamInstrument" required onchange="annualExamInstrumentChanged()"></select></div>
+          <div class="form-group"><label>Grade Ujian</label><select id="annualExamGrade" required onchange="annualExamRecalculate()">${ANNUAL_EXAM_GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Tanggal Ujian</label><input type="date" id="annualExamDate" required value="${annualExamEscape(edit?.examDate||today)}"></div>
+          <div class="form-group"><label>Pengajar</label><input id="annualExamTeacher" readonly value="${annualExamEscape(edit?.teacherName||currentUser.userName||'')}"></div>
+          <div class="form-group"><label>Penguji 1</label><select id="annualExamExaminer1" required><option value="">Pilih Penguji</option>${examinerOptions}</select></div>
+          <div class="form-group"><label>Penguji 2</label><select id="annualExamExaminer2" required><option value="">Pilih Penguji</option>${examinerOptions}</select></div>
+          <div class="form-group annual-exam-span-2"><label>Nama Kepala Sekolah</label><input id="annualExamHeadmasterName" value="${annualExamEscape(edit?.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd')}" placeholder="Boleh diganti atau dibiarkan"></div>
+          <div class="form-group annual-exam-span-2"><label>Status Otomatis</label><input id="annualExamStatusPreview" readonly value="-"></div>
+        </div>
+        <div class="annual-exam-table-wrap"><table class="annual-exam-score-table"><thead><tr><th>Aspek Penilaian</th><th>Deskripsi</th><th>Nilai Penguji 1</th><th>Nilai Penguji 2</th><th>Rata-rata</th></tr></thead><tbody id="annualExamScoreBody"></tbody></table></div>
+        <div class="annual-exam-total-strip"><div><span>Total Nilai Akhir</span><b id="annualExamTotal">0</b></div><div><span>Predikat</span><b id="annualExamPredicate">Need Improvement</b></div><div><span>Status</span><b id="annualExamPassStatus">Belum Lulus</b></div><div><span>Menuju Grade</span><b id="annualExamNextGrade">-</b></div></div>
+        <div class="annual-exam-signature-uploads">
+          <div class="annual-signature-upload"><label>Tanda Tangan Penguji 1</label><input type="file" id="annualExamSig1" accept="image/png,image/jpeg,image/webp" onchange="annualExamSignaturePreview('annualExamSig1','annualExamSig1Preview','${annualExamEscape(edit?.examiner1SignatureUrl||'')}')"><div class="annual-signature-preview" id="annualExamSig1Preview"></div><small>Kosongkan untuk memakai tanda tangan yang sudah tersimpan.</small></div>
+          <div class="annual-signature-upload"><label>Tanda Tangan Kepala Sekolah</label><input type="file" id="annualExamSigHead" accept="image/png,image/jpeg,image/webp" onchange="annualExamSignaturePreview('annualExamSigHead','annualExamSigHeadPreview','${annualExamEscape(edit?.headmasterSignatureUrl||'')}')"><div class="annual-signature-preview" id="annualExamSigHeadPreview"></div><small>PNG transparan resolusi tinggi disarankan.</small></div>
+          <div class="annual-signature-upload"><label>Tanda Tangan Penguji 2</label><input type="file" id="annualExamSig2" accept="image/png,image/jpeg,image/webp" onchange="annualExamSignaturePreview('annualExamSig2','annualExamSig2Preview','${annualExamEscape(edit?.examiner2SignatureUrl||'')}')"><div class="annual-signature-preview" id="annualExamSig2Preview"></div><small>Kosongkan untuk memakai tanda tangan yang sudah tersimpan.</small></div>
+        </div>
+        <div class="annual-exam-notes"><div class="form-group"><label>Catatan Penguji 1</label><textarea id="annualExamNotes1" rows="4">${annualExamEscape(edit?.notesExaminer1||'')}</textarea></div><div class="form-group"><label>Catatan Penguji 2</label><textarea id="annualExamNotes2" rows="4">${annualExamEscape(edit?.notesExaminer2||'')}</textarea></div></div>`;
+      modal.style.display='flex';
+      if(edit)document.getElementById('annualExamStudent').value=edit.studentID||'';
+      else if(students[0])document.getElementById('annualExamStudent').value=students[0].siswaID||'';
+      annualExamStudentChanged(edit);
+      if(edit){document.getElementById('annualExamExaminer1').value=edit.examiner1Name||'';document.getElementById('annualExamExaminer2').value=edit.examiner2Name||'';}
+      annualExamSignaturePreview('annualExamSig1','annualExamSig1Preview',edit?.examiner1SignatureUrl||'');
+      annualExamSignaturePreview('annualExamSig2','annualExamSig2Preview',edit?.examiner2SignatureUrl||'');
+      annualExamSignaturePreview('annualExamSigHead','annualExamSigHeadPreview',edit?.headmasterSignatureUrl||'');
+      annualExamRecalculate();
+    }
+
+    function annualExamStudentChanged(edit=null){
+      const sid=document.getElementById('annualExamStudent')?.value||'';
+      const s=(globalSiswaList||[]).find(x=>String(x.siswaID)===String(sid)); if(!s)return;
+      const classes=annualExamStudentClasses(s);
+      const inst=document.getElementById('annualExamInstrument');
+      inst.innerHTML=classes.map(c=>`<option value="${annualExamEscape(c.instrumen||'Gitar')}">${annualExamEscape(c.instrumen||'Gitar')}</option>`).join('');
+      const targetInst=edit?.instrument||classes[0]?.instrumen||s.instrumen||'Gitar'; inst.value=targetInst;
+      const cls=classes.find(c=>String(c.instrumen).toLowerCase()===String(inst.value).toLowerCase())||classes[0];
+      document.getElementById('annualExamGrade').value=edit?.gradeExam||cls?.grade||s.kelas||'Beginner';
+      document.getElementById('annualExamTeacher').value=edit?.teacherName||cls?.guru||s.guru||currentUser.userName||'';
+      annualExamRenderScoreRows(edit?.items||null);
+    }
+    function annualExamInstrumentChanged(){
+      const sid=document.getElementById('annualExamStudent')?.value||'';
+      const s=(globalSiswaList||[]).find(x=>String(x.siswaID)===String(sid));
+      const inst=document.getElementById('annualExamInstrument')?.value||'Gitar';
+      const cls=annualExamStudentClasses(s).find(c=>String(c.instrumen).toLowerCase()===inst.toLowerCase());
+      if(cls){document.getElementById('annualExamGrade').value=cls.grade||'Beginner';document.getElementById('annualExamTeacher').value=cls.guru||currentUser.userName||'';}
+      annualExamRenderScoreRows();
+    }
+    function annualExamRenderScoreRows(items=null){
+      const inst=document.getElementById('annualExamInstrument')?.value||'Gitar';
+      const source=Array.isArray(items)&&items.length?items:annualExamTemplate(inst);
+      document.getElementById('annualExamScoreBody').innerHTML=source.map((item,i)=>`<tr data-index="${i}"><td><b>${annualExamEscape(item.aspect)}</b></td><td>${annualExamEscape(item.description)}</td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-1" value="${Number(item.scoreExaminer1||0)}" oninput="annualExamRecalculate()"></td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-2" value="${Number(item.scoreExaminer2||0)}" oninput="annualExamRecalculate()"></td><td class="annual-score-avg">0</td><input type="hidden" class="annual-aspect" value="${annualExamEscape(item.aspect)}"><input type="hidden" class="annual-desc" value="${annualExamEscape(item.description)}"></tr>`).join('');
+      annualExamRecalculate();
+    }
+    function annualExamRecalculate(){
+      let total=0;
+      document.querySelectorAll('#annualExamScoreBody tr').forEach(row=>{const a=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-1').value)||0));const b=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-2').value)||0));const avg=(a+b)/2;row.querySelector('.annual-score-avg').textContent=avg.toFixed(avg%1?1:0);total+=avg;});
+      total=Math.round(total*10)/10; const passed=total>=60; const pred=annualExamPredicate(total); const grade=document.getElementById('annualExamGrade')?.value||'Beginner';
+      document.getElementById('annualExamTotal').textContent=total;document.getElementById('annualExamPredicate').textContent=pred;document.getElementById('annualExamPassStatus').textContent=passed?'Lulus':'Belum Lulus';document.getElementById('annualExamNextGrade').textContent=annualExamNextGrade(grade,passed);document.getElementById('annualExamStatusPreview').value=`${total} • ${pred} • ${passed?'Lulus':'Belum Lulus'}`;
+    }
+    function closeAnnualExamForm(){const m=document.getElementById('annualExamModal');if(m)m.style.display='none';annualExamEditingId='';}
+    function annualExamCollectItems(){return [...document.querySelectorAll('#annualExamScoreBody tr')].map((row,i)=>({aspect:row.querySelector('.annual-aspect').value,description:row.querySelector('.annual-desc').value,scoreExaminer1:Number(row.querySelector('.annual-score-1').value)||0,scoreExaminer2:Number(row.querySelector('.annual-score-2').value)||0,sortOrder:i+1,maxScore:20}));}
+    async function saveAnnualExam(event){
+      event.preventDefault(); const btn=document.getElementById('annualExamSaveBtn'); btn.disabled=true; btn.textContent='Menyimpan...';
+      try{
+        const edit=annualExamRecords.find(x=>String(x.examID)===String(annualExamEditingId))||{};
+        const [sig1,sig2,sigHead]=await Promise.all([
+          annualExamFilePayload(document.getElementById('annualExamSig1')?.files?.[0]),
+          annualExamFilePayload(document.getElementById('annualExamSig2')?.files?.[0]),
+          annualExamFilePayload(document.getElementById('annualExamSigHead')?.files?.[0])
+        ]);
+        const payload={
+          examID:annualExamEditingId,
+          studentID:document.getElementById('annualExamStudent').value,
+          instrument:document.getElementById('annualExamInstrument').value,
+          gradeExam:document.getElementById('annualExamGrade').value,
+          examDate:document.getElementById('annualExamDate').value,
+          teacherName:document.getElementById('annualExamTeacher').value,
+          examiner1Name:document.getElementById('annualExamExaminer1').value,
+          examiner2Name:document.getElementById('annualExamExaminer2').value,
+          headmasterName:document.getElementById('annualExamHeadmasterName').value,
+          examiner1SignatureUrl:edit.examiner1SignatureUrl||'',examiner2SignatureUrl:edit.examiner2SignatureUrl||'',headmasterSignatureUrl:edit.headmasterSignatureUrl||'',
+          examiner1SignatureFile:sig1,examiner2SignatureFile:sig2,headmasterSignatureFile:sigHead,
+          notesExaminer1:document.getElementById('annualExamNotes1').value,notesExaminer2:document.getElementById('annualExamNotes2').value,
+          items:annualExamCollectItems()
+        };
+        google.script.run.withSuccessHandler(res=>{btn.disabled=false;btn.textContent='Simpan Hasil Ujian';if(res?.success){closeAnnualExamForm();showAlert('alertSuccess',res.message||'Hasil ujian berhasil disimpan.');loadAnnualExamCenter();}else showAlert('alertDanger',res?.message||'Gagal menyimpan hasil ujian.');}).withFailureHandler(err=>{btn.disabled=false;btn.textContent='Simpan Hasil Ujian';showAlert('alertDanger',err?.message||String(err));}).saveAnnualExam(payload);
+      }catch(err){btn.disabled=false;btn.textContent='Simpan Hasil Ujian';showAlert('alertDanger',err?.message||String(err));}
+      return false;
+    }
+    function publishAnnualExam(id){
+      const examID=String(id||'').trim();
+      if(!examID){showAlert('alertDanger','ID ujian tidak ditemukan.');return;}
+      if(!confirm('Kirim hasil ujian dan sertifikat ini ke akun siswa?')) return;
+      const buttons=[...document.querySelectorAll('.annual-exam-card-actions button')].filter(btn=>String(btn.getAttribute('onclick')||'').includes(`publishAnnualExam('${examID}')`));
+      buttons.forEach(btn=>{btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='Mengirim...';});
+      google.script.run.withSuccessHandler(res=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Kirim ke Siswa';});
+        if(res?.success){showAlert('alertSuccess',res.message||'Hasil ujian dan sertifikat berhasil dikirim ke siswa.');loadAnnualExamCenter();}
+        else showAlert('alertDanger',res?.message||'Gagal mengirim hasil ujian ke siswa.');
+      }).withFailureHandler(err=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Kirim ke Siswa';});
+        showAlert('alertDanger',err?.message||String(err));
+      }).publishAnnualExam(examID);
+    }
+
+    function deleteAnnualExam(id){
+      const examID=String(id||'').trim();
+      if(!examID){showAlert('alertDanger','ID ujian tidak ditemukan.');return;}
+      if(!confirm('Hapus hasil ujian ini? Data akan diarsipkan dan tidak akan tampil lagi di akun siswa.')) return;
+      const buttons=[...document.querySelectorAll('.annual-exam-card-actions button')].filter(btn=>String(btn.getAttribute('onclick')||'').includes(`deleteAnnualExam('${examID}')`));
+      buttons.forEach(btn=>{btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='Menghapus...';});
+      google.script.run.withSuccessHandler(res=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Hapus';});
+        if(res?.success){showAlert('alertSuccess',res.message||'Hasil ujian berhasil dihapus.');loadAnnualExamCenter();}
+        else showAlert('alertDanger',res?.message||'Gagal menghapus hasil ujian.');
+      }).withFailureHandler(err=>{
+        buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'Hapus';});
+        showAlert('alertDanger',err?.message||String(err));
+      }).deleteAnnualExam(examID);
+    }
+
+    function annualExamFetchDetail(id, callback){google.script.run.withSuccessHandler(res=>{if(res?.success&&res.exam)callback(res.exam);else showAlert('alertDanger',res?.message||'Data ujian tidak ditemukan.');}).withFailureHandler(err=>showAlert('alertDanger',err?.message||String(err))).getAnnualExam(id);}
+    function openAnnualExamResult(id){annualExamFetchDetail(id,exam=>buildAnnualExamResultWindow(exam));}
+    function openAnnualExamCertificate(id){annualExamFetchDetail(id,exam=>buildAnnualExamCertificateWindow(exam));}
+
+    function annualExamOpenWindow(title){const w=window.open('','_blank','width=1200,height=850');if(!w){showAlert('alertDanger','Popup diblokir. Izinkan popup untuk membuka dokumen.');return null;}w.document.write(`<!doctype html><html><body style="font-family:Arial;padding:40px;color:#64748b">Menyiapkan ${annualExamEscape(title)}...</body></html>`);return w;}
+    function annualExamLoadPrintAssets(callback){
+      const url = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+      if (typeof callback === 'function') callback(url);
+    }
+
+    function annualExamOpenPreparedWindow(title){
+      const w=window.open('','_blank','width=1200,height=850');
+      if(!w){showAlert('alertDanger','Popup diblokir. Izinkan popup untuk membuka '+title+'.');return null;}
+      w.document.write(`<!doctype html><html><body style="font-family:Arial;padding:40px;color:#64748b">Menyiapkan ${annualExamEscape(title)}...</body></html>`);
+      return w;
+    }
+
+    function openAnnualExamResult(id){
+      const w=annualExamOpenPreparedWindow('form penilaian'); if(!w)return;
+      google.script.run.withSuccessHandler(res=>{if(!res?.success||!res.exam){w.document.body.innerHTML='<p>Data ujian tidak ditemukan.</p>';return;}annualExamLoadPrintAssets(logo=>buildAnnualExamResultWindow(res.exam,w,logo));}).withFailureHandler(err=>{w.document.body.innerHTML=`<p>${annualExamEscape(err?.message||err)}</p>`;}).getAnnualExam(id);
+    }
+
+    function openAnnualExamCertificate(id){
+      const w=annualExamOpenPreparedWindow('sertifikat'); if(!w)return;
+      google.script.run.withSuccessHandler(res=>{if(!res?.success||!res.exam){w.document.body.innerHTML='<p>Data sertifikat tidak ditemukan.</p>';return;}annualExamLoadPrintAssets(logo=>buildAnnualExamCertificateWindow(res.exam,w,logo));}).withFailureHandler(err=>{w.document.body.innerHTML=`<p>${annualExamEscape(err?.message||err)}</p>`;}).getAnnualExam(id);
+    }
+    function buildAnnualExamResultWindow(exam,w,logoDataUrl=''){
+      if(!w||w.closed)return;
+      const items=Array.isArray(exam.items)?exam.items:[];
+      const rows=items.map(i=>`<tr><td><b>${annualExamEscape(i.aspect)}</b></td><td>${annualExamEscape(i.description)}</td><td>${Number(i.scoreExaminer1||0)}</td><td>${Number(i.scoreExaminer2||0)}</td><td><b>${Number(i.average||0)}</b></td></tr>`).join('');
+      const logo=logoDataUrl||new URL('/assets/logo/legacy-logo.png',window.location.origin).href;
+      const sig=(url,name,label)=>`<div class="sign"><b>${label}</b><div class="sig-img">${annualExamImageHtml(url,label,'')}</div><span>${annualExamEscape(name||'-')}</span></div>`;
+      const safeName=String(exam.studentName||'Siswa').replace(/[^a-z0-9_-]+/gi,'-');
+      w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Form Penilaian - ${annualExamEscape(exam.studentName)}</title><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4 portrait;margin:8mm}html,body{margin:0;background:#e8edf3;font-family:Arial;color:#17232d}.toolbar{position:sticky;top:0;z-index:20;background:#17232d;padding:10px;text-align:center}.toolbar button{border:0;border-radius:12px;padding:11px 16px;font-weight:800;margin:0 4px;font-size:15px}.ghost{background:#fff;color:#334155}.secondary{background:#fff0e9;color:#c2410c}.primary{background:#f15a24;color:#fff}.viewport{padding:14px;overflow:auto}.paper{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:10mm;box-shadow:0 12px 36px #0002;transform-origin:top left}.brand{display:grid;grid-template-columns:50mm 1fr;align-items:center;border-bottom:2.5px solid #f15a24;padding-bottom:5mm}.brand img{width:48mm;height:22mm;object-fit:contain;object-position:left center}.brand h1{font-size:17px;margin:0;text-align:right}.brand small{display:block;text-align:right;color:#f15a24;font-weight:800;margin-top:3px}.info{width:100%;border-collapse:collapse;margin:5mm 0}.info td{border:1px solid #cbd5e1;padding:2.6mm;font-size:8.7px}.info b{display:block;color:#64748b;font-size:7px;text-transform:uppercase;margin-bottom:1mm}.score{width:100%;border-collapse:collapse;table-layout:fixed}.score th,.score td{border:1px solid #94a3b8;padding:2.5mm;font-size:8px;text-align:center;line-height:1.35;word-break:break-word}.score th{background:#f15a24;color:#fff}.score th:nth-child(1){width:17%}.score th:nth-child(2){width:43%}.score td:nth-child(2){text-align:left}.summary{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #cbd5e1;margin-top:5mm;border-radius:2mm;overflow:hidden}.summary div{text-align:center;padding:3mm;border-right:1px solid #cbd5e1}.summary div:last-child{border-right:0}.summary span{display:block;font-size:6.8px;color:#64748b;font-weight:800;text-transform:uppercase}.summary b{display:block;margin-top:1mm;font-size:11px}.notes{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:4mm}.note{border:1px solid #cbd5e1;min-height:26mm;padding:3mm;font-size:8px;border-radius:2mm}.note b{color:#f15a24}.signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10mm;margin-top:8mm}.sign{text-align:center;font-size:7.8px}.sig-img{height:24mm;display:flex;align-items:center;justify-content:center}.sig-img img{max-width:48mm;max-height:23mm;object-fit:contain}.sign span{display:block;border-top:1px solid #475569;padding-top:2mm;font-weight:700}.doc-footer{text-align:center;color:#94a3b8;font-size:6.5px;margin-top:5mm}@media print{html,body{background:#fff}.toolbar{display:none}.viewport{padding:0;overflow:visible}.paper{box-shadow:none;transform:none!important}}</style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="lmcSavePdf('paper','portrait','Form-Ujian-${safeName}.pdf',this)">Simpan PDF</button><button class="primary" onclick="lmcPrintDoc('paper','portrait','Form-Ujian-${safeName}.pdf',this)">Cetak</button></div><div class="viewport" id="viewport"><main class="paper" id="paper"><div class="brand"><img src="${annualExamEscape(logo)}"><div><h1>FORM PENILAIAN UJIAN TAHUNAN SISWA</h1><small>LEGACY MUSIC CENTER</small></div></div><table class="info"><tr><td><b>Nama Siswa</b>${annualExamEscape(exam.studentName)}</td><td><b>Pengajar</b>${annualExamEscape(exam.teacherName)}</td></tr><tr><td><b>Divisi / Instrumen</b>${annualExamEscape(exam.instrument)}</td><td><b>Penguji 1</b>${annualExamEscape(exam.examiner1Name)}</td></tr><tr><td><b>Grade Ujian</b>${annualExamEscape(exam.gradeExam)}</td><td><b>Penguji 2</b>${annualExamEscape(exam.examiner2Name)}</td></tr></table><table class="score"><thead><tr><th>ASPEK PENILAIAN</th><th>DESKRIPSI PENILAIAN</th><th>NILAI PENGUJI 1</th><th>NILAI PENGUJI 2</th><th>RATA-RATA</th></tr></thead><tbody>${rows}</tbody></table><div class="summary"><div><span>Total Nilai Akhir</span><b>${exam.finalScore}</b></div><div><span>Predikat</span><b>${annualExamEscape(exam.predicate)}</b></div><div><span>Status</span><b>${annualExamEscape(exam.resultStatus)}</b></div><div><span>Menuju Grade</span><b>${annualExamEscape(exam.nextGrade)}</b></div></div><div class="notes"><div class="note"><b>CATATAN PENGUJI 1</b><p>${annualExamEscape(exam.notesExaminer1||'-')}</p></div><div class="note"><b>CATATAN PENGUJI 2</b><p>${annualExamEscape(exam.notesExaminer2||'-')}</p></div></div><div class="signatures">${sig(exam.examiner1SignatureUrl,exam.examiner1Name,'PENGUJI 1')}${sig(exam.headmasterSignatureUrl,exam.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd','KEPALA SEKOLAH')}${sig(exam.examiner2SignatureUrl,exam.examiner2Name,'PENGUJI 2')}</div><div class="doc-footer">Dokumen resmi Legacy Music Center • ${annualExamEscape(formatAcademyDate(exam.examDate||''))}</div></main></div><script>function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
+async function lmcEnsurePdf(){await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',function(){return typeof window.html2canvas==='function';});await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){return !!(window.jspdf&&window.jspdf.jsPDF);});}
+function lmcIsIOS(){return /iPad|iPhone|iPod/i.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+async function lmcWaitImages(root){var imgs=Array.prototype.slice.call(root.querySelectorAll('img'));await Promise.all(imgs.map(function(img){if(img.complete)return Promise.resolve();return new Promise(function(resolve){var done=function(){resolve();};img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(resolve,1800);});}));}
+async function lmcCreatePdf(targetId,orientation,filename){await lmcEnsurePdf();var target=document.getElementById(targetId);if(!target)throw new Error('Dokumen tidak ditemukan.');await lmcWaitImages(target);var oldTransform=target.style.transform;var oldOrigin=target.style.transformOrigin;target.style.transform='none';target.style.transformOrigin='top left';var canvas=await window.html2canvas(target,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0,windowWidth:Math.max(document.documentElement.scrollWidth,target.scrollWidth),windowHeight:Math.max(document.documentElement.scrollHeight,target.scrollHeight)});target.style.transform=oldTransform;target.style.transformOrigin=oldOrigin;var jsPDF=window.jspdf.jsPDF;var landscape=orientation==='landscape';var pageW=landscape?297:210,pageH=landscape?210:297;var pdf=new jsPDF({orientation:landscape?'landscape':'portrait',unit:'mm',format:'a4',compress:true});var sliceH=Math.floor(canvas.width*(pageH/pageW));var y=0,pageIndex=0;while(y<canvas.height){var h=Math.min(sliceH,canvas.height-y);var slice=document.createElement('canvas');slice.width=canvas.width;slice.height=h;var ctx=slice.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,slice.width,slice.height);ctx.drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);var data=slice.toDataURL('image/jpeg',0.94);if(pageIndex>0)pdf.addPage('a4',landscape?'landscape':'portrait');var drawH=pageW*(h/canvas.width);pdf.addImage(data,'JPEG',0,0,pageW,Math.min(drawH,pageH),undefined,'FAST');y+=h;pageIndex++;}return {blob:pdf.output('blob'),filename:filename};}
+async function lmcShareOrDownload(blob,filename,title,preferPrint){var file=new File([blob],filename,{type:'application/pdf'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:title||filename,text:preferPrint?'Pilih Print/Cetak dari menu berbagi.':''});return true;}catch(e){if(e&&e.name==='AbortError')return true;}}var url=URL.createObjectURL(blob);if(preferPrint&&lmcIsIOS()){var opened=window.open(url,'_blank');if(!opened)window.location.href=url;setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}var a=document.createElement('a');a.href=url;a.download=filename;a.rel='noopener';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}
+async function lmcSavePdf(targetId,orientation,filename,button){var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan PDF...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Legacy Music Center',false);}catch(e){alert('Gagal membuat PDF: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Simpan PDF';}}}
+async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS()){window.print();return;}var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan Cetak...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Cetak dokumen Legacy Music Center',true);}catch(e){alert('Gagal menyiapkan cetak: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Cetak';}}}
+function fitPaper(){var p=document.getElementById('paper'),v=document.getElementById('viewport');if(!p||!v||window.matchMedia('print').matches)return;var available=Math.max(320,window.innerWidth-20),scale=Math.min(1,available/p.offsetWidth);p.style.transform='scale('+scale+')';v.style.height=Math.ceil(p.offsetHeight*scale+24)+'px';}window.addEventListener('load',fitPaper);window.addEventListener('resize',fitPaper);setTimeout(fitPaper,100);function annualExamImageFallback(img){try{const a=JSON.parse(img.dataset.examFallbacks||'[]'),i=Number(img.dataset.examFallbackIndex||0);if(i<a.length){img.dataset.examFallbackIndex=String(i+1);img.src=a[i];return}}catch(e){}img.style.display='none'}<\/script></body></html>`);w.document.close();
+    }
+
+    function buildAnnualExamCertificateWindow(exam,w,logoDataUrl=''){
+      if(!w||w.closed)return;
+      const templateUrl=new URL('/assets/certificate/sertifikat-ujian-template.png',window.location.origin).href;
+      const issue=formatAcademyDate(exam.examDate||'');
+      const headmaster=exam.headmasterName||'Faisal Rahmat Permana, S.Sn., M.Pd';
+      const signature=annualExamImageHtml(exam.headmasterSignatureUrl,'Tanda tangan kepala sekolah','head-signature-img');
+      const safeName=String(exam.studentName||'Siswa').replace(/[^a-z0-9_-]+/gi,'-');
+      const studentName=annualExamEscape(exam.studentName||'');
+      const program=annualExamEscape(exam.instrument||'');
+      const grade=annualExamEscape(exam.gradeExam||'');
+      const scoreText=`${annualExamEscape(exam.finalScore||'')} (${annualExamEscape(exam.predicate||'')})`;
+      w.document.open();
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Sertifikat ${studentName}</title><style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+      @page{size:A4 landscape;margin:0}
+      html,body{margin:0;min-height:100%;font-family:Arial,Helvetica,sans-serif;background:#e8edf3;color:#111}
+      .toolbar{position:sticky;top:0;z-index:30;background:#122033;padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left));text-align:center}
+      .toolbar button{border:0;border-radius:12px;padding:11px 16px;font-weight:800;margin:0 4px;cursor:pointer;font-size:15px}.toolbar .ghost{background:#fff;color:#334155}.toolbar .secondary{background:#fff0e9;color:#c2410c}.toolbar .primary{background:#f15a24;color:#fff}
+      .viewport{padding:14px;overflow:auto;display:flex;justify-content:center}
+      .stage{position:relative;width:297mm;height:210mm;flex:0 0 auto;transform-origin:top center}
+      .cert{position:absolute;inset:0;width:297mm;height:210mm;background:#fff;overflow:hidden;box-shadow:0 12px 36px rgba(15,23,42,.16)}
+      .template{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;display:block}
+      .field{position:absolute;z-index:3;text-align:center;color:#111;line-height:1;white-space:nowrap}
+      .student-name{left:50%;top:45.08%;transform:translate(-50%,-50%);width:67%;font-size:9.3mm;font-weight:750;line-height:1.05;overflow:hidden}
+      .program{left:46.45%;top:57.55%;transform:translate(-50%,-50%);width:17.6%;font-size:4.4mm;font-weight:700}
+      .grade{left:65.55%;top:57.55%;transform:translate(-50%,-50%);width:12.4%;font-size:4.4mm;font-weight:700}
+      .exam-date{left:60.1%;top:61.32%;transform:translate(-50%,-50%);width:18.6%;font-size:4.0mm;font-weight:500;color:#f15a24}
+      .score{left:50%;top:74.15%;transform:translate(-50%,-50%);width:28%;font-size:6.8mm;font-weight:750}
+      .signature-img{position:absolute;z-index:3;left:79.95%;top:78.55%;transform:translate(-50%,-50%);width:17.5%;height:8.8%;display:flex;align-items:center;justify-content:center;overflow:visible}
+      .signature-img img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+      .headmaster-name{left:80.05%;top:84.95%;transform:translate(-50%,-50%);width:33%;font-size:3.45mm;font-weight:500;line-height:1.08;overflow:hidden;text-overflow:ellipsis}
+      @media print{html,body{width:297mm;height:210mm;background:#fff;overflow:hidden}.toolbar{display:none!important}.viewport{padding:0;display:block;overflow:visible}.stage{width:297mm!important;height:210mm!important;transform:none!important}.cert{box-shadow:none!important}}
+      </style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="lmcSavePdf('cert','landscape','Sertifikat-${safeName}.pdf',this)">Simpan PDF</button><button class="primary" onclick="lmcPrintDoc('cert','landscape','Sertifikat-${safeName}.pdf',this)">Cetak</button></div><div class="viewport" id="viewport"><div class="stage" id="stage"><section class="cert" id="cert"><img class="template" src="${annualExamEscape(templateUrl)}" alt="Template Sertifikat"><div class="field student-name" id="studentNameField">${studentName}</div><div class="field program">${program}</div><div class="field grade">${grade}</div><div class="field exam-date">${annualExamEscape(issue)}</div><div class="field score">${scoreText}</div><div class="signature-img">${signature}</div><div class="field headmaster-name" id="headmasterField">${annualExamEscape(headmaster)}</div></section></div></div><script>
+function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
+async function lmcEnsurePdf(){await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',function(){return typeof window.html2canvas==='function';});await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){return !!(window.jspdf&&window.jspdf.jsPDF);});}
+function lmcIsIOS(){return /iPad|iPhone|iPod/i.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+async function lmcWaitImages(root){var imgs=Array.prototype.slice.call(root.querySelectorAll('img'));await Promise.all(imgs.map(function(img){if(img.complete)return Promise.resolve();return new Promise(function(resolve){var done=function(){resolve();};img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(resolve,2200);});}));}
+async function lmcCreatePdf(targetId,orientation,filename){await lmcEnsurePdf();var target=document.getElementById(targetId);if(!target)throw new Error('Dokumen tidak ditemukan.');await lmcWaitImages(target);var oldTransform=target.style.transform;var oldOrigin=target.style.transformOrigin;target.style.transform='none';target.style.transformOrigin='top left';var canvas=await window.html2canvas(target,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0,windowWidth:target.scrollWidth,windowHeight:target.scrollHeight});target.style.transform=oldTransform;target.style.transformOrigin=oldOrigin;var jsPDF=window.jspdf.jsPDF;var pdf=new jsPDF({orientation:'landscape',unit:'mm',format:'a4',compress:true});var data=canvas.toDataURL('image/jpeg',0.96);pdf.addImage(data,'JPEG',0,0,297,210,undefined,'FAST');return {blob:pdf.output('blob'),filename:filename};}
+async function lmcShareOrDownload(blob,filename,title,preferPrint){var file=new File([blob],filename,{type:'application/pdf'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:title||filename,text:preferPrint?'Pilih Print/Cetak dari menu berbagi.':''});return true;}catch(e){if(e&&e.name==='AbortError')return true;}}var url=URL.createObjectURL(blob);if(preferPrint&&lmcIsIOS()){var opened=window.open(url,'_blank');if(!opened)window.location.href=url;setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}var a=document.createElement('a');a.href=url;a.download=filename;a.rel='noopener';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}
+async function lmcSavePdf(targetId,orientation,filename,button){var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan PDF...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Legacy Music Center',false);}catch(e){alert('Gagal membuat PDF: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Simpan PDF';}}}
+async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS()){window.print();return;}var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan Cetak...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Cetak dokumen Legacy Music Center',true);}catch(e){alert('Gagal menyiapkan cetak: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Cetak';}}}
+function fitText(el,min,max){if(!el)return;var size=max;el.style.fontSize=size+'mm';while(el.scrollWidth>el.clientWidth&&size>min){size-=0.2;el.style.fontSize=size+'mm';}}
+function fitStage(){var s=document.getElementById('stage'),v=document.getElementById('viewport');if(!s||!v||window.matchMedia('print').matches)return;var available=Math.max(320,window.innerWidth-20),scale=Math.min(1,available/s.offsetWidth);s.style.transform='scale('+scale+')';v.style.height=Math.ceil(s.offsetHeight*scale+24)+'px';}
+function annualExamImageFallback(img){try{const a=JSON.parse(img.dataset.examFallbacks||'[]'),i=Number(img.dataset.examFallbackIndex||0);if(i<a.length){img.dataset.examFallbackIndex=String(i+1);img.src=a[i];return}}catch(e){}img.style.display='none'}
+window.addEventListener('load',function(){fitText(document.getElementById('studentNameField'),6.8,9.3);fitText(document.querySelector('.program'),2.8,4.4);fitText(document.querySelector('.grade'),2.8,4.4);fitText(document.querySelector('.exam-date'),2.6,4.0);fitText(document.querySelector('.score'),4.5,6.8);fitText(document.getElementById('headmasterField'),2.7,3.45);fitStage();});window.addEventListener('resize',fitStage);setTimeout(fitStage,120);
+<\/script></body></html>`);
+      w.document.close();
+    }
 
     function getFilteredJadwal() {
       const filterHari = document.getElementById('filterJadwalHari') ? document.getElementById('filterJadwalHari').value.trim().toLowerCase() : '';
@@ -3594,24 +4025,33 @@ let currentUser = { userType: '', userID: '', userName: '' };
           if (!date || date < startThreeMonths) return false;
         }
         return true;
+      }).sort((a,b) => {
+        const pa = Number(a.pertemuanKe ?? a.pertemuan ?? a.ke ?? 0);
+        const pb = Number(b.pertemuanKe ?? b.pertemuan ?? b.ke ?? 0);
+        if (pa !== pb) return pa - pb;
+        const da = parseAbsensiRecordDate(a.tanggal);
+        const db = parseAbsensiRecordDate(b.tanggal);
+        return (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
       });
     }
+    function getAbsensiPrintableLogoData(callback) {
+      const url = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+      if (typeof callback === 'function') callback(url);
+    }
+
 
     function printAbsensiReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
       const records = getAbsensiReportData();
       if (!records.length) { showAlert('alertDanger', 'Tidak ada data Absensi pada filter dan periode yang dipilih.'); return; }
-      const printWindow = window.open('', '_blank', 'width=1000,height=760');
+      const printWindow = window.open('', '_blank', 'width=1200,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
-      printWindow.document.write('<!doctype html><html><body style="font-family:Arial;padding:32px;color:#64748b">Menyiapkan laporan Absensi...</body></html>');
-      google.script.run.withSuccessHandler(response => {
-        buildAbsensiPrintWindow(records, printWindow, response && response.success ? response.dataUrl : '');
-      }).withFailureHandler(() => buildAbsensiPrintWindow(records, printWindow, '')).getLearningProgressPrintLogo();
+      const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+      buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
     }
-
     function buildAbsensiPrintWindow(records, printWindow, logoDataUrl) {
       const studentFilter = document.getElementById('filterProgressSiswa')?.value || 'Semua Siswa';
-      const teacherFilter = currentUser.userType === 'admin' ? (document.getElementById('filterProgressGuru')?.value || 'Semua Guru') : currentUser.userName;
+      const teacherFilter = currentUser.userType === 'admin' ? (document.getElementById('filterProgressGuru')?.value || 'Semua Guru') : (currentUser.userName || '-');
       const monthSelect = document.getElementById('filterRiwayatSelect');
       const selectedMonth = monthSelect?.value ? monthSelect.options[monthSelect.selectedIndex].text : '';
       const periodType = document.getElementById('exportPeriodType')?.value || '3months';
@@ -3621,9 +4061,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
         return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td>${escapeTaskHtml(item.materi || '-')}</td><td>${escapeTaskHtml(item.lagu || '-')}</td><td>${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
-      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Laporan Materi dan Absensi</title><style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:8.5px}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #f15a24;padding-bottom:8px;margin-bottom:10px;min-height:66px}.brand-logo{width:118px;height:64px;object-fit:contain;object-position:left center}.brand h1{font-size:18px;margin:0 0 4px}.orange{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:7px;padding:7px}.meta span{display:block;color:#7b8aa0;font-size:7px;text-transform:uppercase;margin-bottom:2px}.summary{display:flex;gap:20px;align-items:center;margin-bottom:9px}.summary b{color:#f15a24;font-size:15px}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:6px 4px;text-align:left;font-size:7.5px}td{border:1px solid #dfe6ee;padding:5px 4px;vertical-align:top;line-height:1.3;word-wrap:break-word}th:nth-child(1){width:3%}th:nth-child(2){width:7%}th:nth-child(3){width:5%}th:nth-child(4){width:12%}th:nth-child(5){width:7%}th:nth-child(6){width:17%}th:nth-child(7){width:12%}th:nth-child(8){width:17%}th:nth-child(9),th:nth-child(10){width:10%}.center{text-align:center}.signature{text-align:center}.signature img{max-width:70px;max-height:30px;object-fit:contain}.footer{margin-top:9px;padding-top:6px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:7px;text-align:right}@media print{button{display:none}tr{page-break-inside:avoid}}</style></head><body><div class="brand"><div>${logoDataUrl ? `<img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center">` : '<b class="orange">LEGACY MUSIC CENTER</b>'}</div><div style="text-align:right"><h1>Laporan Materi & Progress</h1><b class="orange">Absensi Siswa</b></div></div><div class="meta"><div><span>Siswa</span><b>${escapeTaskHtml(studentFilter)}</b></div><div><span>Guru</span><b>${escapeTaskHtml(teacherFilter)}</b></div><div><span>Periode</span><b>${escapeTaskHtml(periodLabel)}</b></div><div><span>Tanggal Cetak</span><b>${new Date().toLocaleDateString('id-ID')}</b></div></div><div class="summary"><span>Total Pertemuan <b>${records.length}</b></span><span>Hadir <b>${present}</b></span><span>Tidak Hadir <b>${records.length - present}</b></span></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Ke</th><th>Siswa</th><th>Status</th><th>Materi</th><th>Lagu</th><th>Catatan / Tugas</th><th>TTD Guru</th><th>TTD Siswa</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Materi & Progress</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),650));<\/script></body></html>`;
-      const printReadyReport = report.replace('<style>', '<style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}');
-      printWindow.document.open(); printWindow.document.write(printReadyReport); printWindow.document.close();
+      const safeName = String(studentFilter || 'Semua-Siswa').replace(/[^a-z0-9_-]+/gi,'-');
+      const report = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Laporan Materi dan Absensi</title><style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4 landscape;margin:10mm}html,body{margin:0;background:#e6edf5;font-family:Arial,sans-serif;color:#17232d}.toolbar{position:sticky;top:0;z-index:30;background:#122033;padding:12px;text-align:center}.toolbar button{border:0;border-radius:12px;padding:11px 16px;font-weight:800;margin:0 4px;font-size:15px}.ghost{background:#fff;color:#334155}.secondary{background:#fff0e9;color:#c2410c}.primary{background:#f15a24;color:#fff}.viewport{padding:14px;overflow:auto}.paper{width:297mm;min-height:210mm;margin:0 auto;background:#fff;padding:10mm;box-shadow:0 12px 36px #0002;transform-origin:top left}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #f15a24;padding-bottom:8px;margin-bottom:10px;min-height:66px}.brand-logo{width:118px;height:64px;object-fit:contain;object-position:left center}.brand h1{font-size:18px;margin:0 0 4px}.orange{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:8px;padding:7px}.meta span{display:block;color:#7b8aa0;font-size:7px;text-transform:uppercase;margin-bottom:2px}.summary{display:flex;gap:20px;align-items:center;margin-bottom:9px}.summary b{color:#f15a24;font-size:15px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.5px}th{background:#f15a24;color:#fff;padding:6px 4px;text-align:left;font-size:7.5px}td{border:1px solid #dfe6ee;padding:5px 4px;vertical-align:top;line-height:1.3;word-wrap:break-word}th:nth-child(1){width:3%}th:nth-child(2){width:7%}th:nth-child(3){width:5%}th:nth-child(4){width:12%}th:nth-child(5){width:7%}th:nth-child(6){width:17%}th:nth-child(7){width:12%}th:nth-child(8){width:17%}th:nth-child(9),th:nth-child(10){width:10%}.center{text-align:center}.signature{text-align:center}.signature img{max-width:70px;max-height:30px;object-fit:contain}.footer{margin-top:9px;padding-top:6px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:7px;text-align:right}tr{page-break-inside:avoid}@media print{html,body{background:#fff}.toolbar{display:none!important}.viewport{padding:0;overflow:visible}.paper{box-shadow:none;transform:none!important}}</style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="lmcSavePdf('paper','landscape','Laporan-Materi-Progress-${safeName}.pdf',this)">Simpan PDF</button><button class="primary" onclick="lmcPrintDoc('paper','landscape','Laporan-Materi-Progress-${safeName}.pdf',this)">Cetak</button></div><div class="viewport" id="viewport"><div class="paper" id="paper"><div class="brand"><img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center"><div style="text-align:right"><h1>Laporan Materi & Progress</h1><b class="orange">Absensi Siswa</b></div></div><div class="meta"><div><span>Siswa</span><b>${escapeTaskHtml(studentFilter)}</b></div><div><span>Guru</span><b>${escapeTaskHtml(teacherFilter)}</b></div><div><span>Periode</span><b>${escapeTaskHtml(periodLabel)}</b></div><div><span>Tanggal Cetak</span><b>${new Date().toLocaleDateString('id-ID')}</b></div></div><div class="summary"><span>Total Pertemuan <b>${records.length}</b></span><span>Hadir <b>${present}</b></span><span>Tidak Hadir <b>${records.length-present}</b></span></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Ke</th><th>Siswa</th><th>Status</th><th>Materi</th><th>Lagu</th><th>Catatan / Tugas</th><th>TTD Guru</th><th>TTD Siswa</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Materi & Progress</div></div></div><script>function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
+async function lmcEnsurePdf(){await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',function(){return typeof window.html2canvas==='function';});await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){return !!(window.jspdf&&window.jspdf.jsPDF);});}
+function lmcIsIOS(){return /iPad|iPhone|iPod/i.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+async function lmcWaitImages(root){var imgs=Array.prototype.slice.call(root.querySelectorAll('img'));await Promise.all(imgs.map(function(img){if(img.complete)return Promise.resolve();return new Promise(function(resolve){var done=function(){resolve();};img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(resolve,1800);});}));}
+async function lmcCreatePdf(targetId,orientation,filename){await lmcEnsurePdf();var target=document.getElementById(targetId);if(!target)throw new Error('Dokumen tidak ditemukan.');await lmcWaitImages(target);var oldTransform=target.style.transform;var oldOrigin=target.style.transformOrigin;target.style.transform='none';target.style.transformOrigin='top left';var canvas=await window.html2canvas(target,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0,windowWidth:Math.max(document.documentElement.scrollWidth,target.scrollWidth),windowHeight:Math.max(document.documentElement.scrollHeight,target.scrollHeight)});target.style.transform=oldTransform;target.style.transformOrigin=oldOrigin;var jsPDF=window.jspdf.jsPDF;var landscape=orientation==='landscape';var pageW=landscape?297:210,pageH=landscape?210:297;var pdf=new jsPDF({orientation:landscape?'landscape':'portrait',unit:'mm',format:'a4',compress:true});var sliceH=Math.floor(canvas.width*(pageH/pageW));var y=0,pageIndex=0;while(y<canvas.height){var h=Math.min(sliceH,canvas.height-y);var slice=document.createElement('canvas');slice.width=canvas.width;slice.height=h;var ctx=slice.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,slice.width,slice.height);ctx.drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);var data=slice.toDataURL('image/jpeg',0.94);if(pageIndex>0)pdf.addPage('a4',landscape?'landscape':'portrait');var drawH=pageW*(h/canvas.width);pdf.addImage(data,'JPEG',0,0,pageW,Math.min(drawH,pageH),undefined,'FAST');y+=h;pageIndex++;}return {blob:pdf.output('blob'),filename:filename};}
+async function lmcShareOrDownload(blob,filename,title,preferPrint){var file=new File([blob],filename,{type:'application/pdf'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:title||filename,text:preferPrint?'Pilih Print/Cetak dari menu berbagi.':''});return true;}catch(e){if(e&&e.name==='AbortError')return true;}}var url=URL.createObjectURL(blob);if(preferPrint&&lmcIsIOS()){var opened=window.open(url,'_blank');if(!opened)window.location.href=url;setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}var a=document.createElement('a');a.href=url;a.download=filename;a.rel='noopener';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}
+async function lmcSavePdf(targetId,orientation,filename,button){var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan PDF...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Legacy Music Center',false);}catch(e){alert('Gagal membuat PDF: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Simpan PDF';}}}
+async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS()){window.print();return;}var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan Cetak...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Cetak dokumen Legacy Music Center',true);}catch(e){alert('Gagal menyiapkan cetak: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Cetak';}}}
+function fitPaper(){var p=document.getElementById('paper'),v=document.getElementById('viewport');if(!p||!v||window.matchMedia('print').matches)return;var available=Math.max(320,window.innerWidth-20),scale=Math.min(1,available/p.offsetWidth);p.style.transform='scale('+scale+')';v.style.height=Math.ceil(p.offsetHeight*scale+24)+'px';}window.addEventListener('load',fitPaper);window.addEventListener('resize',fitPaper);setTimeout(fitPaper,100);<\/script></body></html>`;
+      printWindow.document.open(); printWindow.document.write(report); printWindow.document.close();
     }
 
     function openEditAbsensiModal(absensiID) {
@@ -3742,11 +4191,62 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return '📎';
     }
 
+    function getTaskDriveFileId(file) {
+      const candidates = [file && file.fileId, file && file.url, file && file.previewUrl, file && file.downloadUrl];
+      for (const candidate of candidates) {
+        const raw = String(candidate || '').trim();
+        if (!raw) continue;
+        if (/^[a-zA-Z0-9_-]{20,}$/.test(raw) && !raw.includes('/')) return raw;
+        let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+        if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+        if (!match) match = raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+        if (match && match[1]) return decodeURIComponent(match[1]);
+      }
+      return '';
+    }
+
+    function taskAttachmentImageCandidates(file) {
+      const list = [];
+      const push = value => {
+        const clean = String(value || '').trim();
+        if (clean && !list.includes(clean)) list.push(clean);
+      };
+      const driveId = getTaskDriveFileId(file);
+      if (driveId) {
+        // Google Drive download links often cannot be rendered directly by <img> on iOS.
+        // Use Google's image/thumbnail endpoints first, then keep the original links as fallbacks.
+        push(`https://lh3.googleusercontent.com/d/${driveId}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(driveId)}&sz=w1600`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(driveId)}`);
+      }
+      push(file && file.downloadUrl);
+      push(file && file.url);
+      return list;
+    }
+
+    function taskAttachmentImageFallback(img) {
+      if (!img) return;
+      try {
+        const list = JSON.parse(img.dataset.fallbacks || '[]');
+        const index = Number(img.dataset.fallbackIndex || 0);
+        if (index < list.length) {
+          img.dataset.fallbackIndex = String(index + 1);
+          img.src = list[index];
+          return;
+        }
+      } catch (_) {}
+      img.classList.add('attachment-image-error');
+      img.removeAttribute('src');
+      img.alt = 'Preview tidak tersedia. Gunakan tombol Buka atau Download.';
+    }
+
     function renderTaskAttachment(file) {
       if (!file || !file.url) return '';
       const name = escapeTaskHtml(file.name || 'File lampiran');
       const url = escapeTaskHtml(file.url);
-      const previewUrl = escapeTaskHtml(file.previewUrl || file.url);
+      const driveId = getTaskDriveFileId(file);
+      const previewRaw = driveId ? `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview` : (file.previewUrl || file.url);
+      const previewUrl = escapeTaskHtml(previewRaw);
       const downloadUrl = escapeTaskHtml(file.downloadUrl || file.url);
       const type = String(file.type || '').toLowerCase();
       const rawName = String(file.name || '').toLowerCase();
@@ -3759,7 +4259,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
       } else if (isVideo) {
         preview = `<iframe class="attachment-preview-frame video" src="${previewUrl}" allow="autoplay; fullscreen" allowfullscreen title="Putar ${name}"></iframe>`;
       } else if (isImage) {
-        preview = `<img class="attachment-image" loading="lazy" src="${downloadUrl}" alt="${name}">`;
+        const candidates = taskAttachmentImageCandidates(file);
+        if (candidates.length) {
+          const first = escapeTaskHtml(candidates[0]);
+          const fallbacks = escapeTaskHtml(JSON.stringify(candidates.slice(1)));
+          preview = `<img class="attachment-image" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
+        }
       }
       return `<div class="attachment-box">
         <div class="attachment-head">
