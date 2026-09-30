@@ -71,6 +71,194 @@
   window.LegacyAPI = { rpc };
 })();
 
+(function(){
+  'use strict';
+
+  let pushRegistration = null;
+
+  function isIOS(){
+    return /iPad|iPhone|iPod/i.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  function isStandalone(){
+    return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+
+  function pushSupported(){
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  }
+
+  function base64UrlToUint8Array(value){
+    const padding = '='.repeat((4 - value.length % 4) % 4);
+    const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    return Uint8Array.from([...raw].map(ch => ch.charCodeAt(0)));
+  }
+
+  function setPushStatus(text, tone){
+    const status = document.getElementById('pushNotificationStatus');
+    if (!status) return;
+    status.textContent = text;
+    status.dataset.tone = tone || 'neutral';
+  }
+
+  function setPushButtons(state){
+    const enable = document.getElementById('btnEnablePush');
+    const test = document.getElementById('btnTestPush');
+    const disable = document.getElementById('btnDisablePush');
+    if (enable) enable.style.display = state === 'enabled' ? 'none' : '';
+    if (test) test.style.display = state === 'enabled' ? '' : 'none';
+    if (disable) disable.style.display = state === 'enabled' ? '' : 'none';
+  }
+
+  async function getRegistration(){
+    if (!pushSupported()) throw new Error('Push notification tidak didukung pada perangkat/browser ini.');
+    if (pushRegistration) return pushRegistration;
+    pushRegistration = await navigator.serviceWorker.register('/sw.js', { scope:'/' });
+    await navigator.serviceWorker.ready;
+    return pushRegistration;
+  }
+
+  async function saveSubscription(subscription){
+    const json = subscription.toJSON();
+    const payload = {
+      endpoint: subscription.endpoint,
+      expirationTime: subscription.expirationTime || null,
+      keys: json.keys || {},
+      userAgent: navigator.userAgent || '',
+      platform: navigator.platform || '',
+      standalone: isStandalone()
+    };
+    const result = await LegacyAPI.rpc('savePushSubscription', [payload]);
+    if (!result || result.success === false) throw new Error(result?.message || 'Gagal menyimpan subscription push.');
+    return result;
+  }
+
+  function applyPushDeepLink(){
+    try {
+      const target = new URLSearchParams(window.location.search).get('open');
+      if (!target || !currentUser || !currentUser.userID) return;
+      setTimeout(() => {
+        try {
+          if (typeof switchTab === 'function') switchTab(target);
+          const clean = new URL(window.location.href);
+          clean.searchParams.delete('open');
+          history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
+        } catch (_) {}
+      }, 700);
+    } catch (_) {}
+  }
+
+  async function initializePushNotifications(){
+    const card = document.getElementById('pushNotificationSettings');
+    if (!card) return;
+    applyPushDeepLink();
+
+    if (isIOS() && !isStandalone()) {
+      setPushStatus('Di iPhone, buka aplikasi dari ikon Home Screen untuk mengaktifkan push notification.', 'warning');
+      setPushButtons('unavailable');
+      return;
+    }
+    if (!pushSupported()) {
+      setPushStatus('Push notification belum didukung pada perangkat/browser ini.', 'warning');
+      setPushButtons('unavailable');
+      return;
+    }
+
+    try {
+      const registration = await getRegistration();
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription && Notification.permission === 'granted') {
+        try { await saveSubscription(subscription); } catch (_) {}
+        setPushStatus('Notifikasi aktif di perangkat ini.', 'success');
+        setPushButtons('enabled');
+      } else if (Notification.permission === 'denied') {
+        setPushStatus('Izin notifikasi diblokir. Aktifkan kembali dari Settings iPhone/Browser.', 'danger');
+        setPushButtons('unavailable');
+      } else {
+        setPushStatus('Notifikasi belum diaktifkan di perangkat ini.', 'neutral');
+        setPushButtons('disabled');
+      }
+    } catch (error) {
+      console.error('Push init error:', error);
+      setPushStatus(error.message || 'Gagal menyiapkan push notification.', 'danger');
+      setPushButtons('disabled');
+    }
+  }
+
+  async function enablePushNotifications(){
+    const button = document.getElementById('btnEnablePush');
+    const old = button ? button.textContent : '';
+    try {
+      if (button) { button.disabled = true; button.textContent = 'Mengaktifkan...'; }
+      if (isIOS() && !isStandalone()) throw new Error('Di iPhone, buka aplikasi dari ikon Home Screen terlebih dahulu.');
+      const config = await LegacyAPI.rpc('getPushConfig', []);
+      if (!config || config.success === false || !config.publicKey) throw new Error(config?.message || 'VAPID public key belum dikonfigurasi di Cloudflare.');
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Izin notifikasi belum diberikan.');
+      const registration = await getRegistration();
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlToUint8Array(config.publicKey)
+        });
+      }
+      await saveSubscription(subscription);
+      setPushStatus('Notifikasi aktif. Anda tetap bisa menerima notifikasi saat PWA ditutup.', 'success');
+      setPushButtons('enabled');
+    } catch (error) {
+      console.error('Enable push error:', error);
+      setPushStatus(error.message || 'Gagal mengaktifkan notifikasi.', 'danger');
+      if (typeof showAlert === 'function') showAlert('alertDanger', error.message || 'Gagal mengaktifkan notifikasi.');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = old || 'Aktifkan Notifikasi'; }
+    }
+  }
+
+  async function disablePushNotifications(){
+    const button = document.getElementById('btnDisablePush');
+    const old = button ? button.textContent : '';
+    try {
+      if (button) { button.disabled = true; button.textContent = 'Menonaktifkan...'; }
+      const registration = await getRegistration();
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await LegacyAPI.rpc('removePushSubscription', [subscription.endpoint]);
+        await subscription.unsubscribe();
+      }
+      setPushStatus('Notifikasi dinonaktifkan di perangkat ini.', 'neutral');
+      setPushButtons('disabled');
+    } catch (error) {
+      console.error('Disable push error:', error);
+      setPushStatus(error.message || 'Gagal menonaktifkan notifikasi.', 'danger');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = old || 'Nonaktifkan'; }
+    }
+  }
+
+  async function sendPushTest(){
+    const button = document.getElementById('btnTestPush');
+    const old = button ? button.textContent : '';
+    try {
+      if (button) { button.disabled = true; button.textContent = 'Mengirim...'; }
+      const result = await LegacyAPI.rpc('sendPushTest', []);
+      if (!result || result.success === false) throw new Error(result?.message || 'Notifikasi tes gagal dikirim.');
+      setPushStatus(result.message || 'Notifikasi tes sudah dikirim.', 'success');
+    } catch (error) {
+      console.error('Push test error:', error);
+      setPushStatus(error.message || 'Notifikasi tes gagal dikirim.', 'danger');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = old || 'Kirim Notifikasi Tes'; }
+    }
+  }
+
+  window.initializePushNotifications = initializePushNotifications;
+  window.enablePushNotifications = enablePushNotifications;
+  window.disablePushNotifications = disablePushNotifications;
+  window.sendPushTest = sendPushTest;
+})();
+
 let currentUser = { userType: '', userID: '', userName: '' };
     let loginType = 'siswa';
     let globalSiswaList = [];
@@ -521,6 +709,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       buildNavigation();
       fetchDashboardData();
+      if (typeof initializePushNotifications === 'function') initializePushNotifications();
     }
 
 
@@ -1129,26 +1318,63 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    function refreshLearningProgressPage(resetPeriod) {
+    function refreshLearningProgressPage(resetPeriod, fromSearch) {
       const studentSelect = document.getElementById('lpPageStudent');
       const typeSelect = document.getElementById('lpPagePeriodType');
       const periodSelect = document.getElementById('lpPagePeriod');
       const content = document.getElementById('learningProgressPageContent');
       if (!studentSelect || !typeSelect || !periodSelect || !content) return;
       const isStudent = currentUser.userType === 'siswa';
-      const names = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
-      const oldStudent = studentSelect.value || globalSelectedLearningProgressStudent;
-      studentSelect.innerHTML = names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('');
-      studentSelect.value = names.includes(oldStudent) ? oldStudent : (names.find(name => getCurrentLearningProgress(name)) || names[0] || '');
+      const allNames = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const searchInput = document.getElementById('lpPageStudentSearch');
+      const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      const names = searchTerm ? allNames.filter(name => name.toLowerCase().includes(searchTerm)) : allNames;
+      const oldStudent = studentSelect.value;
+      const allStudentsOption = !isStudent ? '<option value="">Semua Siswa</option>' : '';
+      studentSelect.innerHTML = allStudentsOption + (names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : (!isStudent ? '' : '<option value="">Tidak ada siswa ditemukan</option>'));
+      if (isStudent) studentSelect.value = currentUser.userName;
+      else if (oldStudent && names.includes(oldStudent)) studentSelect.value = oldStudent;
+      else studentSelect.value = '';
       document.getElementById('lpPageStudentGroup').style.display = isStudent ? 'none' : 'block';
-      globalSelectedLearningProgressStudent = studentSelect.value || currentUser.userName;
-      const type = typeSelect.value || 'Bulanan';
+      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
+      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+
+      const selectedStudent = isStudent ? currentUser.userName : studentSelect.value;
+      globalSelectedLearningProgressStudent = selectedStudent || '';
+      const type = typeSelect.value || '';
       const oldPeriod = resetPeriod ? '' : periodSelect.value;
-      const periods = [...new Set(globalLearningProgressList.filter(item => String(item.namaSiswa || '').toLowerCase() === String(globalSelectedLearningProgressStudent || '').toLowerCase() && getLearningProgressPeriodType(item) === type).map(item => item.periode).filter(Boolean))].sort().reverse();
-      if (!periods.length) periods.push(getDefaultLearningPeriod(type));
-      periodSelect.innerHTML = periods.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(formatLearningProgressPeriod(value))}</option>`).join('');
-      periodSelect.value = periods.includes(oldPeriod) ? oldPeriod : periods[0];
-      const progress = getCurrentLearningProgress(globalSelectedLearningProgressStudent, periodSelect.value, type);
+      const matchingNames = selectedStudent ? [selectedStudent] : names;
+      const matchingNameSet = new Set(matchingNames.map(name => String(name).trim().toLowerCase()));
+      const matchingRecords = (globalLearningProgressList || []).filter(item => {
+        if (!matchingNameSet.has(String(item.namaSiswa || '').trim().toLowerCase())) return false;
+        return !type || getLearningProgressPeriodType(item) === type;
+      });
+      const periods = [...new Set(matchingRecords.map(item => item.periode).filter(Boolean))].sort().reverse();
+      periodSelect.innerHTML = '<option value="">Semua Periode</option>' + periods.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(formatLearningProgressPeriod(value))}</option>`).join('');
+      periodSelect.value = oldPeriod && periods.includes(oldPeriod) ? oldPeriod : '';
+      const selectedPeriod = periodSelect.value;
+
+      if (!selectedStudent && !isStudent) {
+        const latestByStudent = names.map(name => {
+          const studentRecords = matchingRecords.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(name).trim().toLowerCase() && (!selectedPeriod || String(item.periode || '') === selectedPeriod));
+          return studentRecords[0] || null;
+        }).filter(Boolean);
+        content.innerHTML = latestByStudent.length
+          ? `<div class="lp-all-students-list">${latestByStudent.map(progress => {
+              const progressId = encodeURIComponent(String(progress.progressID || ''));
+              const overall = Math.max(0, Math.min(100, Number(progress.overallProgress) || 0));
+              return `<div class="lp-minimal-card" role="button" tabindex="0" onclick="openLearningProgressDetailById(decodeURIComponent('${progressId}'))" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openLearningProgressDetailById(decodeURIComponent('${progressId}'));}"><div class="lp-minimal-score" style="--score:${overall * 3.6}deg"><span>${overall}%</span></div><div class="lp-minimal-info"><strong>${escapeTaskHtml(progress.namaSiswa || '-')} • ${escapeTaskHtml(progress.level || '-')}</strong><p>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))} · ${escapeTaskHtml(getLearningProgressPeriodType(progress))}<br>Target: ${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div><button type="button" class="lp-minimal-button" tabindex="-1">Buka Detail →</button></div>`;
+            }).join('')}</div>`
+          : '<div class="lp-body"><div class="lp-empty"><strong>Belum ada Progress Belajar</strong><span>Tidak ada laporan yang cocok dengan filter saat ini.</span></div></div>';
+        document.getElementById('lpPageEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
+        document.getElementById('lpPageDeleteButton').style.display = 'none';
+        document.getElementById('lpPagePrintButton').style.display = 'none';
+        return;
+      }
+
+      let progress = null;
+      if (selectedPeriod) progress = getCurrentLearningProgress(selectedStudent, selectedPeriod, type || undefined);
+      else progress = matchingRecords.find(item => String(item.namaSiswa || '').trim().toLowerCase() === String(selectedStudent || '').trim().toLowerCase()) || null;
       content.innerHTML = renderLearningProgressRecord(progress);
       document.getElementById('lpPageEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpPageDeleteButton').style.display = currentUser.userType === 'guru' && progress ? 'inline-flex' : 'none';
@@ -1363,9 +1589,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function closeLearningProgressModal() { document.getElementById('modalLearningProgress').style.display = 'none'; }
     function handleLearningProgressBackdrop(event) { if (event.target && event.target.id === 'modalLearningProgress') closeLearningProgressModal(); }
 
-    function openLearningProgressDetailModal() {
-      const progress = getSelectedLearningProgressPageRecord();
+    function openLearningProgressDetailById(progressID) {
+      const progress = (globalLearningProgressList || []).find(item => String(item.progressID || '') === String(progressID || ''));
+      if (!progress) { showAlert('alertDanger', 'Detail progress tidak ditemukan.'); return; }
+      globalSelectedLearningProgressStudent = progress.namaSiswa || '';
+      openLearningProgressDetailModal(progress);
+    }
+
+    function openLearningProgressDetailModal(progressOverride) {
+      const progress = progressOverride || getSelectedLearningProgressPageRecord();
       if (!progress) return;
+      const detailModal = document.getElementById('modalLearningProgressDetail');
+      if (detailModal) detailModal.dataset.progressId = String(progress.progressID || '');
       const overall = Math.max(0, Math.min(100, Number(progress.overallProgress) || 0));
       const rows = learningProgressCategories.map(category => {
         const percent = Math.max(0, Math.min(100, Number(progress[category.key + 'Progress']) || 0));
@@ -1376,17 +1611,52 @@ let currentUser = { userType: '', userID: '', userName: '' };
       document.getElementById('lpDetailBody').innerHTML = `<div class="lp-summary" style="margin-bottom:18px;"><div class="lp-ring" style="--lp-progress:${overall * 3.6}deg"><div class="lp-ring-value">${overall}</div></div><div class="lp-summary-info"><h3>${escapeTaskHtml(progress.level || '-')}</h3><div class="lp-main-bar"><span style="width:${overall}%"></span></div><div class="lp-period">${escapeTaskHtml(progress.kelas || '-')} • ${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}<br>Diperbarui ${escapeTaskHtml(progress.lastUpdated || '-')} oleh ${escapeTaskHtml(progress.guru || '-')}</div></div><div class="lp-target"><div class="lp-target-icon">◎</div><div><strong>Target Berikutnya</strong><p>${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div></div><div class="lp-form-components">${rows}</div><div class="lp-detail-notes">${progress.kelebihan ? `<div class="lp-note"><span>Kelebihan</span><p>${escapeTaskHtml(progress.kelebihan)}</p></div>` : ''}${progress.perluDitingkatkan ? `<div class="lp-note"><span>Perlu ditingkatkan</span><p>${escapeTaskHtml(progress.perluDitingkatkan)}</p></div>` : ''}</div>${signatures}`;
       document.getElementById('lpDetailEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpDetailDeleteButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
+      const detailPrintButton = document.getElementById('lpDetailPrintButton');
+      if (detailPrintButton) detailPrintButton.style.display = currentUser.userType !== 'siswa' ? 'inline-flex' : 'none';
       document.getElementById('modalLearningProgressDetail').style.display = 'flex';
     }
 
-    function closeLearningProgressDetailModal() { document.getElementById('modalLearningProgressDetail').style.display = 'none'; }
+    function closeLearningProgressDetailModal() {
+      const modal = document.getElementById('modalLearningProgressDetail');
+      if (!modal) return;
+      modal.style.display = 'none';
+      delete modal.dataset.progressId;
+    }
     function handleLearningProgressDetailBackdrop(event) { if (event.target && event.target.id === 'modalLearningProgressDetail') closeLearningProgressDetailModal(); }
 
+    function editLearningProgressDetailRecord() {
+      if (currentUser.userType !== 'guru') return;
+      const progress = getSelectedLearningProgressPageRecord();
+      if (!progress) { showAlert('alertDanger', 'Data progress tidak ditemukan.'); return; }
+      const searchInput = document.getElementById('lpPageStudentSearch');
+      if (searchInput) searchInput.value = '';
+      const typeSelect = document.getElementById('lpPagePeriodType');
+      if (typeSelect) typeSelect.value = getLearningProgressPeriodType(progress);
+      closeLearningProgressDetailModal();
+      refreshLearningProgressPage(true);
+      const studentSelect = document.getElementById('lpPageStudent');
+      if (studentSelect) studentSelect.value = progress.namaSiswa || '';
+      refreshLearningProgressPage(true);
+      const periodSelect = document.getElementById('lpPagePeriod');
+      if (periodSelect) periodSelect.value = progress.periode || '';
+      refreshLearningProgressPage(false);
+      openLearningProgressModal();
+    }
+
     function getSelectedLearningProgressPageRecord() {
-      const student = document.getElementById('lpPageStudent')?.value || globalSelectedLearningProgressStudent || currentUser.userName;
-      const type = document.getElementById('lpPagePeriodType')?.value || 'Bulanan';
+      const detailModal = document.getElementById('modalLearningProgressDetail');
+      const detailProgressId = detailModal && detailModal.style.display !== 'none' ? String(detailModal.dataset.progressId || '') : '';
+      if (detailProgressId) {
+        const detailProgress = (globalLearningProgressList || []).find(item => String(item.progressID || '') === detailProgressId);
+        if (detailProgress) return detailProgress;
+      }
+      const rawStudent = document.getElementById('lpPageStudent')?.value || '';
+      const student = currentUser.userType === 'siswa' ? currentUser.userName : (rawStudent || globalSelectedLearningProgressStudent || '');
+      if (!student) return null;
+      const type = document.getElementById('lpPagePeriodType')?.value || '';
       const period = document.getElementById('lpPagePeriod')?.value || '';
-      return getCurrentLearningProgress(student, period, type);
+      if (period) return getCurrentLearningProgress(student, period, type || undefined);
+      return (globalLearningProgressList || []).find(item => String(item.namaSiswa || '').trim().toLowerCase() === String(student).trim().toLowerCase() && (!type || getLearningProgressPeriodType(item) === type)) || null;
     }
 
     function deleteSelectedLearningProgress() {
@@ -3851,6 +4121,80 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
       hintEl.style.display = periodEl.value === 'month' ? 'block' : 'none';
     }
 
+
+    function getIndonesianDayNameFromAttendanceDate(value) {
+      const date = parseAbsensiRecordDate(value);
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][date.getDay()] || '';
+    }
+
+    function refreshAbsensiStudentOptions() {
+      const select = document.getElementById('absensiSiswa');
+      if (!select || currentUser.userType === 'siswa') return;
+      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
+      const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
+      const day = formDay;
+      const currentValue = select.value;
+      const scheduleNames = new Set((globalJadwalList || [])
+        .filter(item => !day || String(item.hari || '').trim().toLowerCase() === day)
+        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
+        .filter(Boolean));
+      const students = (globalSiswaList || []).filter(student => {
+        const name = String(student.nama || '').trim();
+        if (!name) return false;
+        if (search && !name.toLowerCase().includes(search)) return false;
+        if (day && !scheduleNames.has(name.toLowerCase())) return false;
+        return true;
+      }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+      let html = '<option value="">Pilih Siswa...</option>';
+      html += students.map(student => {
+        const name = String(student.nama || '').trim();
+        const matchingSchedules = (globalJadwalList || []).filter(item => String(item.namaSiswa || '').trim().toLowerCase() === name.toLowerCase() && (!day || String(item.hari || '').trim().toLowerCase() === day));
+        const details = [...new Set(matchingSchedules.map(item => [item.instrumen, item.hari].filter(Boolean).join(' • ')).filter(Boolean))];
+        const suffix = details.length ? ` (${details.join(', ')})` : (student.instrumen ? ` (${student.instrumen})` : '');
+        return `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name + suffix)}</option>`;
+      }).join('');
+      select.innerHTML = html;
+      if (students.some(student => String(student.nama || '') === currentValue)) select.value = currentValue;
+      const hint = document.getElementById('absensiStudentFilterHint');
+      if (hint) hint.textContent = day ? `${students.length} siswa memiliki jadwal ${day.charAt(0).toUpperCase() + day.slice(1)}.` : `${students.length} siswa tersedia.`;
+    }
+
+    function refreshProgressStudentFilterOptions() {
+      const select = document.getElementById('filterProgressSiswa');
+      if (!select || currentUser.userType === 'siswa') return;
+
+      const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
+      const currentValue = String(select.value || '').trim();
+
+      const allowedNames = new Set((globalJadwalList || [])
+        .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
+        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
+        .filter(Boolean));
+
+      const students = (globalSiswaList || [])
+        .filter(student => {
+          const name = String(student.nama || '').trim();
+          if (!name) return false;
+          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
+          return true;
+        })
+        .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+
+      let html = '<option value="">-- Semua Siswa --</option>';
+      html += students.map(student => {
+        const name = String(student.nama || '').trim();
+        return `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`;
+      }).join('');
+      select.innerHTML = html;
+
+      if (students.some(student => String(student.nama || '').trim() === currentValue)) {
+        select.value = currentValue;
+      } else {
+        select.value = '';
+      }
+    }
+
     function setupFilterDropdown() {
       const isGuru = currentUser.userType === 'guru';
       const isAdmin = currentUser.userType === 'admin';
@@ -3897,12 +4241,14 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
       }
 
       const filterSiswaContainer = document.getElementById('containerFilterProgressSiswa');
+      const searchSiswaContainer = document.getElementById('containerSearchProgressSiswa');
+      const filterHariContainer = document.getElementById('containerFilterProgressHari');
       const filterSiswaEl = document.getElementById('filterProgressSiswa');
+      if (searchSiswaContainer) searchSiswaContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
+      if (filterHariContainer) filterHariContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if ((isGuru || isAdmin) && filterSiswaEl && filterSiswaContainer) {
         filterSiswaContainer.style.display = 'block';
-        let optS = '<option value="">-- Semua Siswa --</option>';
-        globalSiswaList.forEach(s => optS += `<option value="${s.nama}">${s.nama}</option>`);
-        filterSiswaEl.innerHTML = optS;
+        refreshProgressStudentFilterOptions();
       } else if (filterSiswaContainer) {
         filterSiswaContainer.style.display = 'none';
       }
@@ -3916,6 +4262,7 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
         }
       }
 
+      refreshAbsensiStudentOptions();
       toggleExportMonthHint();
     }
 
@@ -3935,6 +4282,8 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
 
       const filterBulanVal = document.getElementById('filterRiwayatSelect') ? document.getElementById('filterRiwayatSelect').value.trim() : '';
       const filterSiswaVal = (!isSiswa && document.getElementById('filterProgressSiswa')) ? document.getElementById('filterProgressSiswa').value.trim().toLowerCase() : '';
+      const searchSiswaVal = (!isSiswa && document.getElementById('searchProgressSiswa')) ? document.getElementById('searchProgressSiswa').value.trim().toLowerCase() : '';
+      const filterHariVal = (!isSiswa && document.getElementById('filterProgressHari')) ? document.getElementById('filterProgressHari').value.trim().toLowerCase() : '';
       const filterGuruVal = (isAdmin && document.getElementById('filterProgressGuru')) ? document.getElementById('filterProgressGuru').value.trim().toLowerCase() : '';
 
       let filteredList = globalAbsensiList.filter(item => {
@@ -3944,6 +4293,12 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
 
         if (!isSiswa && filterSiswaVal !== '') {
           if (String(item.namaSiswa || '').trim().toLowerCase() !== filterSiswaVal) return false;
+        }
+        if (!isSiswa && searchSiswaVal !== '') {
+          if (!String(item.namaSiswa || '').trim().toLowerCase().includes(searchSiswaVal)) return false;
+        }
+        if (!isSiswa && filterHariVal !== '') {
+          if (getIndonesianDayNameFromAttendanceDate(item.tanggal).toLowerCase() !== filterHariVal) return false;
         }
 
         if (filterBulanVal !== '') {
@@ -3980,15 +4335,15 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
           <td data-label="Pertemuan">Ke-${escapeTaskHtml(item.pertemuanKe || '-')}</td>
           <td data-label="Siswa"><b>${escapeTaskHtml(displayName)}</b></td>
           <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span></td>
-          <td data-label="Materi">${escapeTaskHtml(item.materi||'-')}</td>
-          <td data-label="Lagu">${escapeTaskHtml(item.lagu||'-')}</td>
+          <td data-label="Materi" class="attendance-multiline-cell">${escapeTaskHtml(item.materi||'-')}</td>
+          <td data-label="Lagu" class="attendance-multiline-cell">${escapeTaskHtml(item.lagu||'-')}</td>
           <td data-label="TTD Guru">${ttdGuruHtml}</td>`;
         
         if (isGuru) {
           rowHtml += `<td data-label="TTD Siswa">${ttdSiswaHtml}</td>`;
         }
 
-        rowHtml += `<td data-label="Catatan">${escapeTaskHtml(item.catatan||'-')}</td>`;
+        rowHtml += `<td data-label="Catatan" class="attendance-multiline-cell">${escapeTaskHtml(item.catatan||'-')}</td>`;
         
         if (!isSiswa) {
           rowHtml += `<td data-label="Aksi">
@@ -4059,7 +4414,7 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
       const present = records.filter(item => item.status === 'Masuk').length;
       const rows = records.map((item, index) => {
         const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
-        return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td>${escapeTaskHtml(item.materi || '-')}</td><td>${escapeTaskHtml(item.lagu || '-')}</td><td>${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
+        return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.materi || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.lagu || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
       const safeName = String(studentFilter || 'Semua-Siswa').replace(/[^a-z0-9_-]+/gi,'-');
       const report = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Laporan Materi dan Absensi</title><style>
@@ -4687,6 +5042,7 @@ function normalizeTaskStatus(task) {
           <div class="form-group" style="margin:0;"><label>Instrumen</label><select class="extra-class-instrument" required>${classSelectOptions(studentInstrumentOptions, item.instrumen || 'Gitar')}</select></div>
           <div class="form-group" style="margin:0;"><label>Guru</label><select class="extra-class-teacher" required>${classTeacherOptions(item.guru || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Grade</label><select class="extra-class-grade" required>${classSelectOptions(studentGradeOptions, item.grade || 'Beginner')}</select></div>
+          <div class="form-group" style="margin:0;"><label>Tanggal Mulai Kelas</label><input class="extra-class-start-date" type="date" value="${escapeTaskHtml(item.tglMulai || item.tglDaftar || '')}" required></div>
           <div class="form-group" style="margin:0;"><label>Hari</label><select class="extra-class-day">${classSelectOptions([''].concat(studentDayOptions), item.hari || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Jam Mulai</label><input class="extra-class-start" type="time" value="${escapeTaskHtml(item.jamMulai || '')}"></div>
           <div class="form-group" style="margin:0;"><label>Jam Selesai</label><input class="extra-class-end" type="time" value="${escapeTaskHtml(item.jamSelesai || '')}"></div>
@@ -4712,6 +5068,7 @@ function normalizeTaskStatus(task) {
           instrumen: row.querySelector('.extra-class-instrument').value,
           guru: teacherSelect.value, guruID: selectedTeacher ? (selectedTeacher.dataset.guruId || '') : '',
           grade: row.querySelector('.extra-class-grade').value, status: status,
+          tglMulai: row.querySelector('.extra-class-start-date')?.value || '',
           hari: row.querySelector('.extra-class-day').value, jamMulai: row.querySelector('.extra-class-start').value,
           jamSelesai: row.querySelector('.extra-class-end').value, ruangan: row.querySelector('.extra-class-room').value
         };
@@ -4730,7 +5087,7 @@ function normalizeTaskStatus(task) {
       document.getElementById('editSiswaGrade').value = primaryClass.grade || siswa.kelas;
       document.getElementById('editSiswaEmail').value = siswa.email;
       document.getElementById('editSiswaHP').value = siswa.noHp || '';
-      document.getElementById('editSiswaTanggalMasuk').value = siswa.tglDaftar || '';
+      document.getElementById('editSiswaTanggalMasuk').value = primaryClass.tglMulai || siswa.tglDaftar || '';
       document.getElementById('editSiswaTanggalKeluar').value = siswa.tglKeluar || '';
       document.getElementById('editSiswaStatus').value = siswa.status;
       if (document.getElementById('editSiswaGuruSelect')) {
@@ -4757,6 +5114,7 @@ function normalizeTaskStatus(task) {
         grade: document.getElementById('editSiswaGrade').value, status: status,
         guru: primaryTeacherSelect ? primaryTeacherSelect.value : currentUser.userName,
         guruID: primaryTeacherOption ? (primaryTeacherOption.dataset.guruId || '') : currentUser.userID,
+        tglMulai: document.getElementById('editSiswaTanggalMasuk').value,
         hari: existingPrimary.hari || '', jamMulai: existingPrimary.jamMulai || '', jamSelesai: existingPrimary.jamSelesai || '', ruangan: existingPrimary.ruangan || ''
       };
       const kelasList = [primaryClass].concat(currentUser.userType === 'admin' ? collectStudentExtraClasses('editStudentExtraClasses', status) : []);
@@ -5204,6 +5562,7 @@ function normalizeTaskStatus(task) {
       payload.guruID = currentUser.userType === 'admin' ? (primaryGuruOption ? (primaryGuruOption.dataset.guruId || '') : '') : currentUser.userID;
       payload.kelasList = [{
         instrumen: payload.instrumen, guru: payload.guru, guruID: payload.guruID, grade: payload.kelas, status: payload.status,
+        tglMulai: payload.tglDaftar,
         hari: payload.hari, jamMulai: payload.jamMulai, jamSelesai: payload.jamSelesai, ruangan: payload.ruangan
       }].concat(currentUser.userType === 'admin' ? collectStudentExtraClasses('addStudentExtraClasses', payload.status) : []);
 

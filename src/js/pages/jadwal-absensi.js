@@ -150,6 +150,80 @@
       hintEl.style.display = periodEl.value === 'month' ? 'block' : 'none';
     }
 
+
+    function getIndonesianDayNameFromAttendanceDate(value) {
+      const date = parseAbsensiRecordDate(value);
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][date.getDay()] || '';
+    }
+
+    function refreshAbsensiStudentOptions() {
+      const select = document.getElementById('absensiSiswa');
+      if (!select || currentUser.userType === 'siswa') return;
+      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
+      const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
+      const day = formDay;
+      const currentValue = select.value;
+      const scheduleNames = new Set((globalJadwalList || [])
+        .filter(item => !day || String(item.hari || '').trim().toLowerCase() === day)
+        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
+        .filter(Boolean));
+      const students = (globalSiswaList || []).filter(student => {
+        const name = String(student.nama || '').trim();
+        if (!name) return false;
+        if (search && !name.toLowerCase().includes(search)) return false;
+        if (day && !scheduleNames.has(name.toLowerCase())) return false;
+        return true;
+      }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+      let html = '<option value="">Pilih Siswa...</option>';
+      html += students.map(student => {
+        const name = String(student.nama || '').trim();
+        const matchingSchedules = (globalJadwalList || []).filter(item => String(item.namaSiswa || '').trim().toLowerCase() === name.toLowerCase() && (!day || String(item.hari || '').trim().toLowerCase() === day));
+        const details = [...new Set(matchingSchedules.map(item => [item.instrumen, item.hari].filter(Boolean).join(' • ')).filter(Boolean))];
+        const suffix = details.length ? ` (${details.join(', ')})` : (student.instrumen ? ` (${student.instrumen})` : '');
+        return `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name + suffix)}</option>`;
+      }).join('');
+      select.innerHTML = html;
+      if (students.some(student => String(student.nama || '') === currentValue)) select.value = currentValue;
+      const hint = document.getElementById('absensiStudentFilterHint');
+      if (hint) hint.textContent = day ? `${students.length} siswa memiliki jadwal ${day.charAt(0).toUpperCase() + day.slice(1)}.` : `${students.length} siswa tersedia.`;
+    }
+
+    function refreshProgressStudentFilterOptions() {
+      const select = document.getElementById('filterProgressSiswa');
+      if (!select || currentUser.userType === 'siswa') return;
+
+      const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
+      const currentValue = String(select.value || '').trim();
+
+      const allowedNames = new Set((globalJadwalList || [])
+        .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
+        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
+        .filter(Boolean));
+
+      const students = (globalSiswaList || [])
+        .filter(student => {
+          const name = String(student.nama || '').trim();
+          if (!name) return false;
+          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
+          return true;
+        })
+        .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+
+      let html = '<option value="">-- Semua Siswa --</option>';
+      html += students.map(student => {
+        const name = String(student.nama || '').trim();
+        return `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`;
+      }).join('');
+      select.innerHTML = html;
+
+      if (students.some(student => String(student.nama || '').trim() === currentValue)) {
+        select.value = currentValue;
+      } else {
+        select.value = '';
+      }
+    }
+
     function setupFilterDropdown() {
       const isGuru = currentUser.userType === 'guru';
       const isAdmin = currentUser.userType === 'admin';
@@ -196,12 +270,14 @@
       }
 
       const filterSiswaContainer = document.getElementById('containerFilterProgressSiswa');
+      const searchSiswaContainer = document.getElementById('containerSearchProgressSiswa');
+      const filterHariContainer = document.getElementById('containerFilterProgressHari');
       const filterSiswaEl = document.getElementById('filterProgressSiswa');
+      if (searchSiswaContainer) searchSiswaContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
+      if (filterHariContainer) filterHariContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if ((isGuru || isAdmin) && filterSiswaEl && filterSiswaContainer) {
         filterSiswaContainer.style.display = 'block';
-        let optS = '<option value="">-- Semua Siswa --</option>';
-        globalSiswaList.forEach(s => optS += `<option value="${s.nama}">${s.nama}</option>`);
-        filterSiswaEl.innerHTML = optS;
+        refreshProgressStudentFilterOptions();
       } else if (filterSiswaContainer) {
         filterSiswaContainer.style.display = 'none';
       }
@@ -215,6 +291,7 @@
         }
       }
 
+      refreshAbsensiStudentOptions();
       toggleExportMonthHint();
     }
 
@@ -234,6 +311,8 @@
 
       const filterBulanVal = document.getElementById('filterRiwayatSelect') ? document.getElementById('filterRiwayatSelect').value.trim() : '';
       const filterSiswaVal = (!isSiswa && document.getElementById('filterProgressSiswa')) ? document.getElementById('filterProgressSiswa').value.trim().toLowerCase() : '';
+      const searchSiswaVal = (!isSiswa && document.getElementById('searchProgressSiswa')) ? document.getElementById('searchProgressSiswa').value.trim().toLowerCase() : '';
+      const filterHariVal = (!isSiswa && document.getElementById('filterProgressHari')) ? document.getElementById('filterProgressHari').value.trim().toLowerCase() : '';
       const filterGuruVal = (isAdmin && document.getElementById('filterProgressGuru')) ? document.getElementById('filterProgressGuru').value.trim().toLowerCase() : '';
 
       let filteredList = globalAbsensiList.filter(item => {
@@ -243,6 +322,12 @@
 
         if (!isSiswa && filterSiswaVal !== '') {
           if (String(item.namaSiswa || '').trim().toLowerCase() !== filterSiswaVal) return false;
+        }
+        if (!isSiswa && searchSiswaVal !== '') {
+          if (!String(item.namaSiswa || '').trim().toLowerCase().includes(searchSiswaVal)) return false;
+        }
+        if (!isSiswa && filterHariVal !== '') {
+          if (getIndonesianDayNameFromAttendanceDate(item.tanggal).toLowerCase() !== filterHariVal) return false;
         }
 
         if (filterBulanVal !== '') {

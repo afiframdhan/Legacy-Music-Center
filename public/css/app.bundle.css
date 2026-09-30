@@ -338,6 +338,13 @@
     .fc-day-today { background: #fff7ed !important; }
 
 
+
+/* Push Notification settings */
+.push-settings{border:1px solid #fed7c5;background:linear-gradient(135deg,#fffaf7,#fff);border-radius:16px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.push-settings-copy{display:flex;align-items:flex-start;gap:12px;min-width:0;flex:1}.push-settings-icon{width:44px;height:44px;border-radius:14px;background:#fff0e8;display:grid;place-items:center;font-size:22px;flex:0 0 auto}.push-settings h3{margin:0 0 4px;font-size:16px}.push-settings p{margin:0 0 8px;color:#64748b;font-size:12px;line-height:1.45}.push-status{font-size:11px;font-weight:750;color:#475569}.push-status[data-tone="success"]{color:#15803d}.push-status[data-tone="warning"]{color:#b45309}.push-status[data-tone="danger"]{color:#b91c1c}.push-settings-actions{display:flex;gap:8px;flex-wrap:wrap}.push-settings-help{display:block;width:100%;color:#94a3b8;line-height:1.45}.btn-danger-outline{background:#fff;color:#b91c1c;border:1px solid #fecaca}.btn-secondary{background:#fff0e8;color:#c2410c;border:1px solid #fed7c5}
+html[data-theme="dark"] .push-settings{background:#111b2e;border-color:#34445e}.push-settings h3{color:var(--text,#17232d)}html[data-theme="dark"] .push-settings h3{color:#f8fafc}html[data-theme="dark"] .push-settings p,html[data-theme="dark"] .push-settings-help{color:#94a3b8}html[data-theme="dark"] .push-settings-icon{background:#1e293b}
+@media(max-width:700px){.push-settings{align-items:stretch}.push-settings-actions{display:grid;grid-template-columns:1fr;width:100%}.push-settings-actions .btn{width:100%}}
+
     /* TUGAS & LATIHAN */
     .task-page-head { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }
     .task-page-head h2 { margin:0 0 5px; color:#101828; font-size:28px; letter-spacing:-.03em; }
@@ -1142,6 +1149,35 @@ html[data-theme="dark"] .lp-signature-preview {
   border-color:#41536f !important;
   color:#9fb0c7 !important;
 }
+
+/* Materi & Progress: catatan multiline yang nyaman */
+.attendance-multiline-input{
+  min-height:96px;
+  padding:14px 15px!important;
+  line-height:1.55;
+  resize:vertical;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  font-family:inherit;
+}
+.attendance-multiline-input-wide{min-height:120px}
+.attendance-multiline-cell{white-space:pre-line!important;line-height:1.5}
+@media (max-width:768px){
+  .attendance-multiline-input{
+    min-height:112px;
+    font-size:16px!important;
+    line-height:1.6;
+    padding:15px!important;
+  }
+  .attendance-multiline-input-wide{min-height:144px}
+}
+html[data-theme="dark"] .attendance-multiline-input{
+  background:#0c1627!important;
+  color:#e5edf7!important;
+  border-color:#34445e!important;
+  caret-color:#f15a24;
+}
+html[data-theme="dark"] .attendance-multiline-input::placeholder{color:#718096!important}
 
     /* Dark-mode contrast corrections for dashboard, responsive tables, and calendar. */
     html[data-theme="dark"] #appView .tabs { background:#17243a !important; }
