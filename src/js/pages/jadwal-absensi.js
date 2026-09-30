@@ -189,6 +189,41 @@
       if (hint) hint.textContent = day ? `${students.length} siswa memiliki jadwal ${day.charAt(0).toUpperCase() + day.slice(1)}.` : `${students.length} siswa tersedia.`;
     }
 
+    function refreshProgressStudentFilterOptions() {
+      const select = document.getElementById('filterProgressSiswa');
+      if (!select || currentUser.userType === 'siswa') return;
+
+      const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
+      const currentValue = String(select.value || '').trim();
+
+      const allowedNames = new Set((globalJadwalList || [])
+        .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
+        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
+        .filter(Boolean));
+
+      const students = (globalSiswaList || [])
+        .filter(student => {
+          const name = String(student.nama || '').trim();
+          if (!name) return false;
+          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
+          return true;
+        })
+        .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+
+      let html = '<option value="">-- Semua Siswa --</option>';
+      html += students.map(student => {
+        const name = String(student.nama || '').trim();
+        return `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`;
+      }).join('');
+      select.innerHTML = html;
+
+      if (students.some(student => String(student.nama || '').trim() === currentValue)) {
+        select.value = currentValue;
+      } else {
+        select.value = '';
+      }
+    }
+
     function setupFilterDropdown() {
       const isGuru = currentUser.userType === 'guru';
       const isAdmin = currentUser.userType === 'admin';
@@ -242,9 +277,7 @@
       if (filterHariContainer) filterHariContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if ((isGuru || isAdmin) && filterSiswaEl && filterSiswaContainer) {
         filterSiswaContainer.style.display = 'block';
-        let optS = '<option value="">-- Semua Siswa --</option>';
-        globalSiswaList.forEach(s => optS += `<option value="${s.nama}">${s.nama}</option>`);
-        filterSiswaEl.innerHTML = optS;
+        refreshProgressStudentFilterOptions();
       } else if (filterSiswaContainer) {
         filterSiswaContainer.style.display = 'none';
       }
