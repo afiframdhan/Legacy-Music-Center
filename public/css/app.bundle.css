@@ -415,6 +415,7 @@ html[data-theme="dark"] .repertoire-detail-block p{color:#e2e8f0}
   .repertoire-video-frame{min-height:220px}
 }
 
+
     /* TUGAS & LATIHAN */
     .task-page-head { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }
     .task-page-head h2 { margin:0 0 5px; color:#101828; font-size:28px; letter-spacing:-.03em; }
