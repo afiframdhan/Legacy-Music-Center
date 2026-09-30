@@ -533,6 +533,15 @@ async function handleRpc(request, env, ctx) {
       });
     }
 
+    if (result && result.success === true && method !== 'deleteSiswa') {
+      const studentId = String(result.siswaID || payload.siswaID || '').trim();
+      try {
+        await patchStudentClassDatesFromPayload(env, studentId, payload);
+      } catch (error) {
+        console.error(`Student class date patch failed for ${method}:`, error);
+      }
+    }
+
     if (result && result.success === true && ctx) {
       if (method === 'deleteSiswa') {
         // Existing Apps Script delete keeps the legacy Sheet/history shadow coherent.
@@ -1285,6 +1294,45 @@ async function supabaseRpc(env, functionName, payload) {
 }
 
 
+
+async function patchStudentClassDatesFromPayload(env, studentId, payload) {
+  const classes = Array.isArray(payload?.kelasList) ? payload.kelasList : [];
+  if (!studentId || !classes.length) return;
+  const rows = await sbRows(env, 'student_classes', { student_id:`eq.${studentId}`, order:'created_at.asc' });
+  const used = new Set();
+  for (let index = 0; index < classes.length; index += 1) {
+    const item = classes[index] || {};
+    const startedOn = String(item.tglMulai || item.tglDaftar || (index === 0 ? payload.tglDaftar : '') || '').trim();
+    const endedOn = String(item.tglSelesai || item.tglKeluar || (index === 0 ? payload.tglKeluar : '') || '').trim();
+    if (!startedOn && !endedOn) continue;
+    let row = null;
+    const classId = String(item.kelasSiswaID || '').trim();
+    if (classId) row = rows.find(candidate => String(candidate.class_id || '') === classId) || null;
+    if (!row) {
+      row = rows.find(candidate => {
+        if (used.has(String(candidate.class_id || ''))) return false;
+        const sameInstrument = String(candidate.instrument || '').trim().toLowerCase() === String(item.instrumen || '').trim().toLowerCase();
+        const sameTeacher = item.guruID
+          ? String(candidate.teacher_id || '') === String(item.guruID || '')
+          : String(candidate.teacher_name_snapshot || '').trim().toLowerCase() === String(item.guru || '').trim().toLowerCase();
+        const sameGrade = !item.grade || String(candidate.grade || '').trim().toLowerCase() === String(item.grade || '').trim().toLowerCase();
+        return sameInstrument && sameTeacher && sameGrade;
+      }) || null;
+    }
+    if (!row) row = rows[index] || null;
+    if (!row?.class_id) continue;
+    used.add(String(row.class_id));
+    const patch = {};
+    if (startedOn) patch.started_on = startedOn;
+    if (endedOn) patch.ended_on = endedOn;
+    await supabaseRest(env, `/rest/v1/student_classes?class_id=eq.${encodeURIComponent(row.class_id)}`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json', Prefer:'return=minimal'},
+      body:JSON.stringify(patch)
+    });
+  }
+}
+
 async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
   if (!hasSupabaseConfig(env)) throw new Error('Konfigurasi Supabase belum lengkap.');
 
@@ -1326,7 +1374,7 @@ async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
     teacher_name: String(item.guru || '').trim(),
     grade: String(item.grade || item.kelas || '').trim(),
     status: String(item.status || payload.status || 'Aktif').trim(),
-    started_on: String(payload.tglDaftar || '').trim() || null,
+    started_on: String(item.tglMulai || item.tglDaftar || payload.tglDaftar || '').trim() || null,
     ended_on: String(payload.tglKeluar || '').trim() || null
   }));
 
@@ -1912,6 +1960,7 @@ function mapClassRow(row, schedules) {
     grade: row.grade || 'Beginner',
     status: row.status || 'Aktif',
     tglMulai: formatDbDateIso(row.started_on),
+    tglDaftar: formatDbDateIso(row.started_on),
     tglSelesai: formatDbDateIso(row.ended_on),
     jadwalID: schedule ? (schedule.schedule_id || '') : '',
     hari: schedule ? (schedule.day_name || '') : '',
@@ -2866,6 +2915,7 @@ async function shadowStudentFromSupabase(env, studentId) {
       grade: row.grade || 'Beginner',
       status: row.status || 'Aktif',
       tglMulai: formatDbDateIso(row.started_on),
+    tglDaftar: formatDbDateIso(row.started_on),
       tglSelesai: formatDbDateIso(row.ended_on)
     })),
     schedules: schedules.map(row => ({

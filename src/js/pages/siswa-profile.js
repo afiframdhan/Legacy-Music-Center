@@ -16,6 +16,7 @@
           <div class="form-group" style="margin:0;"><label>Instrumen</label><select class="extra-class-instrument" required>${classSelectOptions(studentInstrumentOptions, item.instrumen || 'Gitar')}</select></div>
           <div class="form-group" style="margin:0;"><label>Guru</label><select class="extra-class-teacher" required>${classTeacherOptions(item.guru || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Grade</label><select class="extra-class-grade" required>${classSelectOptions(studentGradeOptions, item.grade || 'Beginner')}</select></div>
+          <div class="form-group" style="margin:0;"><label>Tanggal Mulai Kelas</label><input class="extra-class-start-date" type="date" value="${escapeTaskHtml(item.tglMulai || item.tglDaftar || '')}" required></div>
           <div class="form-group" style="margin:0;"><label>Hari</label><select class="extra-class-day">${classSelectOptions([''].concat(studentDayOptions), item.hari || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Jam Mulai</label><input class="extra-class-start" type="time" value="${escapeTaskHtml(item.jamMulai || '')}"></div>
           <div class="form-group" style="margin:0;"><label>Jam Selesai</label><input class="extra-class-end" type="time" value="${escapeTaskHtml(item.jamSelesai || '')}"></div>
@@ -41,6 +42,7 @@
           instrumen: row.querySelector('.extra-class-instrument').value,
           guru: teacherSelect.value, guruID: selectedTeacher ? (selectedTeacher.dataset.guruId || '') : '',
           grade: row.querySelector('.extra-class-grade').value, status: status,
+          tglMulai: row.querySelector('.extra-class-start-date')?.value || '',
           hari: row.querySelector('.extra-class-day').value, jamMulai: row.querySelector('.extra-class-start').value,
           jamSelesai: row.querySelector('.extra-class-end').value, ruangan: row.querySelector('.extra-class-room').value
         };
@@ -59,7 +61,7 @@
       document.getElementById('editSiswaGrade').value = primaryClass.grade || siswa.kelas;
       document.getElementById('editSiswaEmail').value = siswa.email;
       document.getElementById('editSiswaHP').value = siswa.noHp || '';
-      document.getElementById('editSiswaTanggalMasuk').value = siswa.tglDaftar || '';
+      document.getElementById('editSiswaTanggalMasuk').value = primaryClass.tglMulai || siswa.tglDaftar || '';
       document.getElementById('editSiswaTanggalKeluar').value = siswa.tglKeluar || '';
       document.getElementById('editSiswaStatus').value = siswa.status;
       if (document.getElementById('editSiswaGuruSelect')) {
@@ -86,6 +88,7 @@
         grade: document.getElementById('editSiswaGrade').value, status: status,
         guru: primaryTeacherSelect ? primaryTeacherSelect.value : currentUser.userName,
         guruID: primaryTeacherOption ? (primaryTeacherOption.dataset.guruId || '') : currentUser.userID,
+        tglMulai: document.getElementById('editSiswaTanggalMasuk').value,
         hari: existingPrimary.hari || '', jamMulai: existingPrimary.jamMulai || '', jamSelesai: existingPrimary.jamSelesai || '', ruangan: existingPrimary.ruangan || ''
       };
       const kelasList = [primaryClass].concat(currentUser.userType === 'admin' ? collectStudentExtraClasses('editStudentExtraClasses', status) : []);

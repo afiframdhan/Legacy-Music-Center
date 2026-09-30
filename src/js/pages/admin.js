@@ -316,6 +316,7 @@
       payload.guruID = currentUser.userType === 'admin' ? (primaryGuruOption ? (primaryGuruOption.dataset.guruId || '') : '') : currentUser.userID;
       payload.kelasList = [{
         instrumen: payload.instrumen, guru: payload.guru, guruID: payload.guruID, grade: payload.kelas, status: payload.status,
+        tglMulai: payload.tglDaftar,
         hari: payload.hari, jamMulai: payload.jamMulai, jamSelesai: payload.jamSelesai, ruangan: payload.ruangan
       }].concat(currentUser.userType === 'admin' ? collectStudentExtraClasses('addStudentExtraClasses', payload.status) : []);
 

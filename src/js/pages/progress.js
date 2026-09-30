@@ -64,18 +64,23 @@
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    function refreshLearningProgressPage(resetPeriod) {
+    function refreshLearningProgressPage(resetPeriod, fromSearch) {
       const studentSelect = document.getElementById('lpPageStudent');
       const typeSelect = document.getElementById('lpPagePeriodType');
       const periodSelect = document.getElementById('lpPagePeriod');
       const content = document.getElementById('learningProgressPageContent');
       if (!studentSelect || !typeSelect || !periodSelect || !content) return;
       const isStudent = currentUser.userType === 'siswa';
-      const names = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const allNames = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const searchInput = document.getElementById('lpPageStudentSearch');
+      const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      const names = searchTerm ? allNames.filter(name => name.toLowerCase().includes(searchTerm)) : allNames;
       const oldStudent = studentSelect.value || globalSelectedLearningProgressStudent;
-      studentSelect.innerHTML = names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('');
+      studentSelect.innerHTML = names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : '<option value="">Tidak ada siswa ditemukan</option>';
       studentSelect.value = names.includes(oldStudent) ? oldStudent : (names.find(name => getCurrentLearningProgress(name)) || names[0] || '');
       document.getElementById('lpPageStudentGroup').style.display = isStudent ? 'none' : 'block';
+      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
+      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
       globalSelectedLearningProgressStudent = studentSelect.value || currentUser.userName;
       const type = typeSelect.value || 'Bulanan';
       const oldPeriod = resetPeriod ? '' : periodSelect.value;
