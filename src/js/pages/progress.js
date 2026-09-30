@@ -106,7 +106,11 @@
           return studentRecords[0] || null;
         }).filter(Boolean);
         content.innerHTML = latestByStudent.length
-          ? `<div class="lp-all-students-list">${latestByStudent.map(progress => `<div class="lp-minimal-card"><div class="lp-minimal-score" style="--score:${Math.max(0, Math.min(100, Number(progress.overallProgress) || 0)) * 3.6}deg"><span>${Math.max(0, Math.min(100, Number(progress.overallProgress) || 0))}%</span></div><div class="lp-minimal-info"><strong>${escapeTaskHtml(progress.namaSiswa || '-')} • ${escapeTaskHtml(progress.level || '-')}</strong><p>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))} · ${escapeTaskHtml(getLearningProgressPeriodType(progress))}<br>Target: ${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div>`).join('')}</div>`
+          ? `<div class="lp-all-students-list">${latestByStudent.map(progress => {
+              const progressId = encodeURIComponent(String(progress.progressID || ''));
+              const overall = Math.max(0, Math.min(100, Number(progress.overallProgress) || 0));
+              return `<div class="lp-minimal-card" role="button" tabindex="0" onclick="openLearningProgressDetailById(decodeURIComponent('${progressId}'))" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openLearningProgressDetailById(decodeURIComponent('${progressId}'));}"><div class="lp-minimal-score" style="--score:${overall * 3.6}deg"><span>${overall}%</span></div><div class="lp-minimal-info"><strong>${escapeTaskHtml(progress.namaSiswa || '-')} • ${escapeTaskHtml(progress.level || '-')}</strong><p>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))} · ${escapeTaskHtml(getLearningProgressPeriodType(progress))}<br>Target: ${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div><button type="button" class="lp-minimal-button" tabindex="-1">Buka Detail →</button></div>`;
+            }).join('')}</div>`
           : '<div class="lp-body"><div class="lp-empty"><strong>Belum ada Progress Belajar</strong><span>Tidak ada laporan yang cocok dengan filter saat ini.</span></div></div>';
         document.getElementById('lpPageEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
         document.getElementById('lpPageDeleteButton').style.display = 'none';
@@ -331,9 +335,18 @@
     function closeLearningProgressModal() { document.getElementById('modalLearningProgress').style.display = 'none'; }
     function handleLearningProgressBackdrop(event) { if (event.target && event.target.id === 'modalLearningProgress') closeLearningProgressModal(); }
 
-    function openLearningProgressDetailModal() {
-      const progress = getSelectedLearningProgressPageRecord();
+    function openLearningProgressDetailById(progressID) {
+      const progress = (globalLearningProgressList || []).find(item => String(item.progressID || '') === String(progressID || ''));
+      if (!progress) { showAlert('alertDanger', 'Detail progress tidak ditemukan.'); return; }
+      globalSelectedLearningProgressStudent = progress.namaSiswa || '';
+      openLearningProgressDetailModal(progress);
+    }
+
+    function openLearningProgressDetailModal(progressOverride) {
+      const progress = progressOverride || getSelectedLearningProgressPageRecord();
       if (!progress) return;
+      const detailModal = document.getElementById('modalLearningProgressDetail');
+      if (detailModal) detailModal.dataset.progressId = String(progress.progressID || '');
       const overall = Math.max(0, Math.min(100, Number(progress.overallProgress) || 0));
       const rows = learningProgressCategories.map(category => {
         const percent = Math.max(0, Math.min(100, Number(progress[category.key + 'Progress']) || 0));
@@ -344,13 +357,45 @@
       document.getElementById('lpDetailBody').innerHTML = `<div class="lp-summary" style="margin-bottom:18px;"><div class="lp-ring" style="--lp-progress:${overall * 3.6}deg"><div class="lp-ring-value">${overall}</div></div><div class="lp-summary-info"><h3>${escapeTaskHtml(progress.level || '-')}</h3><div class="lp-main-bar"><span style="width:${overall}%"></span></div><div class="lp-period">${escapeTaskHtml(progress.kelas || '-')} • ${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}<br>Diperbarui ${escapeTaskHtml(progress.lastUpdated || '-')} oleh ${escapeTaskHtml(progress.guru || '-')}</div></div><div class="lp-target"><div class="lp-target-icon">◎</div><div><strong>Target Berikutnya</strong><p>${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div></div><div class="lp-form-components">${rows}</div><div class="lp-detail-notes">${progress.kelebihan ? `<div class="lp-note"><span>Kelebihan</span><p>${escapeTaskHtml(progress.kelebihan)}</p></div>` : ''}${progress.perluDitingkatkan ? `<div class="lp-note"><span>Perlu ditingkatkan</span><p>${escapeTaskHtml(progress.perluDitingkatkan)}</p></div>` : ''}</div>${signatures}`;
       document.getElementById('lpDetailEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpDetailDeleteButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
+      const detailPrintButton = document.getElementById('lpDetailPrintButton');
+      if (detailPrintButton) detailPrintButton.style.display = currentUser.userType !== 'siswa' ? 'inline-flex' : 'none';
       document.getElementById('modalLearningProgressDetail').style.display = 'flex';
     }
 
-    function closeLearningProgressDetailModal() { document.getElementById('modalLearningProgressDetail').style.display = 'none'; }
+    function closeLearningProgressDetailModal() {
+      const modal = document.getElementById('modalLearningProgressDetail');
+      if (!modal) return;
+      modal.style.display = 'none';
+      delete modal.dataset.progressId;
+    }
     function handleLearningProgressDetailBackdrop(event) { if (event.target && event.target.id === 'modalLearningProgressDetail') closeLearningProgressDetailModal(); }
 
+    function editLearningProgressDetailRecord() {
+      if (currentUser.userType !== 'guru') return;
+      const progress = getSelectedLearningProgressPageRecord();
+      if (!progress) { showAlert('alertDanger', 'Data progress tidak ditemukan.'); return; }
+      const searchInput = document.getElementById('lpPageStudentSearch');
+      if (searchInput) searchInput.value = '';
+      const typeSelect = document.getElementById('lpPagePeriodType');
+      if (typeSelect) typeSelect.value = getLearningProgressPeriodType(progress);
+      closeLearningProgressDetailModal();
+      refreshLearningProgressPage(true);
+      const studentSelect = document.getElementById('lpPageStudent');
+      if (studentSelect) studentSelect.value = progress.namaSiswa || '';
+      refreshLearningProgressPage(true);
+      const periodSelect = document.getElementById('lpPagePeriod');
+      if (periodSelect) periodSelect.value = progress.periode || '';
+      refreshLearningProgressPage(false);
+      openLearningProgressModal();
+    }
+
     function getSelectedLearningProgressPageRecord() {
+      const detailModal = document.getElementById('modalLearningProgressDetail');
+      const detailProgressId = detailModal && detailModal.style.display !== 'none' ? String(detailModal.dataset.progressId || '') : '';
+      if (detailProgressId) {
+        const detailProgress = (globalLearningProgressList || []).find(item => String(item.progressID || '') === detailProgressId);
+        if (detailProgress) return detailProgress;
+      }
       const rawStudent = document.getElementById('lpPageStudent')?.value || '';
       const student = currentUser.userType === 'siswa' ? currentUser.userName : (rawStudent || globalSelectedLearningProgressStudent || '');
       if (!student) return null;
