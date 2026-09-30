@@ -34,12 +34,13 @@
           globalGuruList = gList || [];
           if (data.userType === 'siswa') renderSiswa(data);
           if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
-          if (data.userType === 'guru' && typeof renderStudent360Access === 'function') renderStudent360Access(data);
+          if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
           renderLearningProgressViews();
           if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
           setupFilterDropdown();
           renderTabelJadwal();
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           renderTabelRiwayat();
           renderTabelTugas();
           renderTabelJadwalPengganti();

@@ -853,6 +853,26 @@ async function handleRpc(request, env, ctx) {
       const result = method === 'deleteScheduleOverride'
         ? await deleteScheduleOverrideSupabase(env, session, String(safeArgs[0] || '').trim())
         : await saveScheduleOverrideSupabase(env, session, safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {});
+      if (method === 'saveScheduleOverride' && result && result.success && result.override && ctx) {
+        const o = result.override;
+        const recipients = [];
+        const pushTeacher = id => {
+          const clean = String(id || '').trim();
+          if (clean && clean !== String(session.userID || '').trim() && !recipients.some(item => item.id === clean)) recipients.push({role:'guru', id:clean});
+        };
+        pushTeacher(o.guruAsliID);
+        pushTeacher(o.guruMakeupID);
+        const slotDate = o.tanggalAsli ? formatDbDateDmy(o.tanggalAsli) : '';
+        const makeupText = o.tanggalMakeup ? ` Make-up: ${formatDbDateDmy(o.tanggalMakeup)} ${o.jamMulaiMakeup || ''}.` : '';
+        if (recipients.length) {
+          ctx.waitUntil(pushToUniqueRecipients(env, recipients, {
+            title:'Pergantian Jadwal',
+            body:pushText(`${o.siswaAsli || 'Siswa'} · ${slotDate || '-'}${o.siswaPengganti ? ` · slot dipakai ${o.siswaPengganti}` : ''}.${makeupText}`),
+            url:'/?open=section-pengganti',
+            tag:'schedule-override-' + String(o.overrideID || Date.now())
+          }).catch(error => console.error('Schedule override push failed:', error)));
+        }
+      }
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Schedule override operation failed:', error);
@@ -3016,7 +3036,7 @@ async function buildTeacherDashboardSupabase(env, session) {
 }
 
 async function buildAdminDashboardSupabase(env, session) {
-  const [admins, students, teachers, classes, schedules, attendance, progress, replacements, announcements, history, teacherAttendance, scheduleOverrides] =
+  const [admins, students, teachers, classes, schedules, attendance, progress, replacements, announcements, history, teacherAttendance, scheduleOverrides, publications] =
     await Promise.all([
       sbRows(env, 'admins', { admin_id:`eq.${session.userID}`, limit:'1' }),
       sbRows(env, 'students', { order:'name.asc' }),
@@ -3029,7 +3049,8 @@ async function buildAdminDashboardSupabase(env, session) {
       sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
       sbRows(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc' }),
       sbRows(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc' }),
-      getScheduleOverrideRowsForSession(env, session)
+      getScheduleOverrideRowsForSession(env, session),
+      sbRows(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' })
     ]);
 
   const admin = admins[0] || null;
@@ -3076,6 +3097,29 @@ async function buildAdminDashboardSupabase(env, session) {
     students.map(s => String(s.name || '').trim().toLowerCase()).filter(Boolean)
   );
 
+  const mappedAdminProgress = progress.map(mapProgress);
+  const adminProgressById = new Map(mappedAdminProgress.map(item => [String(item.progressID || ''), item]));
+  const adminStudentByPublicId = new Map(students.map(item => [String(item.student_id || ''), item]));
+  const adminReports = publications.map(mapStudent360Publication).filter(Boolean).map(publication => {
+    const progressItem = adminProgressById.get(String(publication.progressID || '')) || null;
+    const student = adminStudentByPublicId.get(String(publication.studentID || '')) || null;
+    const studentClasses = siswaList.find(item => String(item.siswaID || '') === String(publication.studentID || ''))?.kelasList || [];
+    const matchingClass = studentClasses.find(item =>
+      progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
+    ) || studentClasses[0] || null;
+    return {
+      ...publication,
+      studentID:String(publication.studentID || ''),
+      studentName:student?.name || progressItem?.namaSiswa || '',
+      period:progressItem?.periode || '',
+      periodType:progressItem?.tipePeriode || '',
+      teacher:progressItem?.guru || publication.sentBy || '',
+      instrument:matchingClass?.instrumen || student?.instrument || '',
+      grade:matchingClass?.grade || student?.grade || '',
+      status:'Terkirim'
+    };
+  });
+
   return {
     success:true,
     userType:'admin',
@@ -3098,7 +3142,8 @@ async function buildAdminDashboardSupabase(env, session) {
       .filter(row => knownNames.has(String(row.student_name_snapshot || '').trim().toLowerCase()))
       .map(row => mapSchedule(row, true)),
     absensiList:attendance.map(mapAttendance),
-    learningProgressList:progress.map(mapProgress),
+    learningProgressList:mappedAdminProgress,
+    adminReports,
     jadwalPenggantiList:replacements.map(mapReplacement),
     scheduleOverrides:scheduleOverrides.map(mapScheduleOverride),
     pengumumanList:activeAnnouncementsForRole(

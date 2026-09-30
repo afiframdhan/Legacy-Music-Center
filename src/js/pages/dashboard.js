@@ -1261,7 +1261,9 @@
     function renderStudent360Access(data) {
       const reports = currentUser.userType === 'guru'
         ? (Array.isArray(data?.teacherReports) ? data.teacherReports : [])
-        : (Array.isArray(data?.studentReports) ? data.studentReports : []);
+        : currentUser.userType === 'admin'
+          ? (Array.isArray(data?.adminReports) ? data.adminReports : [])
+          : (Array.isArray(data?.studentReports) ? data.studentReports : []);
 
       const latestBox = document.getElementById('student360LatestCard');
       const historyBox = document.getElementById('student360ReportHistory');
@@ -1289,7 +1291,7 @@
 
       if (!historyBox) return;
 
-      if (currentUser.userType === 'guru') {
+      if (currentUser.userType === 'guru' || currentUser.userType === 'admin') {
         if (filters) filters.style.display = 'grid';
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length

@@ -566,8 +566,9 @@
         <div class="content-section" id="section-pengganti">
           <div class="academy-page-head"><div><h2>Jadwal Pergantian</h2><p>Kelola dan lihat jadwal Make-up Class berdasarkan tanggal pelaksanaan.</p></div></div>
 
-          <div class="widget-box academy-form-box" id="formJadwalPenggantiBox" style="display:none;">
-            <div class="widget-title" style="margin-bottom:8px;">🔄 Pergantian Jadwal Sementara</div>
+          <div class="widget-box academy-form-box collapsible-widget" id="formJadwalPenggantiBox" style="display:none;">
+            <div class="widget-header" style="margin-bottom:8px;"><div class="widget-title">🔄 Pergantian Jadwal Sementara</div><button type="button" class="widget-collapse-btn" data-collapse-button="formJadwalPenggantiBox" onclick="toggleDashboardWidget('formJadwalPenggantiBox')" aria-label="Minimize">−</button></div>
+            <div class="collapsible-content">
             <p style="margin:0 0 16px;color:#64748b;font-size:13px;line-height:1.55;">Jadwal rutin tidak diubah. Pergantian hanya berlaku pada tanggal yang dipilih, lalu minggu berikutnya otomatis kembali ke jadwal normal.</p>
             <form id="formAddJadwalPengganti" class="academy-form-grid" onsubmit="return handleSaveScheduleOverride(event)">
               <input type="hidden" id="scheduleOverrideID">
@@ -628,6 +629,7 @@
               </div>
               <div class="academy-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitPengganti" class="btn btn-primary">Simpan Pergantian</button></div>
             </form>
+            </div>
           </div>
 
           <div class="widget-box">
@@ -635,7 +637,7 @@
               <div class="widget-title">📋 Daftar Jadwal Pergantian</div>
             </div>
             <div id="makeupFilterBox" class="academy-filter-bar" style="margin-bottom:14px;">
-              <div id="makeupFilterClassGroup" class="form-group" style="margin:0;"><label>Kelas / Instrumen</label><select id="makeupFilterClass" onchange="renderTabelJadwalPengganti()"><option value="">Semua Kelas</option></select></div>
+              <div id="makeupFilterInstrumentGroup" class="form-group" style="margin:0;"><label>Instrumen</label><select id="makeupFilterInstrument" onchange="renderTabelJadwalPengganti()"><option value="">Semua Instrumen</option></select></div>
               <div id="makeupFilterDayGroup" class="form-group" style="margin:0;"><label>Hari</label><select id="makeupFilterDay" onchange="renderTabelJadwalPengganti()"><option value="">Semua Hari</option><option>Senin</option><option>Selasa</option><option>Rabu</option><option>Kamis</option><option>Jumat</option><option>Sabtu</option><option>Minggu</option></select></div>
               <div id="makeupFilterTeacherGroup" class="form-group" style="margin:0;"><label>Guru</label><select id="makeupFilterTeacher" onchange="renderTabelJadwalPengganti()"><option value="">Semua Guru</option></select></div>
             </div>
