@@ -274,6 +274,7 @@
         
         const filterSiswaGuru = document.getElementById('filterSiswaGuru');
         if(filterSiswaGuru) filterSiswaGuru.innerHTML = optFilterGuru;
+        if (typeof refreshSiswaGuruFilterByInstrument === 'function') refreshSiswaGuruFilterByInstrument();
 
         const filterJadwalGuru = document.getElementById('filterJadwalGuru');
         if(filterJadwalGuru) filterJadwalGuru.innerHTML = optFilterGuru;

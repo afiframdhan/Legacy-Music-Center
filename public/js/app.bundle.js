@@ -1238,6 +1238,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         
         const filterSiswaGuru = document.getElementById('filterSiswaGuru');
         if(filterSiswaGuru) filterSiswaGuru.innerHTML = optFilterGuru;
+        if (typeof refreshSiswaGuruFilterByInstrument === 'function') refreshSiswaGuruFilterByInstrument();
 
         const filterJadwalGuru = document.getElementById('filterJadwalGuru');
         if(filterJadwalGuru) filterJadwalGuru.innerHTML = optFilterGuru;
@@ -1328,26 +1329,106 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
 
+    function learningProgressStudentClasses(student) {
+      if (typeof getStudentClassesForUI === 'function') return getStudentClassesForUI(student);
+      return Array.isArray(student?.kelasList) && student.kelasList.length
+        ? student.kelasList
+        : [{ instrumen:student?.instrumen || '', guru:student?.guru || '', guruID:student?.guruID || '' }];
+    }
+
+    function learningProgressStudentMatchesFilters(student, teacherValue, instrumentValue) {
+      const teacherNeedle = String(teacherValue || '').trim().toLowerCase();
+      const instrumentNeedle = String(instrumentValue || '').trim().toLowerCase();
+      if (!teacherNeedle && !instrumentNeedle) return true;
+      return learningProgressStudentClasses(student).some(item => {
+        const teacherId = String(item.guruID || '').trim().toLowerCase();
+        const teacherName = String(item.guru || '').trim().toLowerCase();
+        const instrument = String(item.instrumen || '').trim().toLowerCase();
+        const teacherOk = !teacherNeedle || teacherId === teacherNeedle || teacherName === teacherNeedle;
+        const instrumentOk = !instrumentNeedle || instrument === instrumentNeedle;
+        return teacherOk && instrumentOk;
+      });
+    }
+
+    function populateLearningProgressRoleFilters() {
+      const isStudent = currentUser.userType === 'siswa';
+      const isAdmin = currentUser.userType === 'admin';
+      const teacherGroup = document.getElementById('lpPageTeacherGroup');
+      const instrumentGroup = document.getElementById('lpPageInstrumentGroup');
+      const teacherSelect = document.getElementById('lpPageTeacher');
+      const instrumentSelect = document.getElementById('lpPageInstrument');
+      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
+      const studentGroup = document.getElementById('lpPageStudentGroup');
+
+      if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
+      if (instrumentGroup) instrumentGroup.style.display = isStudent ? 'none' : 'block';
+      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (studentGroup) studentGroup.style.display = isStudent ? 'none' : 'block';
+
+      if (isAdmin && teacherSelect) {
+        const oldTeacher = teacherSelect.value;
+        const teachers = (globalGuruList || []).slice().sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+        teacherSelect.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(item => `<option value="${escapeTaskHtml(item.id || item.nama || '')}">${escapeTaskHtml(item.nama || '-')} (${escapeTaskHtml(item.instrumen || 'Musik')})</option>`).join('');
+        teacherSelect.value = Array.from(teacherSelect.options).some(opt => opt.value === oldTeacher) ? oldTeacher : '';
+      } else if (teacherSelect) {
+        teacherSelect.value = '';
+      }
+
+      if (instrumentSelect && !isStudent) {
+        const oldInstrument = instrumentSelect.value;
+        const selectedTeacher = isAdmin ? String(teacherSelect?.value || '').trim() : '';
+        const instruments = new Set();
+        (globalSiswaList || []).forEach(student => {
+          learningProgressStudentClasses(student).forEach(item => {
+            const teacherId = String(item.guruID || '').trim();
+            const teacherName = String(item.guru || '').trim();
+            const teacherMatch = !selectedTeacher || teacherId === selectedTeacher || teacherName.toLowerCase() === selectedTeacher.toLowerCase();
+            if (teacherMatch && String(item.instrumen || '').trim()) instruments.add(String(item.instrumen || '').trim());
+          });
+        });
+        const values = [...instruments].sort((a,b) => a.localeCompare(b,'id'));
+        instrumentSelect.innerHTML = '<option value="">Semua Instrumen</option>' + values.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+        instrumentSelect.value = values.includes(oldInstrument) ? oldInstrument : '';
+      } else if (instrumentSelect) {
+        instrumentSelect.value = '';
+      }
+    }
+
     function refreshLearningProgressPage(resetPeriod, fromSearch) {
       const studentSelect = document.getElementById('lpPageStudent');
       const typeSelect = document.getElementById('lpPagePeriodType');
       const periodSelect = document.getElementById('lpPagePeriod');
       const content = document.getElementById('learningProgressPageContent');
       if (!studentSelect || !typeSelect || !periodSelect || !content) return;
+
       const isStudent = currentUser.userType === 'siswa';
-      const allNames = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const isAdmin = currentUser.userType === 'admin';
+      populateLearningProgressRoleFilters();
+
+      const teacherValue = isAdmin ? String(document.getElementById('lpPageTeacher')?.value || '').trim() : '';
+      const instrumentValue = !isStudent ? String(document.getElementById('lpPageInstrument')?.value || '').trim() : '';
       const searchInput = document.getElementById('lpPageStudentSearch');
       const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
-      const names = searchTerm ? allNames.filter(name => name.toLowerCase().includes(searchTerm)) : allNames;
+
+      let roleStudents = isStudent
+        ? [{ nama:currentUser.userName, siswaID:currentUser.userID }]
+        : (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+
+      if (!isStudent) {
+        roleStudents = roleStudents.filter(student => learningProgressStudentMatchesFilters(student, teacherValue, instrumentValue));
+      }
+      if (searchTerm) roleStudents = roleStudents.filter(student => String(student.nama || '').toLowerCase().includes(searchTerm));
+      roleStudents.sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+
+      const names = [...new Set(roleStudents.map(item => String(item.nama || '').trim()).filter(Boolean))];
       const oldStudent = studentSelect.value;
-      const allStudentsOption = !isStudent ? '<option value="">Semua Siswa</option>' : '';
-      studentSelect.innerHTML = allStudentsOption + (names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : (!isStudent ? '' : '<option value="">Tidak ada siswa ditemukan</option>'));
-      if (isStudent) studentSelect.value = currentUser.userName;
-      else if (oldStudent && names.includes(oldStudent)) studentSelect.value = oldStudent;
-      else studentSelect.value = '';
-      document.getElementById('lpPageStudentGroup').style.display = isStudent ? 'none' : 'block';
-      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
-      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (isStudent) {
+        studentSelect.innerHTML = `<option value="${escapeTaskHtml(currentUser.userName || '')}">${escapeTaskHtml(currentUser.userName || 'Siswa')}</option>`;
+        studentSelect.value = currentUser.userName || '';
+      } else {
+        studentSelect.innerHTML = '<option value="">Semua Siswa</option>' + names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('');
+        studentSelect.value = oldStudent && names.includes(oldStudent) ? oldStudent : '';
+      }
 
       const selectedStudent = isStudent ? currentUser.userName : studentSelect.value;
       globalSelectedLearningProgressStudent = selectedStudent || '';
@@ -2523,7 +2604,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       </tr>`).join('');
       win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
         *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#eef2f6;color:#17232d}.toolbar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;justify-content:flex-end;padding:12px 18px;background:#17232d}.toolbar button{border:0;border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer}.pdf{background:#f15a24;color:#fff}.print{background:#fff;color:#17232d}.close{background:#334155;color:#fff}.hint{margin-right:auto;color:#cbd5e1;font-size:12px}.sheet{width:min(1120px,calc(100% - 32px));margin:24px auto;background:#fff;padding:28px;box-shadow:0 12px 30px rgba(15,23,42,.12)}header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #f15a24;padding-bottom:16px;margin-bottom:18px}.brand{display:flex;align-items:center;gap:16px}.brand img{width:145px;height:auto}.brand-copy h1{margin:0;font-size:23px}.brand-copy p{margin:5px 0 0;color:#64748b;font-size:12px}.meta{text-align:right;font-size:11px;color:#64748b;line-height:1.6}.summary{display:flex;gap:10px;margin:0 0 16px}.summary div{flex:1;border:1px solid #fed7aa;background:#fff8f4;border-radius:10px;padding:10px}.summary span{display:block;color:#9a3412;font-size:10px}.summary b{display:block;font-size:17px;margin-top:3px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #d8dee8;padding:7px;vertical-align:top}th{background:#fff3ed;text-align:left;color:#9a3412}td span{color:#64748b}footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;text-align:center}@page{size:A4 landscape;margin:10mm}@media print{body{background:#fff}.toolbar{display:none}.sheet{width:100%;margin:0;padding:0;box-shadow:none}}
-      </style></head><body><div class="toolbar"><span class="hint">Simpan PDF membuka dialog cetak; pilih “Save as PDF / Simpan sebagai PDF”.</span><button class="pdf" onclick="lmcSavePdf('paper','landscape','Repertoire-Legacy-Music-Center.pdf',this)">Simpan PDF</button><button class="print" onclick="lmcPrintDoc('paper','landscape','Repertoire-Legacy-Music-Center.pdf',this)">Cetak</button><button class="close" onclick="window.close()">Tutup</button></div><main class="sheet"><header><div class="brand"><img src="${escapeTaskHtml(logoUrl)}" alt="Legacy Music Center"><div class="brand-copy"><h1>${title}</h1><p>${escapeTaskHtml(focusLabel || 'Semua Siswa')}</p></div></div><div class="meta">Legacy Music Center<br>Dicetak ${new Date().toLocaleString('id-ID')}</div></header><div class="summary"><div><span>Total Lagu</span><b>${items.length}</b></div><div><span>Siap Tampil</span><b>${items.filter(i=>String(i.status||'').toLowerCase()==='siap tampil').length}</b></div><div><span>Dikuasai / Sudah Tampil</span><b>${items.filter(i=>['dikuasai','sudah tampil'].includes(String(i.status||'').toLowerCase())).length}</b></div><div><span>Rata-rata Progress</span><b>${items.length ? Math.round(items.reduce((s,i)=>s+(Number(i.progress||0)||0),0)/items.length) : 0}%</b></div></div><table><thead><tr><th>No</th><th>Lagu / Composer</th><th>Siswa</th><th>Instrumen</th><th>Key</th><th>Level</th><th>Status</th><th>Progress</th><th>Target Tampil</th><th>Event</th></tr></thead><tbody>${rows || '<tr><td colspan="10">Belum ada data repertoire.</td></tr>'}</tbody></table><footer>Legacy Music Center • Repertoire / Daftar Lagu Siswa</footer></main><script>function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
+      </style></head><body><div class="toolbar"><span class="hint">Simpan PDF membuka dialog cetak; pilih “Save as PDF / Simpan sebagai PDF”.</span><button class="pdf" onclick="lmcSavePdf('paper','landscape','Repertoire-Legacy-Music-Center.pdf',this)">Simpan PDF</button><button class="print" onclick="lmcPrintDoc('paper','landscape','Repertoire-Legacy-Music-Center.pdf',this)">Cetak</button><button class="close" onclick="window.close()">Tutup</button></div><main class="sheet" id="paper"><header><div class="brand"><img src="${escapeTaskHtml(logoUrl)}" alt="Legacy Music Center"><div class="brand-copy"><h1>${title}</h1><p>${escapeTaskHtml(focusLabel || 'Semua Siswa')}</p></div></div><div class="meta">Legacy Music Center<br>Dicetak ${new Date().toLocaleString('id-ID')}</div></header><div class="summary"><div><span>Total Lagu</span><b>${items.length}</b></div><div><span>Siap Tampil</span><b>${items.filter(i=>String(i.status||'').toLowerCase()==='siap tampil').length}</b></div><div><span>Dikuasai / Sudah Tampil</span><b>${items.filter(i=>['dikuasai','sudah tampil'].includes(String(i.status||'').toLowerCase())).length}</b></div><div><span>Rata-rata Progress</span><b>${items.length ? Math.round(items.reduce((s,i)=>s+(Number(i.progress||0)||0),0)/items.length) : 0}%</b></div></div><table><thead><tr><th>No</th><th>Lagu / Composer</th><th>Siswa</th><th>Instrumen</th><th>Key</th><th>Level</th><th>Status</th><th>Progress</th><th>Target Tampil</th><th>Event</th></tr></thead><tbody>${rows || '<tr><td colspan="10">Belum ada data repertoire.</td></tr>'}</tbody></table><footer>Legacy Music Center • Repertoire / Daftar Lagu Siswa</footer></main><script>function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
 async function lmcEnsurePdf(){await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',function(){return typeof window.html2canvas==='function';});await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){return !!(window.jspdf&&window.jspdf.jsPDF);});}
 function lmcIsIOS(){return /iPad|iPhone|iPod/i.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
 async function lmcWaitImages(root){var imgs=Array.prototype.slice.call(root.querySelectorAll('img'));await Promise.all(imgs.map(function(img){if(img.complete)return Promise.resolve();return new Promise(function(resolve){var done=function(){resolve();};img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(resolve,1800);});}));}
@@ -2706,6 +2787,42 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       restoreDashboardWidgetStates();
     }
 
+    function getTeachersForStudentInstrumentFilter(instrumentValue) {
+      const needle = String(instrumentValue || '').trim().toLowerCase();
+      const teacherNames = new Set();
+      if (needle) {
+        (globalSiswaList || []).forEach(student => {
+          getStudentClassesForUI(student).forEach(item => {
+            if (String(item.instrumen || '').trim().toLowerCase() === needle && String(item.guru || '').trim()) {
+              teacherNames.add(String(item.guru || '').trim().toLowerCase());
+            }
+          });
+        });
+      }
+      return (globalGuruList || []).filter(guru => {
+        if (!needle) return true;
+        const nameMatch = teacherNames.has(String(guru.nama || '').trim().toLowerCase());
+        const teacherInstruments = String(guru.instrumen || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+        return nameMatch || teacherInstruments.includes(needle);
+      });
+    }
+
+    function refreshSiswaGuruFilterByInstrument() {
+      if (currentUser.userType !== 'admin') return;
+      const instrument = document.getElementById('filterSiswaInstrumen')?.value || '';
+      const select = document.getElementById('filterSiswaGuru');
+      if (!select) return;
+      const oldValue = select.value;
+      const teachers = getTeachersForStudentInstrumentFilter(instrument).slice().sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+      select.innerHTML = '<option value="">-- Semua Guru --</option>' + teachers.map(g => `<option value="${escapeTaskHtml(g.nama || '')}">${escapeTaskHtml(g.nama || '-')} (${escapeTaskHtml(g.instrumen || 'Musik')})</option>`).join('');
+      select.value = Array.from(select.options).some(option => option.value === oldValue) ? oldValue : '';
+    }
+
+    function handleSiswaInstrumenFilterChange() {
+      refreshSiswaGuruFilterByInstrument();
+      applySiswaFilters();
+    }
+
     function applySiswaFilters() {
       let result = [...globalSiswaList];
       const urutan = document.getElementById('filterSiswaUrutan') ? document.getElementById('filterSiswaUrutan').value : 'terbaru';
@@ -2723,11 +2840,12 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         const filterInst = document.getElementById('filterSiswaInstrumen') ? document.getElementById('filterSiswaInstrumen').value.trim().toLowerCase() : '';
         const filterGuru = document.getElementById('filterSiswaGuru') ? document.getElementById('filterSiswaGuru').value.trim().toLowerCase() : '';
 
-        if (filterInst !== '') {
-          result = result.filter(s => studentHasClassValue(s, 'instrumen', filterInst));
-        }
-        if (filterGuru !== '') {
-          result = result.filter(s => studentHasClassValue(s, 'guru', filterGuru));
+        if (filterInst !== '' || filterGuru !== '') {
+          result = result.filter(s => getStudentClassesForUI(s).some(item => {
+            const instrumentMatch = !filterInst || String(item.instrumen || '').trim().toLowerCase() === filterInst;
+            const teacherMatch = !filterGuru || String(item.guru || '').trim().toLowerCase() === filterGuru;
+            return instrumentMatch && teacherMatch;
+          }));
         }
 
       }

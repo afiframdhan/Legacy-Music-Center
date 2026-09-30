@@ -64,26 +64,106 @@
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
 
+    function learningProgressStudentClasses(student) {
+      if (typeof getStudentClassesForUI === 'function') return getStudentClassesForUI(student);
+      return Array.isArray(student?.kelasList) && student.kelasList.length
+        ? student.kelasList
+        : [{ instrumen:student?.instrumen || '', guru:student?.guru || '', guruID:student?.guruID || '' }];
+    }
+
+    function learningProgressStudentMatchesFilters(student, teacherValue, instrumentValue) {
+      const teacherNeedle = String(teacherValue || '').trim().toLowerCase();
+      const instrumentNeedle = String(instrumentValue || '').trim().toLowerCase();
+      if (!teacherNeedle && !instrumentNeedle) return true;
+      return learningProgressStudentClasses(student).some(item => {
+        const teacherId = String(item.guruID || '').trim().toLowerCase();
+        const teacherName = String(item.guru || '').trim().toLowerCase();
+        const instrument = String(item.instrumen || '').trim().toLowerCase();
+        const teacherOk = !teacherNeedle || teacherId === teacherNeedle || teacherName === teacherNeedle;
+        const instrumentOk = !instrumentNeedle || instrument === instrumentNeedle;
+        return teacherOk && instrumentOk;
+      });
+    }
+
+    function populateLearningProgressRoleFilters() {
+      const isStudent = currentUser.userType === 'siswa';
+      const isAdmin = currentUser.userType === 'admin';
+      const teacherGroup = document.getElementById('lpPageTeacherGroup');
+      const instrumentGroup = document.getElementById('lpPageInstrumentGroup');
+      const teacherSelect = document.getElementById('lpPageTeacher');
+      const instrumentSelect = document.getElementById('lpPageInstrument');
+      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
+      const studentGroup = document.getElementById('lpPageStudentGroup');
+
+      if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
+      if (instrumentGroup) instrumentGroup.style.display = isStudent ? 'none' : 'block';
+      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (studentGroup) studentGroup.style.display = isStudent ? 'none' : 'block';
+
+      if (isAdmin && teacherSelect) {
+        const oldTeacher = teacherSelect.value;
+        const teachers = (globalGuruList || []).slice().sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+        teacherSelect.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(item => `<option value="${escapeTaskHtml(item.id || item.nama || '')}">${escapeTaskHtml(item.nama || '-')} (${escapeTaskHtml(item.instrumen || 'Musik')})</option>`).join('');
+        teacherSelect.value = Array.from(teacherSelect.options).some(opt => opt.value === oldTeacher) ? oldTeacher : '';
+      } else if (teacherSelect) {
+        teacherSelect.value = '';
+      }
+
+      if (instrumentSelect && !isStudent) {
+        const oldInstrument = instrumentSelect.value;
+        const selectedTeacher = isAdmin ? String(teacherSelect?.value || '').trim() : '';
+        const instruments = new Set();
+        (globalSiswaList || []).forEach(student => {
+          learningProgressStudentClasses(student).forEach(item => {
+            const teacherId = String(item.guruID || '').trim();
+            const teacherName = String(item.guru || '').trim();
+            const teacherMatch = !selectedTeacher || teacherId === selectedTeacher || teacherName.toLowerCase() === selectedTeacher.toLowerCase();
+            if (teacherMatch && String(item.instrumen || '').trim()) instruments.add(String(item.instrumen || '').trim());
+          });
+        });
+        const values = [...instruments].sort((a,b) => a.localeCompare(b,'id'));
+        instrumentSelect.innerHTML = '<option value="">Semua Instrumen</option>' + values.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+        instrumentSelect.value = values.includes(oldInstrument) ? oldInstrument : '';
+      } else if (instrumentSelect) {
+        instrumentSelect.value = '';
+      }
+    }
+
     function refreshLearningProgressPage(resetPeriod, fromSearch) {
       const studentSelect = document.getElementById('lpPageStudent');
       const typeSelect = document.getElementById('lpPagePeriodType');
       const periodSelect = document.getElementById('lpPagePeriod');
       const content = document.getElementById('learningProgressPageContent');
       if (!studentSelect || !typeSelect || !periodSelect || !content) return;
+
       const isStudent = currentUser.userType === 'siswa';
-      const allNames = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const isAdmin = currentUser.userType === 'admin';
+      populateLearningProgressRoleFilters();
+
+      const teacherValue = isAdmin ? String(document.getElementById('lpPageTeacher')?.value || '').trim() : '';
+      const instrumentValue = !isStudent ? String(document.getElementById('lpPageInstrument')?.value || '').trim() : '';
       const searchInput = document.getElementById('lpPageStudentSearch');
       const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
-      const names = searchTerm ? allNames.filter(name => name.toLowerCase().includes(searchTerm)) : allNames;
+
+      let roleStudents = isStudent
+        ? [{ nama:currentUser.userName, siswaID:currentUser.userID }]
+        : (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+
+      if (!isStudent) {
+        roleStudents = roleStudents.filter(student => learningProgressStudentMatchesFilters(student, teacherValue, instrumentValue));
+      }
+      if (searchTerm) roleStudents = roleStudents.filter(student => String(student.nama || '').toLowerCase().includes(searchTerm));
+      roleStudents.sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+
+      const names = [...new Set(roleStudents.map(item => String(item.nama || '').trim()).filter(Boolean))];
       const oldStudent = studentSelect.value;
-      const allStudentsOption = !isStudent ? '<option value="">Semua Siswa</option>' : '';
-      studentSelect.innerHTML = allStudentsOption + (names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : (!isStudent ? '' : '<option value="">Tidak ada siswa ditemukan</option>'));
-      if (isStudent) studentSelect.value = currentUser.userName;
-      else if (oldStudent && names.includes(oldStudent)) studentSelect.value = oldStudent;
-      else studentSelect.value = '';
-      document.getElementById('lpPageStudentGroup').style.display = isStudent ? 'none' : 'block';
-      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
-      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (isStudent) {
+        studentSelect.innerHTML = `<option value="${escapeTaskHtml(currentUser.userName || '')}">${escapeTaskHtml(currentUser.userName || 'Siswa')}</option>`;
+        studentSelect.value = currentUser.userName || '';
+      } else {
+        studentSelect.innerHTML = '<option value="">Semua Siswa</option>' + names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('');
+        studentSelect.value = oldStudent && names.includes(oldStudent) ? oldStudent : '';
+      }
 
       const selectedStudent = isStudent ? currentUser.userName : studentSelect.value;
       globalSelectedLearningProgressStudent = selectedStudent || '';

@@ -363,6 +363,8 @@
           </div>
           <div class="widget-box lp-page-filter">
             <div class="form-group" id="lpPageStudentSearchGroup" style="margin:0;"><label>Cari Siswa</label><input type="search" id="lpPageStudentSearch" placeholder="Ketik nama siswa..." oninput="refreshLearningProgressPage(false, true)" autocomplete="off"></div>
+            <div class="form-group" id="lpPageTeacherGroup" style="margin:0;display:none;"><label>Guru Pengajar</label><select id="lpPageTeacher" onchange="refreshLearningProgressPage(true)"><option value="">Semua Guru</option></select></div>
+            <div class="form-group" id="lpPageInstrumentGroup" style="margin:0;display:none;"><label>Instrumen</label><select id="lpPageInstrument" onchange="refreshLearningProgressPage(true)"><option value="">Semua Instrumen</option></select></div>
             <div class="form-group" id="lpPageStudentGroup" style="margin:0;"><label>Nama Siswa</label><select id="lpPageStudent" onchange="refreshLearningProgressPage()"></select></div>
             <div class="form-group" style="margin:0;"><label>Jenis Periode</label><select id="lpPagePeriodType" onchange="refreshLearningProgressPage(true)"><option value="">Semua Periode</option><option value="Bulanan">Bulanan</option><option value="Tiga Bulan">Tiga Bulan</option></select></div>
             <div class="form-group" style="margin:0;"><label>Periode Laporan</label><select id="lpPagePeriod" onchange="refreshLearningProgressPage()"></select></div>
@@ -442,7 +444,7 @@
               </div>
               <div class="form-group" id="filterSiswaInstrumenGroup" style="margin:0;">
                 <label>Filter Instrumen:</label>
-                <select id="filterSiswaInstrumen" onchange="applySiswaFilters()">
+                <select id="filterSiswaInstrumen" onchange="handleSiswaInstrumenFilterChange()">
                   <option value="">-- Semua Instrumen --</option>
                   <option value="Gitar">Gitar</option>
                   <option value="Biola">Biola</option>
