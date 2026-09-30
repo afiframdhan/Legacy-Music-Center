@@ -384,9 +384,10 @@
             <div class="task-stat"><div class="task-stat-icon">◷</div><div class="task-stat-copy"><span>Rata-rata Progress</span><strong id="repertoireStatAverage">0%</strong><small>Seluruh filter aktif</small></div></div>
           </div>
 
-          <div class="widget-box" style="background:#fff8f6; border-color:#fed7aa;">
-            <div class="filter-grid">
+          <div class="widget-box repertoire-filter-box">
+            <div class="filter-grid repertoire-filter-grid">
               <div class="form-group" style="margin:0;"><label>Cari Lagu / Siswa</label><input type="search" id="repertoireSearch" placeholder="Cari judul lagu, composer, event..." oninput="renderRepertoirePage()"></div>
+              <div class="form-group" id="repertoireTeacherFilterWrap" style="margin:0;display:none;"><label>Guru</label><select id="repertoireTeacherFilter" onchange="handleRepertoireTeacherFilterChange()"><option value="">Semua Guru</option></select></div>
               <div class="form-group" id="repertoireStudentFilterWrap" style="margin:0;"><label>Siswa</label><select id="repertoireStudentFilter" onchange="renderRepertoirePage()"><option value="">Semua Siswa</option></select></div>
               <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="repertoireInstrumentFilter" onchange="renderRepertoirePage()"><option value="">Semua Instrumen</option></select></div>
               <div class="form-group" style="margin:0;"><label>Status</label><select id="repertoireStatusFilter" onchange="renderRepertoirePage()"><option value="">Semua Status</option></select></div>

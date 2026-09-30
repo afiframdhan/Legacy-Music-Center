@@ -416,6 +416,79 @@ html[data-theme="dark"] .repertoire-detail-block p{color:#e2e8f0}
 }
 
 
+/* REPERTOIRE V2 — compact cards, role filters, dark-mode contrast */
+.repertoire-filter-box{background:#fff8f6!important;border-color:#fed7aa!important}
+.repertoire-filter-grid{grid-template-columns:repeat(5,minmax(150px,1fr))}
+.repertoire-item-compact{width:100%;text-align:left;padding:13px 14px;border-radius:14px;min-height:0;appearance:none;font:inherit;color:inherit}
+.repertoire-item-head.compact{margin-bottom:9px;align-items:center}
+.repertoire-song-copy{min-width:0;flex:1}
+.repertoire-item-compact .repertoire-item-title{font-size:15px;line-height:1.25}
+.repertoire-item-compact .repertoire-item-subtitle{font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repertoire-compact-meta{display:grid;grid-template-columns:auto auto minmax(120px,1fr) auto;gap:7px;align-items:center;margin-bottom:8px;color:#64748b;font-size:10.5px}
+.repertoire-compact-meta span{background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repertoire-compact-meta strong{font-size:12px;color:#17232D;text-align:right}
+.repertoire-progress.compact{height:6px}
+.repertoire-summary-card{padding:13px;border-radius:14px}
+.repertoire-summary-head{margin-bottom:9px}
+.repertoire-summary-head strong{font-size:14px}
+.repertoire-summary-head span{font-size:10.5px}
+.repertoire-summary-body{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.repertoire-summary-chip{padding:8px 10px;border-radius:11px;min-height:0}
+.repertoire-summary-chip span{font-size:10px}
+.repertoire-summary-chip b{font-size:15px}
+.repertoire-summary-row{padding:8px 10px;border-radius:11px;gap:2px}
+.repertoire-summary-row b{font-size:12px}
+.repertoire-summary-row span{font-size:10.5px}
+.repertoire-empty.small{padding:12px}
+
+html[data-theme="dark"] .repertoire-filter-box{background:#0e1829!important;border-color:#31415a!important}
+html[data-theme="dark"] .repertoire-item,
+html[data-theme="dark"] .repertoire-summary-card,
+html[data-theme="dark"] .repertoire-meta,
+html[data-theme="dark"] .repertoire-summary-row,
+html[data-theme="dark"] .repertoire-empty{background:#111b2e!important;border-color:#34445e!important;color:#e8eef7!important}
+html[data-theme="dark"] .repertoire-item-title,
+html[data-theme="dark"] .repertoire-meta strong,
+html[data-theme="dark"] .repertoire-summary-head strong,
+html[data-theme="dark"] .repertoire-summary-row b,
+html[data-theme="dark"] .repertoire-detail-top h3,
+html[data-theme="dark"] .repertoire-summary-chip b,
+html[data-theme="dark"] .repertoire-compact-meta strong{color:#f8fafc!important}
+html[data-theme="dark"] .repertoire-item-subtitle,
+html[data-theme="dark"] .repertoire-summary-head span,
+html[data-theme="dark"] .repertoire-meta span,
+html[data-theme="dark"] .repertoire-summary-row span,
+html[data-theme="dark"] .repertoire-item-footer,
+html[data-theme="dark"] .repertoire-muted,
+html[data-theme="dark"] .repertoire-student-note,
+html[data-theme="dark"] .repertoire-detail-top p,
+html[data-theme="dark"] .repertoire-compact-meta{color:#a8b5c7!important}
+html[data-theme="dark"] .repertoire-compact-meta span{background:#17243a!important;border-color:#3b4d68!important;color:#cbd5e1!important}
+html[data-theme="dark"] .repertoire-summary-chip,
+html[data-theme="dark"] .repertoire-detail-block{background:#17243a!important;border-color:#3b4d68!important}
+html[data-theme="dark"] .repertoire-summary-chip span,
+html[data-theme="dark"] .repertoire-detail-block strong{color:#ffb07a!important}
+html[data-theme="dark"] .repertoire-detail-block p{color:#e2e8f0!important}
+html[data-theme="dark"] .repertoire-progress{background:#4a2b20!important}
+html[data-theme="dark"] #modalRepertoireDetail .modal-content,
+html[data-theme="dark"] #modalRepertoire .modal-content{background:#111b2e!important;border-color:#31415a!important;color:#e8eef7!important}
+
+@media (max-width:1180px){.repertoire-filter-grid{grid-template-columns:repeat(3,minmax(150px,1fr))}}
+@media (max-width:860px){.repertoire-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.repertoire-compact-meta{grid-template-columns:auto auto 1fr auto}}
+@media (max-width:640px){
+  .repertoire-filter-grid{grid-template-columns:1fr}
+  .repertoire-item-compact{padding:12px;border-radius:13px}
+  .repertoire-item-head.compact{flex-direction:row;align-items:flex-start}
+  .repertoire-item-compact .repertoire-item-title{font-size:14px}
+  .repertoire-badge{font-size:9.5px;padding:5px 8px}
+  .repertoire-compact-meta{grid-template-columns:auto auto minmax(0,1fr) auto;font-size:9.5px;gap:5px}
+  .repertoire-compact-meta span{padding:3px 6px}
+  .repertoire-summary-body{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .repertoire-summary-card{padding:12px!important}
+  .repertoire-summary-head{flex-direction:row!important;align-items:flex-start!important}
+  .repertoire-detail-grid{grid-template-columns:1fr}
+}
+
     /* TUGAS & LATIHAN */
     .task-page-head { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }
     .task-page-head h2 { margin:0 0 5px; color:#101828; font-size:28px; letter-spacing:-.03em; }

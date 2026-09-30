@@ -2526,8 +2526,15 @@ async function getRepertoireDataSupabase(env, session) {
       ...classes.map(row => String(row.student_id || '').trim()).filter(Boolean),
       ...directStudents.map(row => String(row.student_id || '').trim()).filter(Boolean)
     ]);
-    rows = await sbRows(env, 'student_repertoire', { teacher_id:`eq.${session.userID}`, active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
-    rows = rows.filter(row => !allowedIds.size || allowedIds.has(String(row.student_id || '').trim()));
+    const allowedClassKeys = new Set(classes.map(row => `${String(row.student_id || '').trim()}|${String(row.instrument || '').trim().toLowerCase()}`));
+    const allRows = await sbRows(env, 'student_repertoire', { active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
+    rows = allRows.filter(row => {
+      const studentId = String(row.student_id || '').trim();
+      const instrument = String(row.instrument || '').trim().toLowerCase();
+      if (allowedClassKeys.has(`${studentId}|${instrument}`)) return true;
+      if (allowedIds.has(studentId) && !instrument) return true;
+      return String(row.teacher_id || '').trim() === String(session.userID || '').trim();
+    });
   } else if (session.userType === 'admin') {
     rows = await sbRows(env, 'student_repertoire', { active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
   } else {
