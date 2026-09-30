@@ -25,6 +25,7 @@
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
+        globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 

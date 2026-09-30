@@ -8,6 +8,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let globalJadwalPenggantiList = [];
     let globalPengumumanList = [];
     let globalLearningProgressList = [];
+    let globalRepertoireList = [];
     let globalStudentHistory = [];
     let globalTeacherAttendanceList = [];
     let studentReportView = 'all';

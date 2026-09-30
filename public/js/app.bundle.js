@@ -269,6 +269,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let globalJadwalPenggantiList = [];
     let globalPengumumanList = [];
     let globalLearningProgressList = [];
+    let globalRepertoireList = [];
     let globalStudentHistory = [];
     let globalTeacherAttendanceList = [];
     let studentReportView = 'all';
@@ -722,6 +723,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         pengumuman: `<svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>`,
         ruang: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 8h2"></path><path d="M13 8h2"></path><path d="M9 12h2"></path><path d="M13 12h2"></path></svg>`,
         progress: `<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
+        repertoire: `<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
         tugas: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
         laporan: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>`,
         sertifikat: `<svg viewBox="0 0 24 24"><path d="M12 2l3 2 3-.5.5 3L21 9l-2 3 .5 3-3 .5L14 19l-2 3-2-3-2.5-3.5-3-.5.5-3-2-3 2.5-2.5.5-3 3 .5z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
@@ -735,6 +737,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
@@ -746,6 +749,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Ujian & Sertifikat', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
@@ -763,6 +767,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
@@ -832,6 +837,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (sectionId === 'section-learning-progress') {
         setTimeout(() => refreshLearningProgressPage(), 0);
+      }
+
+      if (sectionId === 'section-repertoire') {
+        setTimeout(() => loadRepertoirePage(), 0);
       }
 
       if (sectionId === 'section-annual-exam') {
@@ -980,6 +989,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
+        globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 
@@ -1318,63 +1328,26 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    function refreshLearningProgressPage(resetPeriod, fromSearch) {
+    function refreshLearningProgressPage(resetPeriod) {
       const studentSelect = document.getElementById('lpPageStudent');
       const typeSelect = document.getElementById('lpPagePeriodType');
       const periodSelect = document.getElementById('lpPagePeriod');
       const content = document.getElementById('learningProgressPageContent');
       if (!studentSelect || !typeSelect || !periodSelect || !content) return;
       const isStudent = currentUser.userType === 'siswa';
-      const allNames = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
-      const searchInput = document.getElementById('lpPageStudentSearch');
-      const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
-      const names = searchTerm ? allNames.filter(name => name.toLowerCase().includes(searchTerm)) : allNames;
-      const oldStudent = studentSelect.value;
-      const allStudentsOption = !isStudent ? '<option value="">Semua Siswa</option>' : '';
-      studentSelect.innerHTML = allStudentsOption + (names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : (!isStudent ? '' : '<option value="">Tidak ada siswa ditemukan</option>'));
-      if (isStudent) studentSelect.value = currentUser.userName;
-      else if (oldStudent && names.includes(oldStudent)) studentSelect.value = oldStudent;
-      else studentSelect.value = '';
+      const names = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const oldStudent = studentSelect.value || globalSelectedLearningProgressStudent;
+      studentSelect.innerHTML = names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('');
+      studentSelect.value = names.includes(oldStudent) ? oldStudent : (names.find(name => getCurrentLearningProgress(name)) || names[0] || '');
       document.getElementById('lpPageStudentGroup').style.display = isStudent ? 'none' : 'block';
-      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
-      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
-
-      const selectedStudent = isStudent ? currentUser.userName : studentSelect.value;
-      globalSelectedLearningProgressStudent = selectedStudent || '';
-      const type = typeSelect.value || '';
+      globalSelectedLearningProgressStudent = studentSelect.value || currentUser.userName;
+      const type = typeSelect.value || 'Bulanan';
       const oldPeriod = resetPeriod ? '' : periodSelect.value;
-      const matchingNames = selectedStudent ? [selectedStudent] : names;
-      const matchingNameSet = new Set(matchingNames.map(name => String(name).trim().toLowerCase()));
-      const matchingRecords = (globalLearningProgressList || []).filter(item => {
-        if (!matchingNameSet.has(String(item.namaSiswa || '').trim().toLowerCase())) return false;
-        return !type || getLearningProgressPeriodType(item) === type;
-      });
-      const periods = [...new Set(matchingRecords.map(item => item.periode).filter(Boolean))].sort().reverse();
-      periodSelect.innerHTML = '<option value="">Semua Periode</option>' + periods.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(formatLearningProgressPeriod(value))}</option>`).join('');
-      periodSelect.value = oldPeriod && periods.includes(oldPeriod) ? oldPeriod : '';
-      const selectedPeriod = periodSelect.value;
-
-      if (!selectedStudent && !isStudent) {
-        const latestByStudent = names.map(name => {
-          const studentRecords = matchingRecords.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(name).trim().toLowerCase() && (!selectedPeriod || String(item.periode || '') === selectedPeriod));
-          return studentRecords[0] || null;
-        }).filter(Boolean);
-        content.innerHTML = latestByStudent.length
-          ? `<div class="lp-all-students-list">${latestByStudent.map(progress => {
-              const progressId = encodeURIComponent(String(progress.progressID || ''));
-              const overall = Math.max(0, Math.min(100, Number(progress.overallProgress) || 0));
-              return `<div class="lp-minimal-card" role="button" tabindex="0" onclick="openLearningProgressDetailById(decodeURIComponent('${progressId}'))" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openLearningProgressDetailById(decodeURIComponent('${progressId}'));}"><div class="lp-minimal-score" style="--score:${overall * 3.6}deg"><span>${overall}%</span></div><div class="lp-minimal-info"><strong>${escapeTaskHtml(progress.namaSiswa || '-')} • ${escapeTaskHtml(progress.level || '-')}</strong><p>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))} · ${escapeTaskHtml(getLearningProgressPeriodType(progress))}<br>Target: ${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div><button type="button" class="lp-minimal-button" tabindex="-1">Buka Detail →</button></div>`;
-            }).join('')}</div>`
-          : '<div class="lp-body"><div class="lp-empty"><strong>Belum ada Progress Belajar</strong><span>Tidak ada laporan yang cocok dengan filter saat ini.</span></div></div>';
-        document.getElementById('lpPageEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
-        document.getElementById('lpPageDeleteButton').style.display = 'none';
-        document.getElementById('lpPagePrintButton').style.display = 'none';
-        return;
-      }
-
-      let progress = null;
-      if (selectedPeriod) progress = getCurrentLearningProgress(selectedStudent, selectedPeriod, type || undefined);
-      else progress = matchingRecords.find(item => String(item.namaSiswa || '').trim().toLowerCase() === String(selectedStudent || '').trim().toLowerCase()) || null;
+      const periods = [...new Set(globalLearningProgressList.filter(item => String(item.namaSiswa || '').toLowerCase() === String(globalSelectedLearningProgressStudent || '').toLowerCase() && getLearningProgressPeriodType(item) === type).map(item => item.periode).filter(Boolean))].sort().reverse();
+      if (!periods.length) periods.push(getDefaultLearningPeriod(type));
+      periodSelect.innerHTML = periods.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(formatLearningProgressPeriod(value))}</option>`).join('');
+      periodSelect.value = periods.includes(oldPeriod) ? oldPeriod : periods[0];
+      const progress = getCurrentLearningProgress(globalSelectedLearningProgressStudent, periodSelect.value, type);
       content.innerHTML = renderLearningProgressRecord(progress);
       document.getElementById('lpPageEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpPageDeleteButton').style.display = currentUser.userType === 'guru' && progress ? 'inline-flex' : 'none';
@@ -1589,18 +1562,9 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function closeLearningProgressModal() { document.getElementById('modalLearningProgress').style.display = 'none'; }
     function handleLearningProgressBackdrop(event) { if (event.target && event.target.id === 'modalLearningProgress') closeLearningProgressModal(); }
 
-    function openLearningProgressDetailById(progressID) {
-      const progress = (globalLearningProgressList || []).find(item => String(item.progressID || '') === String(progressID || ''));
-      if (!progress) { showAlert('alertDanger', 'Detail progress tidak ditemukan.'); return; }
-      globalSelectedLearningProgressStudent = progress.namaSiswa || '';
-      openLearningProgressDetailModal(progress);
-    }
-
-    function openLearningProgressDetailModal(progressOverride) {
-      const progress = progressOverride || getSelectedLearningProgressPageRecord();
+    function openLearningProgressDetailModal() {
+      const progress = getSelectedLearningProgressPageRecord();
       if (!progress) return;
-      const detailModal = document.getElementById('modalLearningProgressDetail');
-      if (detailModal) detailModal.dataset.progressId = String(progress.progressID || '');
       const overall = Math.max(0, Math.min(100, Number(progress.overallProgress) || 0));
       const rows = learningProgressCategories.map(category => {
         const percent = Math.max(0, Math.min(100, Number(progress[category.key + 'Progress']) || 0));
@@ -1611,52 +1575,17 @@ let currentUser = { userType: '', userID: '', userName: '' };
       document.getElementById('lpDetailBody').innerHTML = `<div class="lp-summary" style="margin-bottom:18px;"><div class="lp-ring" style="--lp-progress:${overall * 3.6}deg"><div class="lp-ring-value">${overall}</div></div><div class="lp-summary-info"><h3>${escapeTaskHtml(progress.level || '-')}</h3><div class="lp-main-bar"><span style="width:${overall}%"></span></div><div class="lp-period">${escapeTaskHtml(progress.kelas || '-')} • ${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}<br>Diperbarui ${escapeTaskHtml(progress.lastUpdated || '-')} oleh ${escapeTaskHtml(progress.guru || '-')}</div></div><div class="lp-target"><div class="lp-target-icon">◎</div><div><strong>Target Berikutnya</strong><p>${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div></div><div class="lp-form-components">${rows}</div><div class="lp-detail-notes">${progress.kelebihan ? `<div class="lp-note"><span>Kelebihan</span><p>${escapeTaskHtml(progress.kelebihan)}</p></div>` : ''}${progress.perluDitingkatkan ? `<div class="lp-note"><span>Perlu ditingkatkan</span><p>${escapeTaskHtml(progress.perluDitingkatkan)}</p></div>` : ''}</div>${signatures}`;
       document.getElementById('lpDetailEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpDetailDeleteButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
-      const detailPrintButton = document.getElementById('lpDetailPrintButton');
-      if (detailPrintButton) detailPrintButton.style.display = currentUser.userType !== 'siswa' ? 'inline-flex' : 'none';
       document.getElementById('modalLearningProgressDetail').style.display = 'flex';
     }
 
-    function closeLearningProgressDetailModal() {
-      const modal = document.getElementById('modalLearningProgressDetail');
-      if (!modal) return;
-      modal.style.display = 'none';
-      delete modal.dataset.progressId;
-    }
+    function closeLearningProgressDetailModal() { document.getElementById('modalLearningProgressDetail').style.display = 'none'; }
     function handleLearningProgressDetailBackdrop(event) { if (event.target && event.target.id === 'modalLearningProgressDetail') closeLearningProgressDetailModal(); }
 
-    function editLearningProgressDetailRecord() {
-      if (currentUser.userType !== 'guru') return;
-      const progress = getSelectedLearningProgressPageRecord();
-      if (!progress) { showAlert('alertDanger', 'Data progress tidak ditemukan.'); return; }
-      const searchInput = document.getElementById('lpPageStudentSearch');
-      if (searchInput) searchInput.value = '';
-      const typeSelect = document.getElementById('lpPagePeriodType');
-      if (typeSelect) typeSelect.value = getLearningProgressPeriodType(progress);
-      closeLearningProgressDetailModal();
-      refreshLearningProgressPage(true);
-      const studentSelect = document.getElementById('lpPageStudent');
-      if (studentSelect) studentSelect.value = progress.namaSiswa || '';
-      refreshLearningProgressPage(true);
-      const periodSelect = document.getElementById('lpPagePeriod');
-      if (periodSelect) periodSelect.value = progress.periode || '';
-      refreshLearningProgressPage(false);
-      openLearningProgressModal();
-    }
-
     function getSelectedLearningProgressPageRecord() {
-      const detailModal = document.getElementById('modalLearningProgressDetail');
-      const detailProgressId = detailModal && detailModal.style.display !== 'none' ? String(detailModal.dataset.progressId || '') : '';
-      if (detailProgressId) {
-        const detailProgress = (globalLearningProgressList || []).find(item => String(item.progressID || '') === detailProgressId);
-        if (detailProgress) return detailProgress;
-      }
-      const rawStudent = document.getElementById('lpPageStudent')?.value || '';
-      const student = currentUser.userType === 'siswa' ? currentUser.userName : (rawStudent || globalSelectedLearningProgressStudent || '');
-      if (!student) return null;
-      const type = document.getElementById('lpPagePeriodType')?.value || '';
+      const student = document.getElementById('lpPageStudent')?.value || globalSelectedLearningProgressStudent || currentUser.userName;
+      const type = document.getElementById('lpPagePeriodType')?.value || 'Bulanan';
       const period = document.getElementById('lpPagePeriod')?.value || '';
-      if (period) return getCurrentLearningProgress(student, period, type || undefined);
-      return (globalLearningProgressList || []).find(item => String(item.namaSiswa || '').trim().toLowerCase() === String(student).trim().toLowerCase() && (!type || getLearningProgressPeriodType(item) === type)) || null;
+      return getCurrentLearningProgress(student, period, type);
     }
 
     function deleteSelectedLearningProgress() {
@@ -2045,6 +1974,404 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if (center && !center.contains(event.target)) document.getElementById('notificationPanel')?.classList.remove('open');
     });
 
+
+    let repertoirePageLoaded = false;
+    let repertoireActiveDetailId = '';
+
+    function loadRepertoirePage(forceReload = false) {
+      const addBtn = document.getElementById('repertoireAddButton');
+      const printBtn = document.getElementById('repertoirePrintButton');
+      const studentWrap = document.getElementById('repertoireStudentFilterWrap');
+      const loading = document.getElementById('repertoireLoadingState');
+      if (addBtn) addBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      if (printBtn) printBtn.style.display = 'inline-flex';
+      if (studentWrap) studentWrap.style.display = currentUser.userType === 'siswa' ? 'none' : 'block';
+
+      if (!forceReload && repertoirePageLoaded && Array.isArray(globalRepertoireList)) {
+        populateRepertoireFilters();
+        renderRepertoirePage();
+        return;
+      }
+
+      if (loading) loading.style.display = 'block';
+      google.script.run
+        .withSuccessHandler(result => {
+          if (!result || result.success === false) {
+            showAlert('alertDanger', (result && result.message) || 'Data repertoire gagal dimuat.');
+            return;
+          }
+          globalRepertoireList = Array.isArray(result.items) ? result.items : [];
+          repertoirePageLoaded = true;
+          populateRepertoireFilters();
+          renderRepertoirePage();
+        })
+        .withFailureHandler(error => {
+          showAlert('alertDanger', 'Data repertoire gagal dimuat: ' + (error.message || error));
+        })
+        .getRepertoireData();
+    }
+
+    function populateRepertoireFilters() {
+      const studentSelect = document.getElementById('repertoireStudentFilter');
+      const instrumentSelect = document.getElementById('repertoireInstrumentFilter');
+      const statusSelect = document.getElementById('repertoireStatusFilter');
+      if (!studentSelect || !instrumentSelect || !statusSelect) return;
+
+      if (currentUser.userType !== 'siswa') {
+        const students = (globalSiswaList || []).slice().sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+        const current = studentSelect.value;
+        studentSelect.innerHTML = '<option value="">Semua Siswa</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
+        studentSelect.value = Array.from(studentSelect.options).some(opt => opt.value === current) ? current : '';
+      } else {
+        studentSelect.innerHTML = `<option value="${escapeTaskHtml(currentUser.userID || '')}">${escapeTaskHtml(currentUser.userName || 'Siswa Saya')}</option>`;
+        studentSelect.value = currentUser.userID || '';
+      }
+
+      const items = Array.isArray(globalRepertoireList) ? globalRepertoireList : [];
+      const instruments = [...new Set(items.map(item => String(item.instrumen || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const statuses = [...new Set(items.map(item => String(item.status || '').trim()).filter(Boolean))];
+
+      const currentInstrument = instrumentSelect.value;
+      const currentStatus = statusSelect.value;
+      instrumentSelect.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      instrumentSelect.value = Array.from(instrumentSelect.options).some(opt => opt.value === currentInstrument) ? currentInstrument : '';
+
+      const fallbackStatuses = ['Belajar', 'Siap Tampil', 'Dikuasai', 'Sudah Tampil'];
+      const mergedStatuses = [...new Set([...fallbackStatuses, ...statuses])];
+      statusSelect.innerHTML = '<option value="">Semua Status</option>' + mergedStatuses.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      statusSelect.value = Array.from(statusSelect.options).some(opt => opt.value === currentStatus) ? currentStatus : '';
+    }
+
+    function repertoireFilteredItems() {
+      const search = String(document.getElementById('repertoireSearch')?.value || '').trim().toLowerCase();
+      const studentId = String(document.getElementById('repertoireStudentFilter')?.value || '').trim();
+      const instrument = String(document.getElementById('repertoireInstrumentFilter')?.value || '').trim().toLowerCase();
+      const status = String(document.getElementById('repertoireStatusFilter')?.value || '').trim().toLowerCase();
+      let items = Array.isArray(globalRepertoireList) ? globalRepertoireList.slice() : [];
+
+      if (currentUser.userType === 'siswa') {
+        items = items.filter(item => String(item.siswaID || '').trim() === String(currentUser.userID || '').trim());
+      }
+      if (studentId) items = items.filter(item => String(item.siswaID || '').trim() === studentId);
+      if (instrument) items = items.filter(item => String(item.instrumen || '').trim().toLowerCase() === instrument);
+      if (status) items = items.filter(item => String(item.status || '').trim().toLowerCase() === status);
+      if (search) {
+        items = items.filter(item => [
+          item.judulLagu, item.namaSiswa, item.composer, item.instrumen, item.keySignature, item.level, item.eventTampil, item.catatan
+        ].some(value => String(value || '').toLowerCase().includes(search)));
+      }
+
+      items.sort((a, b) => {
+        const dateA = String(a.targetTampil || a.lastUpdated || '');
+        const dateB = String(b.targetTampil || b.lastUpdated || '');
+        return dateB.localeCompare(dateA) || String(a.judulLagu || '').localeCompare(String(b.judulLagu || ''), 'id');
+      });
+      return items;
+    }
+
+    function renderRepertoirePage() {
+      renderRepertoireStats();
+      renderRepertoireList();
+      renderRepertoireSummary();
+      const loading = document.getElementById('repertoireLoadingState');
+      if (loading) loading.style.display = 'none';
+    }
+
+    function renderRepertoireStats() {
+      const items = repertoireFilteredItems();
+      const total = items.length;
+      const ready = items.filter(item => String(item.status || '').toLowerCase() === 'siap tampil').length;
+      const mastered = items.filter(item => ['dikuasai', 'sudah tampil'].includes(String(item.status || '').toLowerCase())).length;
+      const average = total ? Math.round(items.reduce((sum, item) => sum + (Number(item.progress || 0) || 0), 0) / total) : 0;
+      const byId = id => document.getElementById(id);
+      if (byId('repertoireStatTotal')) byId('repertoireStatTotal').textContent = String(total);
+      if (byId('repertoireStatReady')) byId('repertoireStatReady').textContent = String(ready);
+      if (byId('repertoireStatMastered')) byId('repertoireStatMastered').textContent = String(mastered);
+      if (byId('repertoireStatAverage')) byId('repertoireStatAverage').textContent = average + '%';
+    }
+
+    function repertoireStatusTone(status) {
+      const value = String(status || '').trim().toLowerCase();
+      if (value === 'siap tampil') return 'ready';
+      if (value === 'dikuasai') return 'mastered';
+      if (value === 'sudah tampil') return 'performed';
+      return 'learning';
+    }
+
+    function renderRepertoireList() {
+      const container = document.getElementById('repertoireList');
+      if (!container) return;
+      const items = repertoireFilteredItems();
+      if (!items.length) {
+        container.innerHTML = '<div class="repertoire-empty">Belum ada daftar repertoire yang sesuai filter.</div>';
+        return;
+      }
+      const canManage = currentUser.userType !== 'siswa';
+      container.innerHTML = items.map(item => {
+        const progress = Math.max(0, Math.min(100, Number(item.progress || 0) || 0));
+        const target = item.targetTampil ? `Target tampil ${escapeTaskHtml(formatAcademyDate(item.targetTampil))}` : 'Belum ada target tampil';
+        const lastShow = item.tanggalTampilTerakhir ? `Tampil terakhir ${escapeTaskHtml(formatAcademyDate(item.tanggalTampilTerakhir))}` : '';
+        return `<article class="repertoire-item" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')">
+          <div class="repertoire-item-head">
+            <div>
+              <div class="repertoire-item-title">${escapeTaskHtml(item.judulLagu || '-')}</div>
+              <div class="repertoire-item-subtitle">${escapeTaskHtml(item.namaSiswa || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</div>
+            </div>
+            <span class="repertoire-badge ${repertoireStatusTone(item.status)}">${escapeTaskHtml(item.status || 'Belajar')}</span>
+          </div>
+          <div class="repertoire-meta-grid">
+            <div class="repertoire-meta"><span>Composer</span><strong>${escapeTaskHtml(item.composer || '-')}</strong></div>
+            <div class="repertoire-meta"><span>Key</span><strong>${escapeTaskHtml(item.keySignature || '-')}</strong></div>
+            <div class="repertoire-meta"><span>Level</span><strong>${escapeTaskHtml(item.level || '-')}</strong></div>
+            <div class="repertoire-meta"><span>Progress</span><strong>${progress}%</strong></div>
+          </div>
+          <div class="repertoire-progress"><i style="width:${progress}%"></i></div>
+          <div class="repertoire-item-footer">
+            <span>${target}</span>
+            <span>${escapeTaskHtml(lastShow || item.eventTampil || '')}</span>
+          </div>
+          ${canManage ? `<div class="repertoire-item-actions" onclick="event.stopPropagation()"><button type="button" class="btn-action btn-edit" onclick="openRepertoireModalById('${escapeTaskHtml(item.repertoireID || '')}')">Edit</button><button type="button" class="btn-action btn-delete" onclick="confirmDeleteRepertoire('${escapeTaskHtml(item.repertoireID || '')}')">Hapus</button></div>` : ''}
+        </article>`;
+      }).join('');
+    }
+
+    function renderRepertoireSummary() {
+      const box = document.getElementById('repertoireSummary');
+      if (!box) return;
+      const items = repertoireFilteredItems();
+      const selectedStudentId = String(document.getElementById('repertoireStudentFilter')?.value || '').trim();
+      const student = (globalSiswaList || []).find(item => String(item.siswaID || '') === selectedStudentId) || null;
+      const upcoming = items.filter(item => item.targetTampil).slice().sort((a,b) => String(a.targetTampil).localeCompare(String(b.targetTampil))).slice(0,5);
+      const ready = items.filter(item => String(item.status || '').toLowerCase() === 'siap tampil').slice(0,5);
+      const performed = items.filter(item => item.tanggalTampilTerakhir || String(item.status || '').toLowerCase() === 'sudah tampil').slice(0,5);
+      const focusStudentLabel = currentUser.userType === 'siswa'
+        ? (currentUser.userName || 'Siswa')
+        : (student ? `${student.nama || '-'} • ${student.instrumen || 'Musik'}` : 'Semua siswa');
+
+      const listHtml = (list, emptyText, formatter) => list.length
+        ? `<div class="repertoire-summary-list">${list.map(item => formatter(item)).join('')}</div>`
+        : `<div class="repertoire-empty small">${escapeTaskHtml(emptyText)}</div>`;
+
+      box.innerHTML = `
+        <div class="repertoire-summary-card">
+          <div class="repertoire-summary-head"><strong>Ringkasan Fokus</strong><span>${escapeTaskHtml(focusStudentLabel)}</span></div>
+          <div class="repertoire-summary-body">
+            <div class="repertoire-summary-chip"><span>Total Lagu</span><b>${items.length}</b></div>
+            <div class="repertoire-summary-chip"><span>Rata-rata</span><b>${items.length ? Math.round(items.reduce((sum, item) => sum + (Number(item.progress || 0) || 0), 0) / items.length) : 0}%</b></div>
+            <div class="repertoire-summary-chip"><span>Siap Tampil</span><b>${ready.length}</b></div>
+            <div class="repertoire-summary-chip"><span>Sudah Tampil</span><b>${performed.length}</b></div>
+          </div>
+          ${student ? `<div class="repertoire-student-note">Grade: <b>${escapeTaskHtml(student.kelas || '-')}</b> • Guru: <b>${escapeTaskHtml(student.guru || '-')}</b></div>` : ''}
+        </div>
+        <div class="repertoire-summary-card">
+          <div class="repertoire-summary-head"><strong>Siap Tampil</strong><span>Prioritas terdekat</span></div>
+          ${listHtml(ready, 'Belum ada repertoire yang berstatus siap tampil.', item => `<button type="button" class="repertoire-summary-row" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')"><b>${escapeTaskHtml(item.judulLagu || '-')}</b><span>${escapeTaskHtml(item.namaSiswa || '-')} • ${escapeTaskHtml(item.instrumen || '')}</span></button>`)}
+        </div>
+        <div class="repertoire-summary-card">
+          <div class="repertoire-summary-head"><strong>Agenda Tampil</strong><span>Target mendatang</span></div>
+          ${listHtml(upcoming, 'Belum ada target tampil yang dijadwalkan.', item => `<button type="button" class="repertoire-summary-row" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')"><b>${escapeTaskHtml(item.judulLagu || '-')}</b><span>${escapeTaskHtml(formatAcademyDate(item.targetTampil))}${item.eventTampil ? ` • ${escapeTaskHtml(item.eventTampil)}` : ''}</span></button>`)}
+        </div>
+        <div class="repertoire-summary-card">
+          <div class="repertoire-summary-head"><strong>Riwayat Tampil</strong><span>Performance history</span></div>
+          ${listHtml(performed, 'Belum ada riwayat penampilan.', item => `<button type="button" class="repertoire-summary-row" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')"><b>${escapeTaskHtml(item.judulLagu || '-')}</b><span>${item.tanggalTampilTerakhir ? escapeTaskHtml(formatAcademyDate(item.tanggalTampilTerakhir)) : '-'}${item.eventTampil ? ` • ${escapeTaskHtml(item.eventTampil)}` : ''}</span></button>`)}
+        </div>`;
+    }
+
+    function openRepertoireModalById(repertoireID) {
+      const item = (globalRepertoireList || []).find(entry => String(entry.repertoireID || '') === String(repertoireID || ''));
+      openRepertoireModal(item || null);
+    }
+
+    function openRepertoireModal(item = null) {
+      if (currentUser.userType === 'siswa') return;
+      const modal = document.getElementById('modalRepertoire');
+      if (!modal) return;
+      document.getElementById('repertoireFormTitle').textContent = item ? 'Edit Repertoire Siswa' : 'Tambah Repertoire Siswa';
+      document.getElementById('repertoireID').value = item ? (item.repertoireID || '') : '';
+      populateRepertoireStudentSelect('repertoireSiswa', item ? item.siswaID : (document.getElementById('repertoireStudentFilter')?.value || ''));
+      populateRepertoireInstrumentOptions('repertoireSiswa', 'repertoireInstrumen', item ? item.instrumen : '');
+      document.getElementById('repertoireJudulLagu').value = item ? (item.judulLagu || '') : '';
+      document.getElementById('repertoireComposer').value = item ? (item.composer || '') : '';
+      document.getElementById('repertoireKeySignature').value = item ? (item.keySignature || '') : '';
+      document.getElementById('repertoireLevel').value = item ? (item.level || '') : '';
+      document.getElementById('repertoireStatus').value = item ? (item.status || 'Belajar') : 'Belajar';
+      document.getElementById('repertoireProgress').value = item ? (Number(item.progress || 0) || 0) : 0;
+      document.getElementById('repertoireTanggalMulai').value = item ? (item.tanggalMulai || '') : '';
+      document.getElementById('repertoireTargetTampil').value = item ? (item.targetTampil || '') : '';
+      document.getElementById('repertoireTanggalTampilTerakhir').value = item ? (item.tanggalTampilTerakhir || '') : '';
+      document.getElementById('repertoireEventTampil').value = item ? (item.eventTampil || '') : '';
+      document.getElementById('repertoireVideoUrl').value = item ? (item.videoUrl || '') : '';
+      document.getElementById('repertoireCatatan').value = item ? (item.catatan || '') : '';
+      modal.style.display = 'flex';
+    }
+
+    function closeRepertoireModal() {
+      const modal = document.getElementById('modalRepertoire');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function populateRepertoireStudentSelect(selectId, selectedValue = '') {
+      const select = document.getElementById(selectId);
+      if (!select) return;
+      const students = (globalSiswaList || []).slice().sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+      select.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
+      select.value = Array.from(select.options).some(opt => opt.value === selectedValue) ? selectedValue : (students[0] ? String(students[0].siswaID || '') : '');
+      populateRepertoireInstrumentOptions(selectId, 'repertoireInstrumen', document.getElementById('repertoireInstrumen')?.value || '');
+    }
+
+    function populateRepertoireInstrumentOptions(studentSelectId, targetSelectId, selectedValue = '') {
+      const studentId = String(document.getElementById(studentSelectId)?.value || '').trim();
+      const select = document.getElementById(targetSelectId);
+      if (!select) return;
+      const student = (globalSiswaList || []).find(item => String(item.siswaID || '') === studentId) || null;
+      const options = student && Array.isArray(student.kelasList) && student.kelasList.length
+        ? [...new Set(student.kelasList.map(item => String(item.instrumen || '').trim()).filter(Boolean))]
+        : (student && student.instrumen ? String(student.instrumen).split(',').map(item => item.trim()).filter(Boolean) : []);
+      const list = options.length ? options : ['Gitar'];
+      select.innerHTML = list.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      if (selectedValue && Array.from(select.options).some(opt => opt.value === selectedValue)) select.value = selectedValue;
+    }
+
+    function handleSaveRepertoire(event) {
+      event.preventDefault();
+      const payload = {
+        repertoireID: document.getElementById('repertoireID').value,
+        siswaID: document.getElementById('repertoireSiswa').value,
+        judulLagu: document.getElementById('repertoireJudulLagu').value,
+        composer: document.getElementById('repertoireComposer').value,
+        instrumen: document.getElementById('repertoireInstrumen').value,
+        keySignature: document.getElementById('repertoireKeySignature').value,
+        level: document.getElementById('repertoireLevel').value,
+        status: document.getElementById('repertoireStatus').value,
+        progress: document.getElementById('repertoireProgress').value,
+        tanggalMulai: document.getElementById('repertoireTanggalMulai').value,
+        targetTampil: document.getElementById('repertoireTargetTampil').value,
+        tanggalTampilTerakhir: document.getElementById('repertoireTanggalTampilTerakhir').value,
+        eventTampil: document.getElementById('repertoireEventTampil').value,
+        videoUrl: document.getElementById('repertoireVideoUrl').value,
+        catatan: document.getElementById('repertoireCatatan').value
+      };
+
+      const saveButton = document.getElementById('btnSaveRepertoire');
+      if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Menyimpan...'; }
+      google.script.run
+        .withSuccessHandler(result => {
+          if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Simpan Repertoire'; }
+          if (!result || result.success === false) {
+            showAlert('alertDanger', (result && result.message) || 'Repertoire gagal disimpan.');
+            return;
+          }
+          closeRepertoireModal();
+          showAlert('alertSuccess', result.message || 'Repertoire berhasil disimpan.');
+          loadRepertoirePage(true);
+        })
+        .withFailureHandler(error => {
+          if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Simpan Repertoire'; }
+          showAlert('alertDanger', 'Repertoire gagal disimpan: ' + (error.message || error));
+        })
+        .saveStudentRepertoire(payload);
+      return false;
+    }
+
+    function confirmDeleteRepertoire(repertoireID) {
+      if (currentUser.userType === 'siswa') return;
+      const item = (globalRepertoireList || []).find(entry => String(entry.repertoireID || '') === String(repertoireID || ''));
+      const title = item ? item.judulLagu : 'item repertoire ini';
+      if (!confirm(`Hapus ${title}?`)) return;
+      google.script.run
+        .withSuccessHandler(result => {
+          if (!result || result.success === false) {
+            showAlert('alertDanger', (result && result.message) || 'Repertoire gagal dihapus.');
+            return;
+          }
+          closeRepertoireDetail();
+          showAlert('alertSuccess', result.message || 'Repertoire berhasil dihapus.');
+          loadRepertoirePage(true);
+        })
+        .withFailureHandler(error => {
+          showAlert('alertDanger', 'Repertoire gagal dihapus: ' + (error.message || error));
+        })
+        .deleteStudentRepertoire(repertoireID);
+    }
+
+    function openRepertoireDetail(repertoireID) {
+      const item = (globalRepertoireList || []).find(entry => String(entry.repertoireID || '') === String(repertoireID || ''));
+      if (!item) return;
+      repertoireActiveDetailId = String(repertoireID || '');
+      const modal = document.getElementById('modalRepertoireDetail');
+      const body = document.getElementById('repertoireDetailBody');
+      if (!modal || !body) return;
+      const youtubeHtml = item.youtube && item.youtube.embedUrl
+        ? `<iframe class="repertoire-video-frame" src="${escapeTaskHtml(item.youtube.embedUrl)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen title="Preview Video"></iframe>`
+        : (item.videoUrl ? `<a class="repertoire-link" href="${escapeTaskHtml(item.videoUrl)}" target="_blank" rel="noopener">Buka referensi video</a>` : '<span class="repertoire-muted">Belum ada video referensi.</span>');
+      body.innerHTML = `
+        <div class="repertoire-detail-top">
+          <div>
+            <h3>${escapeTaskHtml(item.judulLagu || '-')}</h3>
+            <p>${escapeTaskHtml(item.namaSiswa || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')} • ${escapeTaskHtml(item.composer || '-')}</p>
+          </div>
+          <span class="repertoire-badge ${repertoireStatusTone(item.status)}">${escapeTaskHtml(item.status || 'Belajar')}</span>
+        </div>
+        <div class="repertoire-detail-grid">
+          <div class="repertoire-meta"><span>Key Signature</span><strong>${escapeTaskHtml(item.keySignature || '-')}</strong></div>
+          <div class="repertoire-meta"><span>Level</span><strong>${escapeTaskHtml(item.level || '-')}</strong></div>
+          <div class="repertoire-meta"><span>Progress</span><strong>${escapeTaskHtml(String(item.progress || 0))}%</strong></div>
+          <div class="repertoire-meta"><span>Terakhir Update</span><strong>${escapeTaskHtml(item.lastUpdated || '-')}</strong></div>
+          <div class="repertoire-meta"><span>Tanggal Mulai</span><strong>${escapeTaskHtml(item.tanggalMulai ? formatAcademyDate(item.tanggalMulai) : '-')}</strong></div>
+          <div class="repertoire-meta"><span>Target Tampil</span><strong>${escapeTaskHtml(item.targetTampil ? formatAcademyDate(item.targetTampil) : '-')}</strong></div>
+          <div class="repertoire-meta"><span>Tampil Terakhir</span><strong>${escapeTaskHtml(item.tanggalTampilTerakhir ? formatAcademyDate(item.tanggalTampilTerakhir) : '-')}</strong></div>
+          <div class="repertoire-meta"><span>Event / Catatan Tampil</span><strong>${escapeTaskHtml(item.eventTampil || '-')}</strong></div>
+        </div>
+        <div class="repertoire-progress detail"><i style="width:${Math.max(0, Math.min(100, Number(item.progress || 0) || 0))}%"></i></div>
+        <div class="repertoire-detail-block"><strong>Catatan Coach</strong><p>${escapeTaskHtml(item.catatan || 'Belum ada catatan khusus.')}</p></div>
+        <div class="repertoire-detail-block"><strong>Video Referensi / Evaluasi</strong>${youtubeHtml}</div>`;
+      const editBtn = document.getElementById('btnEditRepertoireDetail');
+      const deleteBtn = document.getElementById('btnDeleteRepertoireDetail');
+      if (editBtn) editBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      if (deleteBtn) deleteBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      modal.style.display = 'flex';
+    }
+
+    function closeRepertoireDetail() {
+      const modal = document.getElementById('modalRepertoireDetail');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function editActiveRepertoireDetail() {
+      if (!repertoireActiveDetailId) return;
+      closeRepertoireDetail();
+      openRepertoireModalById(repertoireActiveDetailId);
+    }
+
+    function deleteActiveRepertoireDetail() {
+      if (!repertoireActiveDetailId) return;
+      confirmDeleteRepertoire(repertoireActiveDetailId);
+    }
+
+    function printRepertoireView() {
+      const items = repertoireFilteredItems();
+      const title = 'Repertoire / Daftar Lagu Siswa';
+      const win = window.open('', '_blank', 'width=1200,height=900');
+      if (!win) return;
+      const rows = items.map((item, index) => `<tr>
+        <td>${index + 1}</td>
+        <td>${escapeTaskHtml(item.namaSiswa || '-')}</td>
+        <td>${escapeTaskHtml(item.instrumen || '-')}</td>
+        <td>${escapeTaskHtml(item.judulLagu || '-')}</td>
+        <td>${escapeTaskHtml(item.composer || '-')}</td>
+        <td>${escapeTaskHtml(item.status || '-')}</td>
+        <td>${escapeTaskHtml(String(item.progress || 0))}%</td>
+        <td>${escapeTaskHtml(item.targetTampil ? formatAcademyDate(item.targetTampil) : '-')}</td>
+        <td>${escapeTaskHtml(item.eventTampil || '-')}</td>
+      </tr>`).join('');
+      win.document.write(`<!doctype html><html><head><title>${title}</title><style>
+        body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}h1{margin:0 0 6px;font-size:24px}p{margin:0 0 18px;color:#475569}
+        table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;vertical-align:top}th{background:#fff3ed;text-align:left;color:#9a3412}
+      </style></head><body><h1>${title}</h1><p>Dicetak ${new Date().toLocaleString('id-ID')}</p><table><thead><tr><th>No</th><th>Siswa</th><th>Instrumen</th><th>Judul Lagu</th><th>Composer</th><th>Status</th><th>Progress</th><th>Target Tampil</th><th>Event</th></tr></thead><tbody>${rows || '<tr><td colspan="9">Belum ada data repertoire.</td></tr>'}</tbody></table></body></html>`);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 250);
+    }
 
     function filterAdminByGuru() {
       renderDashboardViews();
@@ -4121,80 +4448,6 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
       hintEl.style.display = periodEl.value === 'month' ? 'block' : 'none';
     }
 
-
-    function getIndonesianDayNameFromAttendanceDate(value) {
-      const date = parseAbsensiRecordDate(value);
-      if (!date || Number.isNaN(date.getTime())) return '';
-      return ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][date.getDay()] || '';
-    }
-
-    function refreshAbsensiStudentOptions() {
-      const select = document.getElementById('absensiSiswa');
-      if (!select || currentUser.userType === 'siswa') return;
-      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
-      const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
-      const day = formDay;
-      const currentValue = select.value;
-      const scheduleNames = new Set((globalJadwalList || [])
-        .filter(item => !day || String(item.hari || '').trim().toLowerCase() === day)
-        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
-        .filter(Boolean));
-      const students = (globalSiswaList || []).filter(student => {
-        const name = String(student.nama || '').trim();
-        if (!name) return false;
-        if (search && !name.toLowerCase().includes(search)) return false;
-        if (day && !scheduleNames.has(name.toLowerCase())) return false;
-        return true;
-      }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
-      let html = '<option value="">Pilih Siswa...</option>';
-      html += students.map(student => {
-        const name = String(student.nama || '').trim();
-        const matchingSchedules = (globalJadwalList || []).filter(item => String(item.namaSiswa || '').trim().toLowerCase() === name.toLowerCase() && (!day || String(item.hari || '').trim().toLowerCase() === day));
-        const details = [...new Set(matchingSchedules.map(item => [item.instrumen, item.hari].filter(Boolean).join(' • ')).filter(Boolean))];
-        const suffix = details.length ? ` (${details.join(', ')})` : (student.instrumen ? ` (${student.instrumen})` : '');
-        return `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name + suffix)}</option>`;
-      }).join('');
-      select.innerHTML = html;
-      if (students.some(student => String(student.nama || '') === currentValue)) select.value = currentValue;
-      const hint = document.getElementById('absensiStudentFilterHint');
-      if (hint) hint.textContent = day ? `${students.length} siswa memiliki jadwal ${day.charAt(0).toUpperCase() + day.slice(1)}.` : `${students.length} siswa tersedia.`;
-    }
-
-    function refreshProgressStudentFilterOptions() {
-      const select = document.getElementById('filterProgressSiswa');
-      if (!select || currentUser.userType === 'siswa') return;
-
-      const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
-      const currentValue = String(select.value || '').trim();
-
-      const allowedNames = new Set((globalJadwalList || [])
-        .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
-        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
-        .filter(Boolean));
-
-      const students = (globalSiswaList || [])
-        .filter(student => {
-          const name = String(student.nama || '').trim();
-          if (!name) return false;
-          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
-          return true;
-        })
-        .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
-
-      let html = '<option value="">-- Semua Siswa --</option>';
-      html += students.map(student => {
-        const name = String(student.nama || '').trim();
-        return `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`;
-      }).join('');
-      select.innerHTML = html;
-
-      if (students.some(student => String(student.nama || '').trim() === currentValue)) {
-        select.value = currentValue;
-      } else {
-        select.value = '';
-      }
-    }
-
     function setupFilterDropdown() {
       const isGuru = currentUser.userType === 'guru';
       const isAdmin = currentUser.userType === 'admin';
@@ -4241,14 +4494,12 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
       }
 
       const filterSiswaContainer = document.getElementById('containerFilterProgressSiswa');
-      const searchSiswaContainer = document.getElementById('containerSearchProgressSiswa');
-      const filterHariContainer = document.getElementById('containerFilterProgressHari');
       const filterSiswaEl = document.getElementById('filterProgressSiswa');
-      if (searchSiswaContainer) searchSiswaContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
-      if (filterHariContainer) filterHariContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if ((isGuru || isAdmin) && filterSiswaEl && filterSiswaContainer) {
         filterSiswaContainer.style.display = 'block';
-        refreshProgressStudentFilterOptions();
+        let optS = '<option value="">-- Semua Siswa --</option>';
+        globalSiswaList.forEach(s => optS += `<option value="${s.nama}">${s.nama}</option>`);
+        filterSiswaEl.innerHTML = optS;
       } else if (filterSiswaContainer) {
         filterSiswaContainer.style.display = 'none';
       }
@@ -4262,7 +4513,6 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
         }
       }
 
-      refreshAbsensiStudentOptions();
       toggleExportMonthHint();
     }
 
@@ -4282,8 +4532,6 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
 
       const filterBulanVal = document.getElementById('filterRiwayatSelect') ? document.getElementById('filterRiwayatSelect').value.trim() : '';
       const filterSiswaVal = (!isSiswa && document.getElementById('filterProgressSiswa')) ? document.getElementById('filterProgressSiswa').value.trim().toLowerCase() : '';
-      const searchSiswaVal = (!isSiswa && document.getElementById('searchProgressSiswa')) ? document.getElementById('searchProgressSiswa').value.trim().toLowerCase() : '';
-      const filterHariVal = (!isSiswa && document.getElementById('filterProgressHari')) ? document.getElementById('filterProgressHari').value.trim().toLowerCase() : '';
       const filterGuruVal = (isAdmin && document.getElementById('filterProgressGuru')) ? document.getElementById('filterProgressGuru').value.trim().toLowerCase() : '';
 
       let filteredList = globalAbsensiList.filter(item => {
@@ -4293,12 +4541,6 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
 
         if (!isSiswa && filterSiswaVal !== '') {
           if (String(item.namaSiswa || '').trim().toLowerCase() !== filterSiswaVal) return false;
-        }
-        if (!isSiswa && searchSiswaVal !== '') {
-          if (!String(item.namaSiswa || '').trim().toLowerCase().includes(searchSiswaVal)) return false;
-        }
-        if (!isSiswa && filterHariVal !== '') {
-          if (getIndonesianDayNameFromAttendanceDate(item.tanggal).toLowerCase() !== filterHariVal) return false;
         }
 
         if (filterBulanVal !== '') {
@@ -5042,7 +5284,6 @@ function normalizeTaskStatus(task) {
           <div class="form-group" style="margin:0;"><label>Instrumen</label><select class="extra-class-instrument" required>${classSelectOptions(studentInstrumentOptions, item.instrumen || 'Gitar')}</select></div>
           <div class="form-group" style="margin:0;"><label>Guru</label><select class="extra-class-teacher" required>${classTeacherOptions(item.guru || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Grade</label><select class="extra-class-grade" required>${classSelectOptions(studentGradeOptions, item.grade || 'Beginner')}</select></div>
-          <div class="form-group" style="margin:0;"><label>Tanggal Mulai Kelas</label><input class="extra-class-start-date" type="date" value="${escapeTaskHtml(item.tglMulai || item.tglDaftar || '')}" required></div>
           <div class="form-group" style="margin:0;"><label>Hari</label><select class="extra-class-day">${classSelectOptions([''].concat(studentDayOptions), item.hari || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Jam Mulai</label><input class="extra-class-start" type="time" value="${escapeTaskHtml(item.jamMulai || '')}"></div>
           <div class="form-group" style="margin:0;"><label>Jam Selesai</label><input class="extra-class-end" type="time" value="${escapeTaskHtml(item.jamSelesai || '')}"></div>
@@ -5068,7 +5309,6 @@ function normalizeTaskStatus(task) {
           instrumen: row.querySelector('.extra-class-instrument').value,
           guru: teacherSelect.value, guruID: selectedTeacher ? (selectedTeacher.dataset.guruId || '') : '',
           grade: row.querySelector('.extra-class-grade').value, status: status,
-          tglMulai: row.querySelector('.extra-class-start-date')?.value || '',
           hari: row.querySelector('.extra-class-day').value, jamMulai: row.querySelector('.extra-class-start').value,
           jamSelesai: row.querySelector('.extra-class-end').value, ruangan: row.querySelector('.extra-class-room').value
         };
@@ -5087,7 +5327,7 @@ function normalizeTaskStatus(task) {
       document.getElementById('editSiswaGrade').value = primaryClass.grade || siswa.kelas;
       document.getElementById('editSiswaEmail').value = siswa.email;
       document.getElementById('editSiswaHP').value = siswa.noHp || '';
-      document.getElementById('editSiswaTanggalMasuk').value = primaryClass.tglMulai || siswa.tglDaftar || '';
+      document.getElementById('editSiswaTanggalMasuk').value = siswa.tglDaftar || '';
       document.getElementById('editSiswaTanggalKeluar').value = siswa.tglKeluar || '';
       document.getElementById('editSiswaStatus').value = siswa.status;
       if (document.getElementById('editSiswaGuruSelect')) {
@@ -5114,7 +5354,6 @@ function normalizeTaskStatus(task) {
         grade: document.getElementById('editSiswaGrade').value, status: status,
         guru: primaryTeacherSelect ? primaryTeacherSelect.value : currentUser.userName,
         guruID: primaryTeacherOption ? (primaryTeacherOption.dataset.guruId || '') : currentUser.userID,
-        tglMulai: document.getElementById('editSiswaTanggalMasuk').value,
         hari: existingPrimary.hari || '', jamMulai: existingPrimary.jamMulai || '', jamSelesai: existingPrimary.jamSelesai || '', ruangan: existingPrimary.ruangan || ''
       };
       const kelasList = [primaryClass].concat(currentUser.userType === 'admin' ? collectStudentExtraClasses('editStudentExtraClasses', status) : []);
@@ -5562,7 +5801,6 @@ function normalizeTaskStatus(task) {
       payload.guruID = currentUser.userType === 'admin' ? (primaryGuruOption ? (primaryGuruOption.dataset.guruId || '') : '') : currentUser.userID;
       payload.kelasList = [{
         instrumen: payload.instrumen, guru: payload.guru, guruID: payload.guruID, grade: payload.kelas, status: payload.status,
-        tglMulai: payload.tglDaftar,
         hari: payload.hari, jamMulai: payload.jamMulai, jamSelesai: payload.jamSelesai, ruangan: payload.ruangan
       }].concat(currentUser.userType === 'admin' ? collectStudentExtraClasses('addStudentExtraClasses', payload.status) : []);
 

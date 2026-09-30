@@ -3,7 +3,8 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 const COMMON = new Set([
   'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
-  'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest'
+  'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
+  'getRepertoireData'
 ]);
 const STUDENT = new Set([...COMMON, 'submitTugasJawaban', 'listAnnualExams', 'getAnnualExam']);
 const TEACHER = new Set([
@@ -12,7 +13,8 @@ const TEACHER = new Set([
   'addTugasCombined', 'deleteTugas', 'recordAbsensi', 'updateAbsensi', 'deleteAbsensi',
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
   'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report',
-  'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam'
+  'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam',
+  'saveStudentRepertoire', 'deleteStudentRepertoire'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -240,6 +242,31 @@ async function handleRpc(request, env, ctx) {
       console.error('Supabase dashboard error, falling back to Apps Script:', error);
       const fallback = await gasRpc(env, method, [session.userID, session.userType]);
       return json({ ok:true, data:fallback });
+    }
+  }
+
+  if (method === 'getRepertoireData') {
+    try {
+      const result = await getRepertoireDataSupabase(env, session);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Repertoire read error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'saveStudentRepertoire' || method === 'deleteStudentRepertoire') {
+    try {
+      const payload = method === 'deleteStudentRepertoire'
+        ? { repertoireID:String(args[0] || '').trim() }
+        : (args[0] && typeof args[0] === 'object' ? structuredClone(args[0]) : {});
+      const result = method === 'deleteStudentRepertoire'
+        ? await deleteStudentRepertoireSupabase(env, session, payload)
+        : await saveStudentRepertoireSupabase(env, session, payload);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Repertoire write error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
 
@@ -531,15 +558,6 @@ async function handleRpc(request, env, ctx) {
         ok:true,
         data:{ success:false, message:'Gagal menyimpan data siswa ke database. Silakan coba lagi.' }
       });
-    }
-
-    if (result && result.success === true && method !== 'deleteSiswa') {
-      const studentId = String(result.siswaID || payload.siswaID || '').trim();
-      try {
-        await patchStudentClassDatesFromPayload(env, studentId, payload);
-      } catch (error) {
-        console.error(`Student class date patch failed for ${method}:`, error);
-      }
     }
 
     if (result && result.success === true && ctx) {
@@ -1294,45 +1312,6 @@ async function supabaseRpc(env, functionName, payload) {
 }
 
 
-
-async function patchStudentClassDatesFromPayload(env, studentId, payload) {
-  const classes = Array.isArray(payload?.kelasList) ? payload.kelasList : [];
-  if (!studentId || !classes.length) return;
-  const rows = await sbRows(env, 'student_classes', { student_id:`eq.${studentId}`, order:'created_at.asc' });
-  const used = new Set();
-  for (let index = 0; index < classes.length; index += 1) {
-    const item = classes[index] || {};
-    const startedOn = String(item.tglMulai || item.tglDaftar || (index === 0 ? payload.tglDaftar : '') || '').trim();
-    const endedOn = String(item.tglSelesai || item.tglKeluar || (index === 0 ? payload.tglKeluar : '') || '').trim();
-    if (!startedOn && !endedOn) continue;
-    let row = null;
-    const classId = String(item.kelasSiswaID || '').trim();
-    if (classId) row = rows.find(candidate => String(candidate.class_id || '') === classId) || null;
-    if (!row) {
-      row = rows.find(candidate => {
-        if (used.has(String(candidate.class_id || ''))) return false;
-        const sameInstrument = String(candidate.instrument || '').trim().toLowerCase() === String(item.instrumen || '').trim().toLowerCase();
-        const sameTeacher = item.guruID
-          ? String(candidate.teacher_id || '') === String(item.guruID || '')
-          : String(candidate.teacher_name_snapshot || '').trim().toLowerCase() === String(item.guru || '').trim().toLowerCase();
-        const sameGrade = !item.grade || String(candidate.grade || '').trim().toLowerCase() === String(item.grade || '').trim().toLowerCase();
-        return sameInstrument && sameTeacher && sameGrade;
-      }) || null;
-    }
-    if (!row) row = rows[index] || null;
-    if (!row?.class_id) continue;
-    used.add(String(row.class_id));
-    const patch = {};
-    if (startedOn) patch.started_on = startedOn;
-    if (endedOn) patch.ended_on = endedOn;
-    await supabaseRest(env, `/rest/v1/student_classes?class_id=eq.${encodeURIComponent(row.class_id)}`, {
-      method:'PATCH',
-      headers:{'Content-Type':'application/json', Prefer:'return=minimal'},
-      body:JSON.stringify(patch)
-    });
-  }
-}
-
 async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
   if (!hasSupabaseConfig(env)) throw new Error('Konfigurasi Supabase belum lengkap.');
 
@@ -1374,7 +1353,7 @@ async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
     teacher_name: String(item.guru || '').trim(),
     grade: String(item.grade || item.kelas || '').trim(),
     status: String(item.status || payload.status || 'Aktif').trim(),
-    started_on: String(item.tglMulai || item.tglDaftar || payload.tglDaftar || '').trim() || null,
+    started_on: String(payload.tglDaftar || '').trim() || null,
     ended_on: String(payload.tglKeluar || '').trim() || null
   }));
 
@@ -1960,7 +1939,6 @@ function mapClassRow(row, schedules) {
     grade: row.grade || 'Beginner',
     status: row.status || 'Aktif',
     tglMulai: formatDbDateIso(row.started_on),
-    tglDaftar: formatDbDateIso(row.started_on),
     tglSelesai: formatDbDateIso(row.ended_on),
     jadwalID: schedule ? (schedule.schedule_id || '') : '',
     hari: schedule ? (schedule.day_name || '') : '',
@@ -2142,6 +2120,32 @@ function mapTeacherAttendance(row) {
     catatan: row.notes || '',
     dicatatOleh: row.recorded_by || '',
     tandaTangan: row.signature_data || ''
+  };
+}
+
+function mapRepertoire(row) {
+  const youtube = buildYouTubeMeta(row.video_url || '');
+  return {
+    repertoireID: row.repertoire_id || '',
+    siswaID: row.student_id || '',
+    namaSiswa: row.student_name_snapshot || '',
+    guruID: row.teacher_id || '',
+    guru: row.teacher_name_snapshot || '',
+    instrumen: row.instrument || 'Musik',
+    judulLagu: row.song_title || '',
+    composer: row.composer || '',
+    keySignature: row.key_signature || '',
+    level: row.level || '',
+    progress: Number(row.progress_percent || 0),
+    status: row.status || 'Belajar',
+    tanggalMulai: formatDbDateIso(row.start_date),
+    targetTampil: formatDbDateIso(row.target_date),
+    tanggalTampilTerakhir: formatDbDateIso(row.last_performed_date),
+    eventTampil: row.performance_event || '',
+    videoUrl: row.video_url || '',
+    youtube,
+    catatan: row.notes || '',
+    lastUpdated: formatProgressUpdated(row.updated_at || row.created_at)
   };
 }
 
@@ -2460,6 +2464,118 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
     latestProgress,
     publication
   };
+}
+
+async function getRepertoireDataSupabase(env, session) {
+  let rows = [];
+  if (session.userType === 'siswa') {
+    rows = await sbRows(env, 'student_repertoire', { student_id:`eq.${session.userID}`, active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
+  } else if (session.userType === 'guru') {
+    const classes = await sbRows(env, 'student_classes', { teacher_id:`eq.${session.userID}` });
+    const directStudents = await sbRows(env, 'students', { teacher_id:`eq.${session.userID}` });
+    const allowedIds = new Set([
+      ...classes.map(row => String(row.student_id || '').trim()).filter(Boolean),
+      ...directStudents.map(row => String(row.student_id || '').trim()).filter(Boolean)
+    ]);
+    rows = await sbRows(env, 'student_repertoire', { teacher_id:`eq.${session.userID}`, active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
+    rows = rows.filter(row => !allowedIds.size || allowedIds.has(String(row.student_id || '').trim()));
+  } else if (session.userType === 'admin') {
+    rows = await sbRows(env, 'student_repertoire', { active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
+  } else {
+    throw new Error('Akses repertoire tidak valid.');
+  }
+
+  return { success:true, items:rows.map(mapRepertoire) };
+}
+
+async function saveStudentRepertoireSupabase(env, session, payload) {
+  if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat menyimpan repertoire.');
+  const repertoireId = String(payload.repertoireID || '').trim();
+  const studentId = String(payload.siswaID || '').trim();
+  if (!studentId) throw new Error('Siswa belum dipilih.');
+  if (!(await annualExamTeacherCanAccessStudent(env, session, studentId))) throw new Error('Anda tidak memiliki akses ke siswa ini.');
+  const students = await sbRows(env, 'students', { student_id:`eq.${studentId}`, limit:'1' });
+  const student = students[0];
+  if (!student) throw new Error('Data siswa tidak ditemukan.');
+
+  let existing = null;
+  if (repertoireId) {
+    const existingRows = await sbRows(env, 'student_repertoire', { repertoire_id:`eq.${repertoireId}`, limit:'1' });
+    existing = existingRows[0] || null;
+    if (!existing) throw new Error('Data repertoire tidak ditemukan.');
+    if (String(existing.student_id || '').trim() !== studentId) throw new Error('Repertoire tidak cocok dengan siswa yang dipilih.');
+  }
+
+  const classRows = await sbRows(env, 'student_classes', { student_id:`eq.${studentId}`, order:'created_at.asc' });
+  const requestedInstrument = String(payload.instrumen || existing?.instrument || student.instrument || 'Musik').trim();
+  const selectedClass = classRows.find(row => String(row.instrument || '').trim().toLowerCase() === requestedInstrument.toLowerCase()) || classRows[0] || null;
+  const teacherId = session.userType === 'guru'
+    ? String(session.userID || '').trim()
+    : String(existing?.teacher_id || selectedClass?.teacher_id || student.teacher_id || '').trim();
+  const teacherName = session.userType === 'guru'
+    ? String(session.userName || '').trim()
+    : String(existing?.teacher_name_snapshot || selectedClass?.teacher_name_snapshot || student.teacher_name_snapshot || '').trim();
+
+  const normalizedStatus = ['belajar','siap tampil','dikuasai','sudah tampil'].includes(String(payload.status || '').trim().toLowerCase())
+    ? String(payload.status || '').trim()
+    : 'Belajar';
+
+  const body = {
+    student_id: studentId,
+    student_name_snapshot: String(student.name || '').trim(),
+    teacher_id: teacherId || null,
+    teacher_name_snapshot: teacherName || null,
+    instrument: requestedInstrument || 'Musik',
+    song_title: String(payload.judulLagu || '').trim(),
+    composer: String(payload.composer || '').trim(),
+    key_signature: String(payload.keySignature || '').trim(),
+    level: String(payload.level || '').trim(),
+    progress_percent: Math.max(0, Math.min(100, Math.round(Number(payload.progress || 0) || 0))),
+    status: normalizedStatus,
+    start_date: formatDbDateIso(payload.tanggalMulai) || null,
+    target_date: formatDbDateIso(payload.targetTampil) || null,
+    last_performed_date: formatDbDateIso(payload.tanggalTampilTerakhir) || null,
+    performance_event: String(payload.eventTampil || '').trim(),
+    video_url: String(payload.videoUrl || '').trim(),
+    notes: String(payload.catatan || '').trim(),
+    active: true,
+    updated_at: new Date().toISOString()
+  };
+
+  if (!body.song_title) throw new Error('Judul lagu wajib diisi.');
+
+  let response;
+  if (existing) {
+    response = await supabaseRest(env, `/rest/v1/student_repertoire?repertoire_id=eq.${encodeURIComponent(repertoireId)}`, {
+      method:'PATCH',
+      headers:{ 'Content-Type':'application/json', Prefer:'return=representation' },
+      body:JSON.stringify(body)
+    });
+  } else {
+    response = await supabaseRest(env, '/rest/v1/student_repertoire', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Prefer:'return=representation' },
+      body:JSON.stringify(body)
+    });
+  }
+  const row = Array.isArray(response) ? response[0] : null;
+  return {
+    success:true,
+    message: existing ? 'Repertoire berhasil diperbarui.' : 'Repertoire berhasil ditambahkan.',
+    item: row ? mapRepertoire(row) : null
+  };
+}
+
+async function deleteStudentRepertoireSupabase(env, session, payload) {
+  if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat menghapus repertoire.');
+  const repertoireId = String(payload.repertoireID || '').trim();
+  if (!repertoireId) throw new Error('Repertoire ID tidak ditemukan.');
+  const rows = await sbRows(env, 'student_repertoire', { repertoire_id:`eq.${repertoireId}`, limit:'1' });
+  const row = rows[0];
+  if (!row) throw new Error('Data repertoire tidak ditemukan.');
+  if (!(await annualExamTeacherCanAccessStudent(env, session, String(row.student_id || '').trim()))) throw new Error('Anda tidak memiliki akses ke siswa ini.');
+  await supabaseRest(env, `/rest/v1/student_repertoire?repertoire_id=eq.${encodeURIComponent(repertoireId)}`, { method:'DELETE', headers:{ Prefer:'return=minimal' } });
+  return { success:true, message:'Repertoire berhasil dihapus.', repertoireID:repertoireId };
 }
 
 async function buildStudentDashboardSupabase(env, session) {
@@ -2915,7 +3031,6 @@ async function shadowStudentFromSupabase(env, studentId) {
       grade: row.grade || 'Beginner',
       status: row.status || 'Aktif',
       tglMulai: formatDbDateIso(row.started_on),
-    tglDaftar: formatDbDateIso(row.started_on),
       tglSelesai: formatDbDateIso(row.ended_on)
     })),
     schedules: schedules.map(row => ({
