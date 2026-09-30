@@ -1840,17 +1840,66 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       return (globalSiswaList || []).find(item => String(item.nama || '').trim().toLowerCase() === String(name || '').trim().toLowerCase()) || null;
     }
 
+    function scheduleOverrideStudentClasses(student) {
+      if (!student) return [];
+      if (typeof getStudentClassesForUI === 'function') {
+        try { return getStudentClassesForUI(student) || []; } catch (_) {}
+      }
+      if (Array.isArray(student.kelasList) && student.kelasList.length) return student.kelasList;
+      return String(student.instrumen || '').split(',').map(value => ({ instrumen:value.trim(), guru:student.guru || '' })).filter(item => item.instrumen);
+    }
+
+    function scheduleOverrideStudentHasInstrument(student, instrument) {
+      const needle = String(instrument || '').trim().toLowerCase();
+      if (!needle) return true;
+      return scheduleOverrideStudentClasses(student).some(item => String(item.instrumen || '').trim().toLowerCase() === needle);
+    }
+
+    function populateScheduleOverrideInstrumentFilter() {
+      const select = document.getElementById('penggantiInstrumenFilter');
+      if (!select) return;
+      const current = select.value;
+      const values = [...new Set((globalSiswaList || []).flatMap(student => scheduleOverrideStudentClasses(student).map(item => String(item.instrumen || '').trim())).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      select.innerHTML = '<option value="">Semua Instrumen</option>' + values.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      if (values.includes(current)) select.value = current;
+    }
+
+    function syncMakeupTeacherFilter() {
+      const select = document.getElementById('makeupFilterTeacher');
+      if (!select) return;
+      const instrument = String(document.getElementById('makeupFilterInstrument')?.value || '').trim().toLowerCase();
+      const current = select.value;
+      let teachers = (globalGuruList || []).slice();
+      if (instrument) {
+        const allowed = new Set();
+        (globalJadwalList || []).forEach(item => {
+          if (String(item.instrumen || '').trim().toLowerCase() === instrument && item.guru) allowed.add(String(item.guru).trim().toLowerCase());
+        });
+        teachers = teachers.filter(item => allowed.has(String(item.nama || '').trim().toLowerCase()));
+      }
+      select.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(item => `<option value="${escapeTaskHtml(item.nama || '')}">${escapeTaskHtml(item.nama || '-')}</option>`).join('');
+      if (teachers.some(item => String(item.nama || '') === current)) select.value = current;
+    }
+
     function refreshScheduleOverrideFormOptions() {
       const absentSelect = document.getElementById('penggantiSiswaSelect');
       const slotSelect = document.getElementById('penggantiSiswaSlotSelect');
       if (!absentSelect || !slotSelect) return;
+      populateScheduleOverrideInstrumentFilter();
+      const instrument = String(document.getElementById('penggantiInstrumenFilter')?.value || '').trim();
       const currentAbsent = absentSelect.value;
       const currentSlot = slotSelect.value;
-      const students = (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar').sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
-      absentSelect.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.nama || '')}">${escapeTaskHtml(item.nama || '-')} (${escapeTaskHtml(item.instrumen || 'Musik')})</option>`).join('');
-      slotSelect.innerHTML = '<option value="">— Slot dikosongkan / tidak diganti siswa lain —</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} (${escapeTaskHtml(item.instrumen || 'Musik')})</option>`).join('');
+      const students = (globalSiswaList || [])
+        .filter(item => String(item.status || '').toLowerCase() !== 'keluar')
+        .filter(item => scheduleOverrideStudentHasInstrument(item, instrument))
+        .sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+      const instrumentSuffix = instrument ? ` • ${escapeTaskHtml(instrument)}` : '';
+      absentSelect.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.nama || '')}">${escapeTaskHtml(item.nama || '-')}${instrumentSuffix}</option>`).join('');
+      slotSelect.innerHTML = '<option value="">— Slot dikosongkan / tidak diganti siswa lain —</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')}${instrumentSuffix}</option>`).join('');
       if (students.some(item => item.nama === currentAbsent)) absentSelect.value = currentAbsent;
+      else absentSelect.value = '';
       if (students.some(item => String(item.siswaID || '') === currentSlot)) slotSelect.value = currentSlot;
+      else slotSelect.value = '';
       refreshScheduleOverrideOriginalScheduleOptions();
     }
 
@@ -1859,7 +1908,11 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       const scheduleSelect = document.getElementById('penggantiJadwalAsliSelect');
       if (!scheduleSelect) return;
       const current = scheduleSelect.value;
-      const schedules = (globalJadwalList || []).filter(item => String(item.namaSiswa || '').trim().toLowerCase() === studentName.toLowerCase());
+      const instrument = String(document.getElementById('penggantiInstrumenFilter')?.value || '').trim().toLowerCase();
+      const schedules = (globalJadwalList || []).filter(item =>
+        String(item.namaSiswa || '').trim().toLowerCase() === studentName.toLowerCase() &&
+        (!instrument || String(item.instrumen || '').trim().toLowerCase() === instrument)
+      );
       scheduleSelect.innerHTML = '<option value="">Pilih jadwal asli...</option>' + schedules.map(item => `<option value="${escapeTaskHtml(item.jadwalID || '')}">${escapeTaskHtml(item.hari || '-')} • ${escapeTaskHtml(item.jamMulai || '-')}–${escapeTaskHtml(item.jamSelesai || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')} • ${escapeTaskHtml(item.guru || '-')}</option>`).join('');
       if (schedules.some(item => String(item.jadwalID || '') === current)) scheduleSelect.value = current;
       else if (schedules[0]) scheduleSelect.value = schedules[0].jadwalID || '';
@@ -1909,7 +1962,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         tanggalAsli:String(document.getElementById('penggantiTanggalAsli')?.value || '').trim(),
         siswaAsli:String(document.getElementById('penggantiSiswaSelect')?.value || '').trim(),
         siswaPenggantiID:slotStudentId,
-        instrumenPengganti:slotStudent ? (slotStudent.instrumen || schedule?.instrumen || '') : '',
+        instrumenPengganti:slotStudent ? (schedule?.instrumen || document.getElementById('penggantiInstrumenFilter')?.value || '') : '',
         tanggalMakeup:makeupDate,
         jamMulaiMakeup:makeupStart,
         jamSelesaiMakeup:makeupEnd,
@@ -1938,6 +1991,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
           }
           document.getElementById('formAddJadwalPengganti')?.reset();
           if (document.getElementById('scheduleOverrideID')) document.getElementById('scheduleOverrideID').value = '';
+          refreshScheduleOverrideFormOptions();
           fetchDashboardData();
         }
       }).withFailureHandler(error => {
@@ -2001,22 +2055,21 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       const isGuru = currentUser.userType === 'guru';
       box.style.display = isAdmin || isGuru ? 'grid' : 'none';
       const instrumentGroup = document.getElementById('makeupFilterInstrumentGroup');
+      const teacherGroup = document.getElementById('makeupFilterTeacherGroup');
+      const dayGroup = document.getElementById('makeupFilterDayGroup');
+      const searchGroup = document.getElementById('makeupFilterSearchGroup');
       if (instrumentGroup) instrumentGroup.style.display = isAdmin || isGuru ? 'block' : 'none';
-      document.getElementById('makeupFilterTeacherGroup').style.display = isAdmin ? 'block' : 'none';
-      document.getElementById('makeupFilterDayGroup').style.display = isAdmin || isGuru ? 'block' : 'none';
+      if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
+      if (dayGroup) dayGroup.style.display = isAdmin || isGuru ? 'block' : 'none';
+      if (searchGroup) searchGroup.style.display = isAdmin || isGuru ? 'block' : 'none';
       const instrumentSelect = document.getElementById('makeupFilterInstrument');
-      const teacherSelect = document.getElementById('makeupFilterTeacher');
       const currentInstrument = instrumentSelect ? instrumentSelect.value : '';
-      const currentTeacher = teacherSelect ? teacherSelect.value : '';
       const instruments = [...new Set((globalJadwalList || []).map(item => String(item.instrumen || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
       if (instrumentSelect) {
         instrumentSelect.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
         if (instruments.includes(currentInstrument)) instrumentSelect.value = currentInstrument;
       }
-      if (teacherSelect) {
-        teacherSelect.innerHTML = '<option value="">Semua Guru</option>' + globalGuruList.map(item => `<option value="${escapeTaskHtml(item.nama)}">${escapeTaskHtml(item.nama)}</option>`).join('');
-        if (globalGuruList.some(item => item.nama === currentTeacher)) teacherSelect.value = currentTeacher;
-      }
+      syncMakeupTeacherFilter();
       refreshScheduleOverrideFormOptions();
     }
 
@@ -2025,6 +2078,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if (!container) return;
       container.innerHTML = '';
       const isAdmin = currentUser.userType === 'admin';
+      const searchFilter = currentUser.userType !== 'siswa' ? String(document.getElementById('makeupFilterSearch')?.value || '').trim().toLowerCase() : '';
       const instrumentFilter = currentUser.userType !== 'siswa' ? String(document.getElementById('makeupFilterInstrument')?.value || '').toLowerCase() : '';
       const teacherFilter = isAdmin ? String(document.getElementById('makeupFilterTeacher')?.value || '').toLowerCase() : '';
       const dayFilter = currentUser.userType !== 'siswa' ? String(document.getElementById('makeupFilterDay')?.value || '').toLowerCase() : '';
@@ -2033,7 +2087,8 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         const instrument = String(schedule?.instrumen || item.instrumenAsli || '').toLowerCase();
         const teacher = String(schedule?.guru || item.guruAsli || item.guruMakeup || '').toLowerCase();
         const day = String(schedule?.hari || item.hariAsli || '').toLowerCase();
-        return (!instrumentFilter || instrument === instrumentFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
+        const name = `${item.siswaAsli || ''} ${item.siswaPengganti || ''}`.toLowerCase();
+        return (!searchFilter || name.includes(searchFilter)) && (!instrumentFilter || instrument === instrumentFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
       });
       overrides.forEach(item => {
         const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || { hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '', guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik' };
@@ -2043,10 +2098,13 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         container.innerHTML += `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
       });
 
-      const list = globalJadwalPenggantiList.filter(item => {
-        const student = globalSiswaList.find(row => String(row.nama || '').toLowerCase() === String(item.namaSiswa || '').toLowerCase());
-        const studentClass = String(student ? (student.instrumen || student.kelas || '') : '').toLowerCase();
-        return (!classFilter || studentClass === classFilter) && (!teacherFilter || String(item.guru || '').toLowerCase() === teacherFilter) && (!dayFilter || String(item.hariPelaksanaan || '').toLowerCase() === dayFilter);
+      const list = (globalJadwalPenggantiList || []).filter(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || null;
+        const instrument = String(schedule?.instrumen || '').trim().toLowerCase();
+        const teacher = String(item.guru || schedule?.guru || '').trim().toLowerCase();
+        const day = String(item.hariPelaksanaan || schedule?.hari || '').trim().toLowerCase();
+        const name = String(item.namaSiswa || '').trim().toLowerCase();
+        return (!searchFilter || name.includes(searchFilter)) && (!instrumentFilter || instrument === instrumentFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
       });
       if (list.length === 0 && overrides.length === 0) {
         container.innerHTML = '<div class="academy-empty">Belum ada jadwal pergantian yang tersedia.</div>';
