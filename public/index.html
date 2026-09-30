@@ -567,50 +567,66 @@
           <div class="academy-page-head"><div><h2>Jadwal Pergantian</h2><p>Kelola dan lihat jadwal Make-up Class berdasarkan tanggal pelaksanaan.</p></div></div>
 
           <div class="widget-box academy-form-box" id="formJadwalPenggantiBox" style="display:none;">
-            <div class="widget-title" style="margin-bottom:15px;">🔄 Atur Jadwal Pergantian Siswa (Sakit / Izin)</div>
-            <form id="formAddJadwalPengganti" class="academy-form-grid" onsubmit="return handleAddJadwalPengganti(event)">
+            <div class="widget-title" style="margin-bottom:8px;">🔄 Pergantian Jadwal Sementara</div>
+            <p style="margin:0 0 16px;color:#64748b;font-size:13px;line-height:1.55;">Jadwal rutin tidak diubah. Pergantian hanya berlaku pada tanggal yang dipilih, lalu minggu berikutnya otomatis kembali ke jadwal normal.</p>
+            <form id="formAddJadwalPengganti" class="academy-form-grid" onsubmit="return handleSaveScheduleOverride(event)">
+              <input type="hidden" id="scheduleOverrideID">
               <div class="form-group">
-                <label>Pilih Siswa</label>
-                <select id="penggantiSiswaSelect" required onchange="autoFillJadwalPenggantiData(this.value)"></select>
+                <label>Siswa yang Berhalangan</label>
+                <select id="penggantiSiswaSelect" required onchange="refreshScheduleOverrideOriginalScheduleOptions()"></select>
               </div>
               <div class="form-group">
-                <label>Alasan Pergantian</label>
+                <label>Jadwal Asli</label>
+                <select id="penggantiJadwalAsliSelect" required onchange="syncScheduleOverrideOriginalDateHint()"></select>
+                <small id="penggantiJadwalAsliHint" style="display:block;margin-top:5px;color:#64748b;"></small>
+              </div>
+              <div class="form-group">
+                <label>Tanggal Jadwal yang Diganti</label>
+                <input type="date" id="penggantiTanggalAsli" required onchange="syncScheduleOverrideOriginalDateHint()">
+              </div>
+              <div class="form-group">
+                <label>Alasan</label>
                 <select id="penggantiAlasan" required>
                   <option value="Sakit">Sakit</option>
                   <option value="Izin">Izin</option>
+                  <option value="Keperluan Keluarga">Keperluan Keluarga</option>
                   <option value="Lainnya">Lainnya</option>
                 </select>
               </div>
+              <div class="academy-span-all schedule-override-divider"><strong>Slot Jadwal Asli</strong><span>Opsional — pilih siswa lain jika slot Janwar dipakai Clara.</span></div>
+              <div class="form-group academy-span-2">
+                <label>Siswa yang Menggunakan Slot</label>
+                <select id="penggantiSiswaSlotSelect"><option value="">— Slot dikosongkan / tidak diganti siswa lain —</option></select>
+              </div>
+              <div class="academy-span-all schedule-override-divider"><strong>Make-up Siswa yang Berhalangan</strong><span>Opsional jika tanggal pengganti belum ditentukan.</span></div>
               <div class="form-group">
-                <label>Tanggal Pelaksanaan Kelas Pergantian</label>
-                <input type="date" id="penggantiTanggal" required>
+                <label>Tanggal Make-up</label>
+                <input type="date" id="penggantiTanggal">
               </div>
               <div class="form-group">
                 <label>Jam Mulai</label>
-                <input type="time" id="penggantiJamMulai" required>
+                <input type="time" id="penggantiJamMulai">
               </div>
               <div class="form-group">
                 <label>Jam Selesai</label>
-                <input type="time" id="penggantiJamSelesai" required>
+                <input type="time" id="penggantiJamSelesai">
               </div>
               <div class="form-group">
-                <label>Guru Pengajar</label>
-                <select id="penggantiGuruSelect" required></select>
+                <label>Guru Make-up</label>
+                <select id="penggantiGuruSelect"></select>
               </div>
               <div class="form-group">
-                <label>Ruangan</label>
-                <select id="penggantiRuanganSelect" required>
-                  <option value="R 1">R 1</option>
-                  <option value="R 2">R 2</option>
-                  <option value="R 3">R 3</option>
-                  <option value="R 4">R 4</option>
-                  <option value="R 5">R 5</option>
-                  <option value="R 6">R 6</option>
-                  <option value="R 7">R 7</option>
-                  <option value="R 8">R 8</option>
+                <label>Ruangan Make-up</label>
+                <select id="penggantiRuanganSelect">
+                  <option value="R 1">R 1</option><option value="R 2">R 2</option><option value="R 3">R 3</option><option value="R 4">R 4</option>
+                  <option value="R 5">R 5</option><option value="R 6">R 6</option><option value="R 7">R 7</option><option value="R 8">R 8</option>
                 </select>
               </div>
-              <div class="academy-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitPengganti" class="btn btn-primary">Simpan Jadwal Pergantian</button></div>
+              <div class="form-group academy-span-all">
+                <label>Catatan</label>
+                <textarea id="penggantiCatatan" rows="3" placeholder="Contoh: Clara menggunakan slot Janwar. Janwar make-up hari Kamis."></textarea>
+              </div>
+              <div class="academy-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitPengganti" class="btn btn-primary">Simpan Pergantian</button></div>
             </form>
           </div>
 
@@ -703,7 +719,7 @@
               <div class="form-group"><label>Filter Hari</label><select id="absensiHariFilter" onchange="refreshAbsensiStudentOptions()"><option value="">-- Semua Hari --</option><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option><option value="Minggu">Minggu</option></select></div>
               <div class="form-group"><label>Pilih Siswa</label><select id="absensiSiswa" required></select><div id="absensiStudentFilterHint" style="font-size:11px;color:#64748b;margin-top:5px;"></div></div>
               <div class="form-group"><label>Pertemuan Ke</label><select id="absensiPertemuanKe" required><option value="1">Pertemuan 1</option><option value="2">Pertemuan 2</option><option value="3">Pertemuan 3</option><option value="4">Pertemuan 4</option></select></div>
-              <div class="form-group"><label>Tanggal</label><input type="date" id="absensiTanggal" required></div>
+              <div class="form-group"><label>Tanggal</label><input type="date" id="absensiTanggal" required onchange="refreshAbsensiStudentOptions()"></div>
               <div class="form-group"><label>Status</label><select id="absensiStatus" required><option value="Masuk">Masuk</option><option value="Sakit">Sakit</option><option value="Izin">Izin</option><option value="Alpa">Alpa</option></select></div>
               <div class="form-group"><label>Materi</label><textarea id="absensiMateri" class="attendance-multiline-input" rows="3" placeholder="Tulis materi pertemuan. Tekan Enter untuk baris baru."></textarea></div>
               <div class="form-group"><label>Lagu</label><textarea id="absensiLagu" class="attendance-multiline-input" rows="3" placeholder="Tulis lagu / repertoar. Tekan Enter untuk baris baru."></textarea></div>

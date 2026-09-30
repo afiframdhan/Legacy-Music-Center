@@ -23,6 +23,7 @@
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
+        globalScheduleOverrides = data.scheduleOverrides || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
         globalRepertoireList = [];
@@ -234,7 +235,7 @@
         document.getElementById('addStudentExtraClassesBox').style.display = 'none';
         document.getElementById('editStudentExtraClassesBox').style.display = 'none';
 
-        document.getElementById('formJadwalPenggantiBox').style.display = 'none';
+        document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'none';
         document.getElementById('dashboardAcademyUpdatesGuru').style.display = 'block';
 

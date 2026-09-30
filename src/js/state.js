@@ -6,6 +6,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let globalTugasList = [];
     let globalGuruList = [];
     let globalJadwalPenggantiList = [];
+    let globalScheduleOverrides = [];
     let globalPengumumanList = [];
     let globalLearningProgressList = [];
     let globalRepertoireList = [];

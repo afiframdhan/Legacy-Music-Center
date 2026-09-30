@@ -35,6 +35,118 @@
       }
     }
 
+    function getStudentByNameForOverride(name) {
+      return (globalSiswaList || []).find(item => String(item.nama || '').trim().toLowerCase() === String(name || '').trim().toLowerCase()) || null;
+    }
+
+    function refreshScheduleOverrideFormOptions() {
+      const absentSelect = document.getElementById('penggantiSiswaSelect');
+      const slotSelect = document.getElementById('penggantiSiswaSlotSelect');
+      if (!absentSelect || !slotSelect) return;
+      const currentAbsent = absentSelect.value;
+      const currentSlot = slotSelect.value;
+      const students = (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar').sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+      absentSelect.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.nama || '')}">${escapeTaskHtml(item.nama || '-')} (${escapeTaskHtml(item.instrumen || 'Musik')})</option>`).join('');
+      slotSelect.innerHTML = '<option value="">— Slot dikosongkan / tidak diganti siswa lain —</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} (${escapeTaskHtml(item.instrumen || 'Musik')})</option>`).join('');
+      if (students.some(item => item.nama === currentAbsent)) absentSelect.value = currentAbsent;
+      if (students.some(item => String(item.siswaID || '') === currentSlot)) slotSelect.value = currentSlot;
+      refreshScheduleOverrideOriginalScheduleOptions();
+    }
+
+    function refreshScheduleOverrideOriginalScheduleOptions() {
+      const studentName = String(document.getElementById('penggantiSiswaSelect')?.value || '').trim();
+      const scheduleSelect = document.getElementById('penggantiJadwalAsliSelect');
+      if (!scheduleSelect) return;
+      const current = scheduleSelect.value;
+      const schedules = (globalJadwalList || []).filter(item => String(item.namaSiswa || '').trim().toLowerCase() === studentName.toLowerCase());
+      scheduleSelect.innerHTML = '<option value="">Pilih jadwal asli...</option>' + schedules.map(item => `<option value="${escapeTaskHtml(item.jadwalID || '')}">${escapeTaskHtml(item.hari || '-')} • ${escapeTaskHtml(item.jamMulai || '-')}–${escapeTaskHtml(item.jamSelesai || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')} • ${escapeTaskHtml(item.guru || '-')}</option>`).join('');
+      if (schedules.some(item => String(item.jadwalID || '') === current)) scheduleSelect.value = current;
+      else if (schedules[0]) scheduleSelect.value = schedules[0].jadwalID || '';
+      const selected = schedules.find(item => String(item.jadwalID || '') === String(scheduleSelect.value || '')) || schedules[0] || null;
+      if (selected) {
+        const guruSelect = document.getElementById('penggantiGuruSelect');
+        if (guruSelect && selected.guru) guruSelect.value = selected.guru;
+        const roomSelect = document.getElementById('penggantiRuanganSelect');
+        if (roomSelect && selected.ruangan && Array.from(roomSelect.options).some(opt => opt.value === selected.ruangan)) roomSelect.value = selected.ruangan;
+      }
+      syncScheduleOverrideOriginalDateHint();
+    }
+
+    function syncScheduleOverrideOriginalDateHint() {
+      const scheduleId = String(document.getElementById('penggantiJadwalAsliSelect')?.value || '').trim();
+      const date = String(document.getElementById('penggantiTanggalAsli')?.value || '').trim();
+      const schedule = (globalJadwalList || []).find(item => String(item.jadwalID || '') === scheduleId) || null;
+      const hint = document.getElementById('penggantiJadwalAsliHint');
+      if (!hint) return;
+      if (!schedule) { hint.textContent = ''; return; }
+      let text = `Jadwal normal: ${schedule.hari || '-'}, ${schedule.jamMulai || '-'}–${schedule.jamSelesai || '-'} • ${schedule.ruangan || '-'} • ${schedule.guru || '-'}`;
+      if (date) {
+        const actual = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][new Date(date + 'T12:00:00').getDay()] || '';
+        if (actual && String(actual).toLowerCase() !== String(schedule.hari || '').toLowerCase()) text += ` • ⚠️ Tanggal ini adalah ${actual}, bukan ${schedule.hari}.`;
+      }
+      hint.textContent = text;
+    }
+
+    function handleSaveScheduleOverride(e) {
+      e.preventDefault();
+      const scheduleId = String(document.getElementById('penggantiJadwalAsliSelect')?.value || '').trim();
+      const schedule = (globalJadwalList || []).find(item => String(item.jadwalID || '') === scheduleId) || null;
+      const slotStudentId = String(document.getElementById('penggantiSiswaSlotSelect')?.value || '').trim();
+      const slotStudent = (globalSiswaList || []).find(item => String(item.siswaID || '') === slotStudentId) || null;
+      const teacherName = String(document.getElementById('penggantiGuruSelect')?.value || '').trim();
+      const teacher = (globalGuruList || []).find(item => String(item.nama || '').trim() === teacherName) || null;
+      const makeupDate = String(document.getElementById('penggantiTanggal')?.value || '').trim();
+      const makeupStart = String(document.getElementById('penggantiJamMulai')?.value || '').trim();
+      const makeupEnd = String(document.getElementById('penggantiJamSelesai')?.value || '').trim();
+      if (makeupDate && (!makeupStart || !makeupEnd)) {
+        showAlert('alertDanger','Jika tanggal make-up diisi, jam mulai dan selesai juga wajib diisi.');
+        return false;
+      }
+      const payload = {
+        overrideID:String(document.getElementById('scheduleOverrideID')?.value || '').trim(),
+        jadwalID:scheduleId,
+        tanggalAsli:String(document.getElementById('penggantiTanggalAsli')?.value || '').trim(),
+        siswaAsli:String(document.getElementById('penggantiSiswaSelect')?.value || '').trim(),
+        siswaPenggantiID:slotStudentId,
+        instrumenPengganti:slotStudent ? (slotStudent.instrumen || schedule?.instrumen || '') : '',
+        tanggalMakeup:makeupDate,
+        jamMulaiMakeup:makeupStart,
+        jamSelesaiMakeup:makeupEnd,
+        guruMakeupID:teacher ? (teacher.id || '') : '',
+        guruMakeup:teacherName,
+        ruanganMakeup:String(document.getElementById('penggantiRuanganSelect')?.value || '').trim(),
+        alasan:String(document.getElementById('penggantiAlasan')?.value || 'Lainnya').trim(),
+        catatan:String(document.getElementById('penggantiCatatan')?.value || '').trim()
+      };
+      if (!payload.jadwalID || !payload.tanggalAsli) {
+        showAlert('alertDanger','Pilih jadwal asli dan tanggal yang diganti.');
+        return false;
+      }
+      const btn = document.getElementById('btnSubmitPengganti');
+      if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+      google.script.run.withSuccessHandler(res => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
+        showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', (res && res.message) || 'Pergantian gagal disimpan.');
+        if (res && res.success) {
+          document.getElementById('formAddJadwalPengganti')?.reset();
+          if (document.getElementById('scheduleOverrideID')) document.getElementById('scheduleOverrideID').value = '';
+          fetchDashboardData();
+        }
+      }).withFailureHandler(error => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
+        showAlert('alertDanger','Gagal menyimpan pergantian: ' + (error.message || error));
+      }).saveScheduleOverride(payload);
+      return false;
+    }
+
+    function handleDeleteScheduleOverride(id) {
+      if (!confirm('Hapus pergantian jadwal ini? Jadwal rutin tetap tidak berubah.')) return;
+      google.script.run.withSuccessHandler(res => {
+        showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', (res && res.message) || 'Pergantian gagal dihapus.');
+        if (res && res.success) fetchDashboardData();
+      }).withFailureHandler(error => showAlert('alertDanger','Gagal menghapus pergantian: ' + (error.message || error))).deleteScheduleOverride(id);
+    }
+
     function handleAddJadwalPengganti(e) {
       e.preventDefault();
       const btn = document.getElementById('btnSubmitPengganti');
@@ -87,6 +199,7 @@
       teacherSelect.innerHTML = '<option value="">Semua Guru</option>' + globalGuruList.map(item => `<option value="${escapeTaskHtml(item.nama)}">${escapeTaskHtml(item.nama)}</option>`).join('');
       if (classes.includes(currentClass)) classSelect.value = currentClass;
       if (globalGuruList.some(item => item.nama === currentTeacher)) teacherSelect.value = currentTeacher;
+      refreshScheduleOverrideFormOptions();
     }
 
     function renderTabelJadwalPengganti() {
@@ -97,12 +210,27 @@
       const classFilter = isAdmin ? String(document.getElementById('makeupFilterClass')?.value || '').toLowerCase() : '';
       const teacherFilter = isAdmin ? String(document.getElementById('makeupFilterTeacher')?.value || '').toLowerCase() : '';
       const dayFilter = currentUser.userType !== 'siswa' ? String(document.getElementById('makeupFilterDay')?.value || '').toLowerCase() : '';
+      const overrides = (globalScheduleOverrides || []).filter(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || null;
+        const instrument = String(schedule?.instrumen || item.instrumenAsli || '').toLowerCase();
+        const teacher = String(schedule?.guru || item.guruAsli || item.guruMakeup || '').toLowerCase();
+        const day = String(schedule?.hari || item.hariAsli || '').toLowerCase();
+        return (!classFilter || instrument === classFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
+      });
+      overrides.forEach(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || { hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '', guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik' };
+        const slotText = item.siswaPengganti ? `${escapeTaskHtml(item.siswaPengganti)} memakai slot ${escapeTaskHtml(item.siswaAsli || '-')}` : `Slot ${escapeTaskHtml(item.siswaAsli || '-')} dikosongkan`;
+        const makeupText = item.tanggalMakeup ? `${escapeTaskHtml(formatAcademyDate(item.tanggalMakeup))} • ${escapeTaskHtml(item.jamMulaiMakeup || '-')}–${escapeTaskHtml(item.jamSelesaiMakeup || '-')} • ${escapeTaskHtml(item.ruanganMakeup || '-')}` : 'Belum dijadwalkan';
+        const deleteButton = currentUser.userType !== 'siswa' ? `<button class="btn-action btn-delete" onclick="handleDeleteScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Hapus</button>` : '';
+        container.innerHTML += `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
+      });
+
       const list = globalJadwalPenggantiList.filter(item => {
         const student = globalSiswaList.find(row => String(row.nama || '').toLowerCase() === String(item.namaSiswa || '').toLowerCase());
         const studentClass = String(student ? (student.instrumen || student.kelas || '') : '').toLowerCase();
         return (!classFilter || studentClass === classFilter) && (!teacherFilter || String(item.guru || '').toLowerCase() === teacherFilter) && (!dayFilter || String(item.hariPelaksanaan || '').toLowerCase() === dayFilter);
       });
-      if (list.length === 0) {
+      if (list.length === 0 && overrides.length === 0) {
         container.innerHTML = '<div class="academy-empty">Belum ada jadwal pergantian yang tersedia.</div>';
         return;
       }

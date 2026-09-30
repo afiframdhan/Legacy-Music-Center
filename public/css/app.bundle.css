@@ -488,6 +488,16 @@ html[data-theme="dark"] #modalRepertoire .modal-content{background:#111b2e!impor
   .repertoire-summary-head{flex-direction:row!important;align-items:flex-start!important}
   .repertoire-detail-grid{grid-template-columns:1fr}
 }
+.schedule-override-divider{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:12px}
+.schedule-override-divider strong{font-size:13px;color:#7c2d12}
+.schedule-override-divider span{color:#9a3412;text-align:right}
+.schedule-override-card{border-left:4px solid #f59e0b}
+.schedule-override-table-note{margin-top:5px;font-size:10px;font-weight:700;color:#d97706;line-height:1.3}
+html[data-theme="dark"] .schedule-override-divider{background:#2a2119;border-color:#6b4a2b;color:#fdba74}
+html[data-theme="dark"] .schedule-override-divider strong{color:#fed7aa}
+html[data-theme="dark"] .schedule-override-divider span{color:#fdba74}
+html[data-theme="dark"] .schedule-override-table-note{color:#fbbf24}
+@media(max-width:640px){.schedule-override-divider{flex-direction:column;align-items:flex-start}.schedule-override-divider span{text-align:left}}
 
     /* TUGAS & LATIHAN */
     .task-page-head { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }
