@@ -1329,20 +1329,48 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const searchInput = document.getElementById('lpPageStudentSearch');
       const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
       const names = searchTerm ? allNames.filter(name => name.toLowerCase().includes(searchTerm)) : allNames;
-      const oldStudent = studentSelect.value || globalSelectedLearningProgressStudent;
-      studentSelect.innerHTML = names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : '<option value="">Tidak ada siswa ditemukan</option>';
-      studentSelect.value = names.includes(oldStudent) ? oldStudent : (names.find(name => getCurrentLearningProgress(name)) || names[0] || '');
+      const oldStudent = studentSelect.value;
+      const allStudentsOption = !isStudent ? '<option value="">Semua Siswa</option>' : '';
+      studentSelect.innerHTML = allStudentsOption + (names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : (!isStudent ? '' : '<option value="">Tidak ada siswa ditemukan</option>'));
+      if (isStudent) studentSelect.value = currentUser.userName;
+      else if (oldStudent && names.includes(oldStudent)) studentSelect.value = oldStudent;
+      else studentSelect.value = '';
       document.getElementById('lpPageStudentGroup').style.display = isStudent ? 'none' : 'block';
       const searchGroup = document.getElementById('lpPageStudentSearchGroup');
       if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
-      globalSelectedLearningProgressStudent = studentSelect.value || currentUser.userName;
-      const type = typeSelect.value || 'Bulanan';
+
+      const selectedStudent = isStudent ? currentUser.userName : studentSelect.value;
+      globalSelectedLearningProgressStudent = selectedStudent || '';
+      const type = typeSelect.value || '';
       const oldPeriod = resetPeriod ? '' : periodSelect.value;
-      const periods = [...new Set(globalLearningProgressList.filter(item => String(item.namaSiswa || '').toLowerCase() === String(globalSelectedLearningProgressStudent || '').toLowerCase() && getLearningProgressPeriodType(item) === type).map(item => item.periode).filter(Boolean))].sort().reverse();
-      if (!periods.length) periods.push(getDefaultLearningPeriod(type));
-      periodSelect.innerHTML = periods.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(formatLearningProgressPeriod(value))}</option>`).join('');
-      periodSelect.value = periods.includes(oldPeriod) ? oldPeriod : periods[0];
-      const progress = getCurrentLearningProgress(globalSelectedLearningProgressStudent, periodSelect.value, type);
+      const matchingNames = selectedStudent ? [selectedStudent] : names;
+      const matchingNameSet = new Set(matchingNames.map(name => String(name).trim().toLowerCase()));
+      const matchingRecords = (globalLearningProgressList || []).filter(item => {
+        if (!matchingNameSet.has(String(item.namaSiswa || '').trim().toLowerCase())) return false;
+        return !type || getLearningProgressPeriodType(item) === type;
+      });
+      const periods = [...new Set(matchingRecords.map(item => item.periode).filter(Boolean))].sort().reverse();
+      periodSelect.innerHTML = '<option value="">Semua Periode</option>' + periods.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(formatLearningProgressPeriod(value))}</option>`).join('');
+      periodSelect.value = oldPeriod && periods.includes(oldPeriod) ? oldPeriod : '';
+      const selectedPeriod = periodSelect.value;
+
+      if (!selectedStudent && !isStudent) {
+        const latestByStudent = names.map(name => {
+          const studentRecords = matchingRecords.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(name).trim().toLowerCase() && (!selectedPeriod || String(item.periode || '') === selectedPeriod));
+          return studentRecords[0] || null;
+        }).filter(Boolean);
+        content.innerHTML = latestByStudent.length
+          ? `<div class="lp-all-students-list">${latestByStudent.map(progress => `<div class="lp-minimal-card"><div class="lp-minimal-score" style="--score:${Math.max(0, Math.min(100, Number(progress.overallProgress) || 0)) * 3.6}deg"><span>${Math.max(0, Math.min(100, Number(progress.overallProgress) || 0))}%</span></div><div class="lp-minimal-info"><strong>${escapeTaskHtml(progress.namaSiswa || '-')} • ${escapeTaskHtml(progress.level || '-')}</strong><p>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))} · ${escapeTaskHtml(getLearningProgressPeriodType(progress))}<br>Target: ${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div>`).join('')}</div>`
+          : '<div class="lp-body"><div class="lp-empty"><strong>Belum ada Progress Belajar</strong><span>Tidak ada laporan yang cocok dengan filter saat ini.</span></div></div>';
+        document.getElementById('lpPageEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
+        document.getElementById('lpPageDeleteButton').style.display = 'none';
+        document.getElementById('lpPagePrintButton').style.display = 'none';
+        return;
+      }
+
+      let progress = null;
+      if (selectedPeriod) progress = getCurrentLearningProgress(selectedStudent, selectedPeriod, type || undefined);
+      else progress = matchingRecords.find(item => String(item.namaSiswa || '').trim().toLowerCase() === String(selectedStudent || '').trim().toLowerCase()) || null;
       content.innerHTML = renderLearningProgressRecord(progress);
       document.getElementById('lpPageEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpPageDeleteButton').style.display = currentUser.userType === 'guru' && progress ? 'inline-flex' : 'none';
@@ -1577,10 +1605,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function handleLearningProgressDetailBackdrop(event) { if (event.target && event.target.id === 'modalLearningProgressDetail') closeLearningProgressDetailModal(); }
 
     function getSelectedLearningProgressPageRecord() {
-      const student = document.getElementById('lpPageStudent')?.value || globalSelectedLearningProgressStudent || currentUser.userName;
-      const type = document.getElementById('lpPagePeriodType')?.value || 'Bulanan';
+      const rawStudent = document.getElementById('lpPageStudent')?.value || '';
+      const student = currentUser.userType === 'siswa' ? currentUser.userName : (rawStudent || globalSelectedLearningProgressStudent || '');
+      if (!student) return null;
+      const type = document.getElementById('lpPagePeriodType')?.value || '';
       const period = document.getElementById('lpPagePeriod')?.value || '';
-      return getCurrentLearningProgress(student, period, type);
+      if (period) return getCurrentLearningProgress(student, period, type || undefined);
+      return (globalLearningProgressList || []).find(item => String(item.namaSiswa || '').trim().toLowerCase() === String(student).trim().toLowerCase() && (!type || getLearningProgressPeriodType(item) === type)) || null;
     }
 
     function deleteSelectedLearningProgress() {
