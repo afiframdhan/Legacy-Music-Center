@@ -20,6 +20,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let sigCanvases = {};
     let dashboardRequestNumber = 0;
     let notificationTimer = null;
+    let adminAttendanceSyncTimer = null;
     const AUTH_STORAGE_KEY = 'legacyMusicCenterAuth';
     const AUTH_COOKIE_KEY = 'legacyMusicCenterAuthPersistent';
     const THEME_STORAGE_KEY = 'legacyThemePreference';

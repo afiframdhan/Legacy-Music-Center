@@ -285,6 +285,41 @@ Guru: ${props.guru}`);
       }
     }
 
+
+    function configureAdminAttendanceLiveSync() {
+      if (adminAttendanceSyncTimer) {
+        clearInterval(adminAttendanceSyncTimer);
+        adminAttendanceSyncTimer = null;
+      }
+      if (currentUser.userType !== 'admin') return;
+      refreshAdminAttendanceLive();
+      adminAttendanceSyncTimer = setInterval(() => {
+        if (document.visibilityState === 'visible' && currentUser.userType === 'admin') refreshAdminAttendanceLive();
+      }, 8000);
+    }
+
+    function refreshAdminAttendanceLive() {
+      if (currentUser.userType !== 'admin') return;
+      google.script.run.withSuccessHandler(result => {
+        if (!result || result.success === false || !Array.isArray(result.items)) return;
+        const byId = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
+        let changed = false;
+        result.items.forEach(item => {
+          const key = String(item.absensiID || '');
+          if (!key) return;
+          const previous = byId.get(key);
+          if (!previous || JSON.stringify(previous) !== JSON.stringify(item)) {
+            byId.set(key, item);
+            changed = true;
+          }
+        });
+        if (!changed) return;
+        globalAbsensiList = Array.from(byId.values());
+        setupFilterDropdown();
+        renderTabelRiwayat();
+      }).withFailureHandler(() => {}).getRecentAttendance();
+    }
+
     function setupFilterDropdown() {
       const isGuru = currentUser.userType === 'guru';
       const isAdmin = currentUser.userType === 'admin';

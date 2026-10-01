@@ -14,11 +14,11 @@ const TEACHER = new Set([
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
   'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report',
   'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam',
-  'saveStudentRepertoire', 'deleteStudentRepertoire',
-  'saveScheduleOverride', 'deleteScheduleOverride'
+  'saveStudentRepertoire', 'deleteStudentRepertoire'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
+  'saveScheduleOverride', 'deleteScheduleOverride', 'getRecentAttendance',
   'addJadwalPengganti', 'deleteJadwalPengganti',
   'addPengumuman', 'deletePengumuman',
   'addGuru', 'updateGuru', 'deleteGuru',
@@ -243,6 +243,17 @@ async function handleRpc(request, env, ctx) {
       console.error('Supabase dashboard error, falling back to Apps Script:', error);
       const fallback = await gasRpc(env, method, [session.userID, session.userType]);
       return json({ ok:true, data:fallback });
+    }
+  }
+
+  if (method === 'getRecentAttendance') {
+    try {
+      if (session.userType !== 'admin') return json({ ok:false, error:'Akses hanya untuk admin.' }, 403);
+      const rows = await sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc', limit:'250' });
+      return json({ ok:true, data:{ success:true, items:rows.map(mapAttendance) } });
+    } catch (error) {
+      console.error('Recent attendance sync error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), items:[] } });
     }
   }
 
@@ -2714,7 +2725,7 @@ async function getScheduleOverrideRowsForSession(env, session) {
 }
 
 async function saveScheduleOverrideSupabase(env, session, rawPayload) {
-  if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat membuat pergantian jadwal.');
+  if (session.userType !== 'admin') throw new Error('Hanya admin yang dapat membuat atau mengubah pergantian jadwal.');
   const p = rawPayload && typeof rawPayload === 'object' ? rawPayload : {};
   const scheduleId = String(p.jadwalID || '').trim();
   const originalDate = formatDbDateIso(p.tanggalAsli);
@@ -2723,7 +2734,6 @@ async function saveScheduleOverrideSupabase(env, session, rawPayload) {
   const scheduleRows = await sbRows(env, 'schedules', { schedule_id:`eq.${scheduleId}`, limit:'1' });
   const schedule = scheduleRows[0];
   if (!schedule) throw new Error('Jadwal asli tidak ditemukan.');
-  if (session.userType === 'guru' && String(schedule.teacher_id || '') !== String(session.userID || '')) throw new Error('Anda tidak memiliki akses ke jadwal ini.');
 
   const expectedDay = String(schedule.day_name || '').trim().toLowerCase();
   const actualDay = String(dayNameFromIsoJs(originalDate) || '').trim().toLowerCase();
@@ -2737,7 +2747,6 @@ async function saveScheduleOverrideSupabase(env, session, rawPayload) {
     const rows = await sbRows(env, 'students', { student_id:`eq.${slotStudentId}`, limit:'1' });
     slotStudent = rows[0] || null;
     if (!slotStudent) throw new Error('Siswa pengganti slot tidak ditemukan.');
-    if (session.userType === 'guru' && !(await annualExamTeacherCanAccessStudent(env, session, slotStudentId))) throw new Error('Siswa pengganti bukan siswa yang dapat Anda akses.');
   }
 
   const makeupDate = formatDbDateIso(p.tanggalMakeup);
@@ -2798,15 +2807,11 @@ async function saveScheduleOverrideSupabase(env, session, rawPayload) {
 }
 
 async function deleteScheduleOverrideSupabase(env, session, overrideId) {
-  if (!['guru','admin'].includes(session.userType)) throw new Error('Akses hapus pergantian ditolak.');
+  if (session.userType !== 'admin') throw new Error('Hanya admin yang dapat menghapus pergantian jadwal.');
   if (!overrideId) throw new Error('ID pergantian tidak ditemukan.');
   const rows = await sbRows(env, 'schedule_overrides', { override_id:`eq.${overrideId}`, limit:'1' });
   const row = rows[0];
   if (!row) throw new Error('Pergantian jadwal tidak ditemukan.');
-  if (session.userType === 'guru') {
-    const schedules = await sbRows(env, 'schedules', { schedule_id:`eq.${row.original_schedule_id}`, teacher_id:`eq.${session.userID}`, limit:'1' });
-    if (!schedules.length && String(row.makeup_teacher_id || '') !== String(session.userID || '')) throw new Error('Anda tidak memiliki akses menghapus pergantian ini.');
-  }
   await supabaseRest(env, `/rest/v1/schedule_overrides?override_id=eq.${encodeURIComponent(overrideId)}`, { method:'DELETE', headers:{Prefer:'return=minimal'} });
   return { success:true, message:'Pergantian jadwal berhasil dihapus.', overrideID:overrideId };
 }

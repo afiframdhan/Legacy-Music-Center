@@ -188,9 +188,7 @@
             renderTabelJadwalPengganti();
             if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           }
-          document.getElementById('formAddJadwalPengganti')?.reset();
-          if (document.getElementById('scheduleOverrideID')) document.getElementById('scheduleOverrideID').value = '';
-          refreshScheduleOverrideFormOptions();
+          resetScheduleOverrideForm();
           fetchDashboardData();
         }
       }).withFailureHandler(error => {
@@ -198,6 +196,56 @@
         showAlert('alertDanger','Gagal menyimpan pergantian: ' + (error.message || error));
       }).saveScheduleOverride(payload);
       return false;
+    }
+
+    function resetScheduleOverrideForm() {
+      const form = document.getElementById('formAddJadwalPengganti');
+      if (form) form.reset();
+      const idEl = document.getElementById('scheduleOverrideID');
+      if (idEl) idEl.value = '';
+      const btn = document.getElementById('btnSubmitPengganti');
+      if (btn) btn.textContent = 'Simpan Pergantian';
+      const cancelBtn = document.getElementById('btnCancelPenggantiEdit');
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      refreshScheduleOverrideFormOptions();
+    }
+
+    function openEditScheduleOverride(id) {
+      if (currentUser.userType !== 'admin') return;
+      const item = (globalScheduleOverrides || []).find(row => String(row.overrideID || '') === String(id || ''));
+      if (!item) { showAlert('alertDanger','Data pergantian tidak ditemukan.'); return; }
+      const box = document.getElementById('formJadwalPenggantiBox');
+      if (box) { box.style.display = 'block'; box.classList.remove('collapsed'); }
+      const instrument = String(item.instrumenAsli || '').trim();
+      const instrumentSelect = document.getElementById('penggantiInstrumenFilter');
+      if (instrumentSelect) {
+        populateScheduleOverrideInstrumentFilter();
+        if (Array.from(instrumentSelect.options).some(opt => opt.value === instrument)) instrumentSelect.value = instrument;
+      }
+      refreshScheduleOverrideFormOptions();
+      const absentSelect = document.getElementById('penggantiSiswaSelect');
+      if (absentSelect) absentSelect.value = item.siswaAsli || '';
+      refreshScheduleOverrideOriginalScheduleOptions();
+      const scheduleSelect = document.getElementById('penggantiJadwalAsliSelect');
+      if (scheduleSelect && Array.from(scheduleSelect.options).some(opt => String(opt.value) === String(item.jadwalID || ''))) scheduleSelect.value = item.jadwalID || '';
+      if (document.getElementById('scheduleOverrideID')) document.getElementById('scheduleOverrideID').value = item.overrideID || '';
+      if (document.getElementById('penggantiTanggalAsli')) document.getElementById('penggantiTanggalAsli').value = item.tanggalAsli || '';
+      if (document.getElementById('penggantiSiswaSlotSelect')) document.getElementById('penggantiSiswaSlotSelect').value = item.siswaPenggantiID || '';
+      if (document.getElementById('penggantiTanggal')) document.getElementById('penggantiTanggal').value = item.tanggalMakeup || '';
+      if (document.getElementById('penggantiJamMulai')) document.getElementById('penggantiJamMulai').value = item.jamMulaiMakeup || '';
+      if (document.getElementById('penggantiJamSelesai')) document.getElementById('penggantiJamSelesai').value = item.jamSelesaiMakeup || '';
+      const guruSelect = document.getElementById('penggantiGuruSelect');
+      if (guruSelect && item.guruMakeup) guruSelect.value = item.guruMakeup;
+      const roomSelect = document.getElementById('penggantiRuanganSelect');
+      if (roomSelect && item.ruanganMakeup && Array.from(roomSelect.options).some(opt => opt.value === item.ruanganMakeup)) roomSelect.value = item.ruanganMakeup;
+      if (document.getElementById('penggantiAlasan')) document.getElementById('penggantiAlasan').value = item.alasan || 'Lainnya';
+      if (document.getElementById('penggantiCatatan')) document.getElementById('penggantiCatatan').value = item.catatan || '';
+      syncScheduleOverrideOriginalDateHint();
+      const btn = document.getElementById('btnSubmitPengganti');
+      if (btn) btn.textContent = 'Update Pergantian';
+      const cancelBtn = document.getElementById('btnCancelPenggantiEdit');
+      if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+      box?.scrollIntoView({behavior:'smooth', block:'start'});
     }
 
     function handleDeleteScheduleOverride(id) {
@@ -293,8 +341,8 @@
         const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || { hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '', guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik' };
         const slotText = item.siswaPengganti ? `${escapeTaskHtml(item.siswaPengganti)} memakai slot ${escapeTaskHtml(item.siswaAsli || '-')}` : `Slot ${escapeTaskHtml(item.siswaAsli || '-')} dikosongkan`;
         const makeupText = item.tanggalMakeup ? `${escapeTaskHtml(formatAcademyDate(item.tanggalMakeup))} • ${escapeTaskHtml(item.jamMulaiMakeup || '-')}–${escapeTaskHtml(item.jamSelesaiMakeup || '-')} • ${escapeTaskHtml(item.ruanganMakeup || '-')}` : 'Belum dijadwalkan';
-        const deleteButton = currentUser.userType !== 'siswa' ? `<button class="btn-action btn-delete" onclick="handleDeleteScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Hapus</button>` : '';
-        container.innerHTML += `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
+        const actionButtons = isAdmin ? `<div class="academy-card-actions"><button class="btn-action btn-edit" onclick="openEditScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Edit</button><button class="btn-action btn-delete" onclick="handleDeleteScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Hapus</button></div>` : '';
+        container.innerHTML += `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${actionButtons}</article>`;
       });
 
       const list = (globalJadwalPenggantiList || []).filter(item => {
