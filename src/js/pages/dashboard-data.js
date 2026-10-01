@@ -23,8 +23,10 @@
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
+        globalScheduleOverrides = data.scheduleOverrides || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
+        globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 
@@ -32,12 +34,13 @@
           globalGuruList = gList || [];
           if (data.userType === 'siswa') renderSiswa(data);
           if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
-          if (data.userType === 'guru' && typeof renderStudent360Access === 'function') renderStudent360Access(data);
+          if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
           renderLearningProgressViews();
           if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
           setupFilterDropdown();
           renderTabelJadwal();
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           renderTabelRiwayat();
           renderTabelTugas();
           renderTabelJadwalPengganti();
@@ -233,7 +236,7 @@
         document.getElementById('addStudentExtraClassesBox').style.display = 'none';
         document.getElementById('editStudentExtraClassesBox').style.display = 'none';
 
-        document.getElementById('formJadwalPenggantiBox').style.display = 'none';
+        document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'none';
         document.getElementById('dashboardAcademyUpdatesGuru').style.display = 'block';
 
@@ -273,6 +276,7 @@
         
         const filterSiswaGuru = document.getElementById('filterSiswaGuru');
         if(filterSiswaGuru) filterSiswaGuru.innerHTML = optFilterGuru;
+        if (typeof refreshSiswaGuruFilterByInstrument === 'function') refreshSiswaGuruFilterByInstrument();
 
         const filterJadwalGuru = document.getElementById('filterJadwalGuru');
         if(filterJadwalGuru) filterJadwalGuru.innerHTML = optFilterGuru;

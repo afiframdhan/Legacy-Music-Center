@@ -169,6 +169,42 @@
       restoreDashboardWidgetStates();
     }
 
+    function getTeachersForStudentInstrumentFilter(instrumentValue) {
+      const needle = String(instrumentValue || '').trim().toLowerCase();
+      const teacherNames = new Set();
+      if (needle) {
+        (globalSiswaList || []).forEach(student => {
+          getStudentClassesForUI(student).forEach(item => {
+            if (String(item.instrumen || '').trim().toLowerCase() === needle && String(item.guru || '').trim()) {
+              teacherNames.add(String(item.guru || '').trim().toLowerCase());
+            }
+          });
+        });
+      }
+      return (globalGuruList || []).filter(guru => {
+        if (!needle) return true;
+        const nameMatch = teacherNames.has(String(guru.nama || '').trim().toLowerCase());
+        const teacherInstruments = String(guru.instrumen || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+        return nameMatch || teacherInstruments.includes(needle);
+      });
+    }
+
+    function refreshSiswaGuruFilterByInstrument() {
+      if (currentUser.userType !== 'admin') return;
+      const instrument = document.getElementById('filterSiswaInstrumen')?.value || '';
+      const select = document.getElementById('filterSiswaGuru');
+      if (!select) return;
+      const oldValue = select.value;
+      const teachers = getTeachersForStudentInstrumentFilter(instrument).slice().sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+      select.innerHTML = '<option value="">-- Semua Guru --</option>' + teachers.map(g => `<option value="${escapeTaskHtml(g.nama || '')}">${escapeTaskHtml(g.nama || '-')} (${escapeTaskHtml(g.instrumen || 'Musik')})</option>`).join('');
+      select.value = Array.from(select.options).some(option => option.value === oldValue) ? oldValue : '';
+    }
+
+    function handleSiswaInstrumenFilterChange() {
+      refreshSiswaGuruFilterByInstrument();
+      applySiswaFilters();
+    }
+
     function applySiswaFilters() {
       let result = [...globalSiswaList];
       const urutan = document.getElementById('filterSiswaUrutan') ? document.getElementById('filterSiswaUrutan').value : 'terbaru';
@@ -186,11 +222,12 @@
         const filterInst = document.getElementById('filterSiswaInstrumen') ? document.getElementById('filterSiswaInstrumen').value.trim().toLowerCase() : '';
         const filterGuru = document.getElementById('filterSiswaGuru') ? document.getElementById('filterSiswaGuru').value.trim().toLowerCase() : '';
 
-        if (filterInst !== '') {
-          result = result.filter(s => studentHasClassValue(s, 'instrumen', filterInst));
-        }
-        if (filterGuru !== '') {
-          result = result.filter(s => studentHasClassValue(s, 'guru', filterGuru));
+        if (filterInst !== '' || filterGuru !== '') {
+          result = result.filter(s => getStudentClassesForUI(s).some(item => {
+            const instrumentMatch = !filterInst || String(item.instrumen || '').trim().toLowerCase() === filterInst;
+            const teacherMatch = !filterGuru || String(item.guru || '').trim().toLowerCase() === filterGuru;
+            return instrumentMatch && teacherMatch;
+          }));
         }
 
       }
@@ -1224,7 +1261,9 @@
     function renderStudent360Access(data) {
       const reports = currentUser.userType === 'guru'
         ? (Array.isArray(data?.teacherReports) ? data.teacherReports : [])
-        : (Array.isArray(data?.studentReports) ? data.studentReports : []);
+        : currentUser.userType === 'admin'
+          ? (Array.isArray(data?.adminReports) ? data.adminReports : [])
+          : (Array.isArray(data?.studentReports) ? data.studentReports : []);
 
       const latestBox = document.getElementById('student360LatestCard');
       const historyBox = document.getElementById('student360ReportHistory');
@@ -1252,7 +1291,7 @@
 
       if (!historyBox) return;
 
-      if (currentUser.userType === 'guru') {
+      if (currentUser.userType === 'guru' || currentUser.userType === 'admin') {
         if (filters) filters.style.display = 'grid';
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length

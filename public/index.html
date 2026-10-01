@@ -363,12 +363,46 @@
           </div>
           <div class="widget-box lp-page-filter">
             <div class="form-group" id="lpPageStudentSearchGroup" style="margin:0;"><label>Cari Siswa</label><input type="search" id="lpPageStudentSearch" placeholder="Ketik nama siswa..." oninput="refreshLearningProgressPage(false, true)" autocomplete="off"></div>
+            <div class="form-group" id="lpPageTeacherGroup" style="margin:0;display:none;"><label>Guru Pengajar</label><select id="lpPageTeacher" onchange="refreshLearningProgressPage(true)"><option value="">Semua Guru</option></select></div>
+            <div class="form-group" id="lpPageInstrumentGroup" style="margin:0;display:none;"><label>Instrumen</label><select id="lpPageInstrument" onchange="refreshLearningProgressPage(true)"><option value="">Semua Instrumen</option></select></div>
             <div class="form-group" id="lpPageStudentGroup" style="margin:0;"><label>Nama Siswa</label><select id="lpPageStudent" onchange="refreshLearningProgressPage()"></select></div>
             <div class="form-group" style="margin:0;"><label>Jenis Periode</label><select id="lpPagePeriodType" onchange="refreshLearningProgressPage(true)"><option value="">Semua Periode</option><option value="Bulanan">Bulanan</option><option value="Tiga Bulan">Tiga Bulan</option></select></div>
             <div class="form-group" style="margin:0;"><label>Periode Laporan</label><select id="lpPagePeriod" onchange="refreshLearningProgressPage()"></select></div>
             <button type="button" id="lpPagePrintButton" class="btn btn-export" style="display:none;margin:0;align-self:end;" onclick="printLearningProgressReport()">🖨 Cetak Laporan</button>
           </div>
           <div id="learningProgressPageContent" class="widget-box lp-widget"></div>
+        </div>
+
+        <div class="content-section" id="section-repertoire">
+          <div class="task-page-head">
+            <div><h2>Repertoire / Daftar Lagu Siswa</h2><p>Kelola lagu yang sedang dipelajari, target tampil, dan catatan perkembangan siswa dalam satu halaman.</p></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" id="repertoirePrintButton" class="btn btn-export" onclick="printRepertoireView()">🖨 Cetak</button><button type="button" id="repertoireAddButton" class="btn btn-primary" onclick="openRepertoireModal()">+ Tambah Repertoire</button></div>
+          </div>
+
+          <div class="task-stats repertoire-stats">
+            <div class="task-stat"><div class="task-stat-icon">♫</div><div class="task-stat-copy"><span>Total Lagu</span><strong id="repertoireStatTotal">0</strong><small>Daftar lagu aktif</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">★</div><div class="task-stat-copy"><span>Siap Tampil</span><strong id="repertoireStatReady">0</strong><small>Prioritas panggung</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">✓</div><div class="task-stat-copy"><span>Dikuasai / Tampil</span><strong id="repertoireStatMastered">0</strong><small>Lagu yang sudah matang</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">◷</div><div class="task-stat-copy"><span>Rata-rata Progress</span><strong id="repertoireStatAverage">0%</strong><small>Seluruh filter aktif</small></div></div>
+          </div>
+
+          <div class="widget-box repertoire-filter-box">
+            <div class="filter-grid repertoire-filter-grid">
+              <div class="form-group" style="margin:0;"><label>Cari Lagu / Siswa</label><input type="search" id="repertoireSearch" placeholder="Cari judul lagu, composer, event..." oninput="renderRepertoirePage()"></div>
+              <div class="form-group" id="repertoireTeacherFilterWrap" style="margin:0;display:none;"><label>Guru</label><select id="repertoireTeacherFilter" onchange="handleRepertoireTeacherFilterChange()"><option value="">Semua Guru</option></select></div>
+              <div class="form-group" id="repertoireStudentFilterWrap" style="margin:0;"><label>Siswa</label><select id="repertoireStudentFilter" onchange="renderRepertoirePage()"><option value="">Semua Siswa</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="repertoireInstrumentFilter" onchange="renderRepertoirePage()"><option value="">Semua Instrumen</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Status</label><select id="repertoireStatusFilter" onchange="renderRepertoirePage()"><option value="">Semua Status</option></select></div>
+            </div>
+          </div>
+
+          <div id="repertoireLoadingState" class="widget-box repertoire-empty">Memuat data repertoire...</div>
+          <div class="repertoire-layout">
+            <div class="repertoire-list-column">
+              <div id="repertoireList" class="repertoire-list"></div>
+            </div>
+            <div id="repertoireSummary" class="repertoire-summary"></div>
+          </div>
         </div>
 
         <!-- DAFTAR SISWA -->
@@ -410,7 +444,7 @@
               </div>
               <div class="form-group" id="filterSiswaInstrumenGroup" style="margin:0;">
                 <label>Filter Instrumen:</label>
-                <select id="filterSiswaInstrumen" onchange="applySiswaFilters()">
+                <select id="filterSiswaInstrumen" onchange="handleSiswaInstrumenFilterChange()">
                   <option value="">-- Semua Instrumen --</option>
                   <option value="Gitar">Gitar</option>
                   <option value="Biola">Biola</option>
@@ -532,52 +566,74 @@
         <div class="content-section" id="section-pengganti">
           <div class="academy-page-head"><div><h2>Jadwal Pergantian</h2><p>Kelola dan lihat jadwal Make-up Class berdasarkan tanggal pelaksanaan.</p></div></div>
 
-          <div class="widget-box academy-form-box" id="formJadwalPenggantiBox" style="display:none;">
-            <div class="widget-title" style="margin-bottom:15px;">🔄 Atur Jadwal Pergantian Siswa (Sakit / Izin)</div>
-            <form id="formAddJadwalPengganti" class="academy-form-grid" onsubmit="return handleAddJadwalPengganti(event)">
+          <div class="widget-box academy-form-box collapsible-widget" id="formJadwalPenggantiBox" style="display:none;">
+            <div class="widget-header" style="margin-bottom:8px;"><div class="widget-title">🔄 Pergantian Jadwal Sementara</div><button type="button" class="widget-collapse-btn" data-collapse-button="formJadwalPenggantiBox" onclick="toggleDashboardWidget('formJadwalPenggantiBox')" aria-label="Minimize">−</button></div>
+            <div class="collapsible-content">
+            <p style="margin:0 0 16px;color:#64748b;font-size:13px;line-height:1.55;">Jadwal rutin tidak diubah. Pergantian hanya berlaku pada tanggal yang dipilih, lalu minggu berikutnya otomatis kembali ke jadwal normal.</p>
+            <form id="formAddJadwalPengganti" class="academy-form-grid" onsubmit="return handleSaveScheduleOverride(event)">
+              <input type="hidden" id="scheduleOverrideID">
               <div class="form-group">
-                <label>Pilih Siswa</label>
-                <select id="penggantiSiswaSelect" required onchange="autoFillJadwalPenggantiData(this.value)"></select>
+                <label>Filter Instrumen</label>
+                <select id="penggantiInstrumenFilter" onchange="refreshScheduleOverrideFormOptions()"><option value="">Semua Instrumen</option></select>
               </div>
               <div class="form-group">
-                <label>Alasan Pergantian</label>
+                <label>Siswa yang Berhalangan</label>
+                <select id="penggantiSiswaSelect" required onchange="refreshScheduleOverrideOriginalScheduleOptions()"></select>
+              </div>
+              <div class="form-group">
+                <label>Jadwal Asli</label>
+                <select id="penggantiJadwalAsliSelect" required onchange="syncScheduleOverrideOriginalDateHint()"></select>
+                <small id="penggantiJadwalAsliHint" style="display:block;margin-top:5px;color:#64748b;"></small>
+              </div>
+              <div class="form-group">
+                <label>Tanggal Jadwal yang Diganti</label>
+                <input type="date" id="penggantiTanggalAsli" required onchange="syncScheduleOverrideOriginalDateHint()">
+              </div>
+              <div class="form-group">
+                <label>Alasan</label>
                 <select id="penggantiAlasan" required>
                   <option value="Sakit">Sakit</option>
                   <option value="Izin">Izin</option>
+                  <option value="Keperluan Keluarga">Keperluan Keluarga</option>
                   <option value="Lainnya">Lainnya</option>
                 </select>
               </div>
+              <div class="academy-span-all schedule-override-divider"><strong>Slot Jadwal Asli</strong><span>Opsional — pilih siswa lain jika slot Janwar dipakai Clara.</span></div>
+              <div class="form-group academy-span-2">
+                <label>Siswa yang Menggunakan Slot</label>
+                <select id="penggantiSiswaSlotSelect"><option value="">— Slot dikosongkan / tidak diganti siswa lain —</option></select>
+              </div>
+              <div class="academy-span-all schedule-override-divider"><strong>Make-up Siswa yang Berhalangan</strong><span>Opsional jika tanggal pengganti belum ditentukan.</span></div>
               <div class="form-group">
-                <label>Tanggal Pelaksanaan Kelas Pergantian</label>
-                <input type="date" id="penggantiTanggal" required>
+                <label>Tanggal Make-up</label>
+                <input type="date" id="penggantiTanggal">
               </div>
               <div class="form-group">
                 <label>Jam Mulai</label>
-                <input type="time" id="penggantiJamMulai" required>
+                <input type="time" id="penggantiJamMulai">
               </div>
               <div class="form-group">
                 <label>Jam Selesai</label>
-                <input type="time" id="penggantiJamSelesai" required>
+                <input type="time" id="penggantiJamSelesai">
               </div>
               <div class="form-group">
-                <label>Guru Pengajar</label>
-                <select id="penggantiGuruSelect" required></select>
+                <label>Guru Make-up</label>
+                <select id="penggantiGuruSelect"></select>
               </div>
               <div class="form-group">
-                <label>Ruangan</label>
-                <select id="penggantiRuanganSelect" required>
-                  <option value="R 1">R 1</option>
-                  <option value="R 2">R 2</option>
-                  <option value="R 3">R 3</option>
-                  <option value="R 4">R 4</option>
-                  <option value="R 5">R 5</option>
-                  <option value="R 6">R 6</option>
-                  <option value="R 7">R 7</option>
-                  <option value="R 8">R 8</option>
+                <label>Ruangan Make-up</label>
+                <select id="penggantiRuanganSelect">
+                  <option value="R 1">R 1</option><option value="R 2">R 2</option><option value="R 3">R 3</option><option value="R 4">R 4</option>
+                  <option value="R 5">R 5</option><option value="R 6">R 6</option><option value="R 7">R 7</option><option value="R 8">R 8</option>
                 </select>
               </div>
-              <div class="academy-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitPengganti" class="btn btn-primary">Simpan Jadwal Pergantian</button></div>
+              <div class="form-group academy-span-all">
+                <label>Catatan</label>
+                <textarea id="penggantiCatatan" rows="3" placeholder="Contoh: Clara menggunakan slot Janwar. Janwar make-up hari Kamis."></textarea>
+              </div>
+              <div class="academy-span-all" style="display:flex;justify-content:flex-end;"><button type="submit" id="btnSubmitPengganti" class="btn btn-primary">Simpan Pergantian</button></div>
             </form>
+            </div>
           </div>
 
           <div class="widget-box">
@@ -585,7 +641,8 @@
               <div class="widget-title">📋 Daftar Jadwal Pergantian</div>
             </div>
             <div id="makeupFilterBox" class="academy-filter-bar" style="margin-bottom:14px;">
-              <div id="makeupFilterClassGroup" class="form-group" style="margin:0;"><label>Kelas / Instrumen</label><select id="makeupFilterClass" onchange="renderTabelJadwalPengganti()"><option value="">Semua Kelas</option></select></div>
+              <div id="makeupFilterSearchGroup" class="form-group" style="margin:0;"><label>Cari Siswa</label><input type="search" id="makeupFilterSearch" placeholder="Nama siswa..." oninput="renderTabelJadwalPengganti()"></div>
+              <div id="makeupFilterInstrumentGroup" class="form-group" style="margin:0;"><label>Kelas / Instrumen</label><select id="makeupFilterInstrument" onchange="syncMakeupTeacherFilter(); renderTabelJadwalPengganti()"><option value="">Semua Instrumen</option></select></div>
               <div id="makeupFilterDayGroup" class="form-group" style="margin:0;"><label>Hari</label><select id="makeupFilterDay" onchange="renderTabelJadwalPengganti()"><option value="">Semua Hari</option><option>Senin</option><option>Selasa</option><option>Rabu</option><option>Kamis</option><option>Jumat</option><option>Sabtu</option><option>Minggu</option></select></div>
               <div id="makeupFilterTeacherGroup" class="form-group" style="margin:0;"><label>Guru</label><select id="makeupFilterTeacher" onchange="renderTabelJadwalPengganti()"><option value="">Semua Guru</option></select></div>
             </div>
@@ -669,7 +726,7 @@
               <div class="form-group"><label>Filter Hari</label><select id="absensiHariFilter" onchange="refreshAbsensiStudentOptions()"><option value="">-- Semua Hari --</option><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option><option value="Minggu">Minggu</option></select></div>
               <div class="form-group"><label>Pilih Siswa</label><select id="absensiSiswa" required></select><div id="absensiStudentFilterHint" style="font-size:11px;color:#64748b;margin-top:5px;"></div></div>
               <div class="form-group"><label>Pertemuan Ke</label><select id="absensiPertemuanKe" required><option value="1">Pertemuan 1</option><option value="2">Pertemuan 2</option><option value="3">Pertemuan 3</option><option value="4">Pertemuan 4</option></select></div>
-              <div class="form-group"><label>Tanggal</label><input type="date" id="absensiTanggal" required></div>
+              <div class="form-group"><label>Tanggal</label><input type="date" id="absensiTanggal" required onchange="refreshAbsensiStudentOptions()"></div>
               <div class="form-group"><label>Status</label><select id="absensiStatus" required><option value="Masuk">Masuk</option><option value="Sakit">Sakit</option><option value="Izin">Izin</option><option value="Alpa">Alpa</option></select></div>
               <div class="form-group"><label>Materi</label><textarea id="absensiMateri" class="attendance-multiline-input" rows="3" placeholder="Tulis materi pertemuan. Tekan Enter untuk baris baru."></textarea></div>
               <div class="form-group"><label>Lagu</label><textarea id="absensiLagu" class="attendance-multiline-input" rows="3" placeholder="Tulis lagu / repertoar. Tekan Enter untuk baris baru."></textarea></div>
@@ -1243,6 +1300,42 @@
       <div class="modal-header"><h3 id="lpDetailTitle">Detail Progress Belajar</h3><button type="button" class="modal-close" onclick="closeLearningProgressDetailModal()" aria-label="Tutup">&times;</button></div>
       <div id="lpDetailBody" class="lp-modal-body"></div>
       <div class="lp-modal-footer"><button type="button" id="lpDetailDeleteButton" class="btn" style="display:none;background:#fee2e2;color:#b91c1c;" onclick="deleteSelectedLearningProgress()">Hapus</button><button type="button" id="lpDetailEditButton" class="btn btn-export" style="display:none;" onclick="editLearningProgressDetailRecord()">Edit / Update</button><button type="button" id="lpDetailPrintButton" class="btn btn-export" style="display:none;" onclick="printLearningProgressReport()">🖨 Cetak</button><button type="button" class="btn btn-primary" onclick="closeLearningProgressDetailModal()">Tutup</button></div>
+    </div>
+  </div>
+
+  <!-- MODAL REPERTOIRE -->
+  <div id="modalRepertoire" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3 id="repertoireFormTitle">Tambah Repertoire Siswa</h3><button class="modal-close" onclick="closeRepertoireModal()">&times;</button></div>
+      <form id="formRepertoire" onsubmit="return handleSaveRepertoire(event)">
+        <input type="hidden" id="repertoireID">
+        <div class="filter-grid">
+          <div class="form-group"><label>Nama Siswa</label><select id="repertoireSiswa" required onchange="populateRepertoireInstrumentOptions('repertoireSiswa','repertoireInstrumen')"></select></div>
+          <div class="form-group"><label>Instrumen</label><select id="repertoireInstrumen" required></select></div>
+          <div class="form-group"><label>Judul Lagu</label><input type="text" id="repertoireJudulLagu" required placeholder="Contoh: Fly Me to the Moon"></div>
+          <div class="form-group"><label>Composer / Artist</label><input type="text" id="repertoireComposer" placeholder="Contoh: Bart Howard"></div>
+          <div class="form-group"><label>Key Signature</label><input type="text" id="repertoireKeySignature" placeholder="C, G, Dm, dll"></div>
+          <div class="form-group"><label>Level</label><input type="text" id="repertoireLevel" placeholder="Beginner / Grade 1 / Intermediate"></div>
+          <div class="form-group"><label>Status</label><select id="repertoireStatus" required><option value="Belajar">Belajar</option><option value="Siap Tampil">Siap Tampil</option><option value="Dikuasai">Dikuasai</option><option value="Sudah Tampil">Sudah Tampil</option></select></div>
+          <div class="form-group"><label>Progress (%)</label><input type="number" id="repertoireProgress" min="0" max="100" value="0" required></div>
+          <div class="form-group"><label>Tanggal Mulai</label><input type="date" id="repertoireTanggalMulai"></div>
+          <div class="form-group"><label>Target Tampil</label><input type="date" id="repertoireTargetTampil"></div>
+          <div class="form-group"><label>Tanggal Tampil Terakhir</label><input type="date" id="repertoireTanggalTampilTerakhir"></div>
+          <div class="form-group"><label>Event / Penampilan</label><input type="text" id="repertoireEventTampil" placeholder="Contoh: Student Recital / Repertoire Class"></div>
+          <div class="form-group attendance-span-2"><label>Video Referensi / Link YouTube</label><input type="url" id="repertoireVideoUrl" placeholder="https://youtube.com/..."></div>
+          <div class="form-group attendance-span-2"><label>Catatan Coach</label><textarea id="repertoireCatatan" rows="4" placeholder="Catatan teknik, dinamika, bagian sulit, dan arahan belajar berikutnya..."></textarea></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;"><button type="button" class="btn" style="background:#e2e8f0;color:#334155;" onclick="closeRepertoireModal()">Batal</button><button type="submit" id="btnSaveRepertoire" class="btn btn-primary">Simpan Repertoire</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DETAIL REPERTOIRE -->
+  <div id="modalRepertoireDetail" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Detail Repertoire</h3><button class="modal-close" onclick="closeRepertoireDetail()">&times;</button></div>
+      <div id="repertoireDetailBody"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap;"><button type="button" id="btnDeleteRepertoireDetail" class="btn" style="display:none;background:#fee2e2;color:#b91c1c;" onclick="deleteActiveRepertoireDetail()">Hapus</button><button type="button" id="btnEditRepertoireDetail" class="btn btn-export" style="display:none;" onclick="editActiveRepertoireDetail()">Edit</button><button type="button" class="btn btn-primary" onclick="closeRepertoireDetail()">Tutup</button></div>
     </div>
   </div>
 

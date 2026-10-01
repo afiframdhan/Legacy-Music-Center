@@ -3,7 +3,8 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 const COMMON = new Set([
   'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
-  'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest'
+  'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
+  'getRepertoireData'
 ]);
 const STUDENT = new Set([...COMMON, 'submitTugasJawaban', 'listAnnualExams', 'getAnnualExam']);
 const TEACHER = new Set([
@@ -12,7 +13,9 @@ const TEACHER = new Set([
   'addTugasCombined', 'deleteTugas', 'recordAbsensi', 'updateAbsensi', 'deleteAbsensi',
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
   'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report',
-  'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam'
+  'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam',
+  'saveStudentRepertoire', 'deleteStudentRepertoire',
+  'saveScheduleOverride', 'deleteScheduleOverride'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -240,6 +243,31 @@ async function handleRpc(request, env, ctx) {
       console.error('Supabase dashboard error, falling back to Apps Script:', error);
       const fallback = await gasRpc(env, method, [session.userID, session.userType]);
       return json({ ok:true, data:fallback });
+    }
+  }
+
+  if (method === 'getRepertoireData') {
+    try {
+      const result = await getRepertoireDataSupabase(env, session);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Repertoire read error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'saveStudentRepertoire' || method === 'deleteStudentRepertoire') {
+    try {
+      const payload = method === 'deleteStudentRepertoire'
+        ? { repertoireID:String(args[0] || '').trim() }
+        : (args[0] && typeof args[0] === 'object' ? structuredClone(args[0]) : {});
+      const result = method === 'deleteStudentRepertoire'
+        ? await deleteStudentRepertoireSupabase(env, session, payload)
+        : await saveStudentRepertoireSupabase(env, session, payload);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Repertoire write error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
 
@@ -816,6 +844,39 @@ async function handleRpc(request, env, ctx) {
     } catch (error) {
       console.error(`Phase 10D progress operation failed for ${method}:`, error);
       return json({ ok:true, data:{ success:false, message:'Gagal memproses Progress Belajar. Silakan coba lagi.' } });
+    }
+  }
+
+  // DATE-SPECIFIC SCHEDULE OVERRIDE: one-date replacement + make-up class.
+  if (method === 'saveScheduleOverride' || method === 'deleteScheduleOverride') {
+    try {
+      const result = method === 'deleteScheduleOverride'
+        ? await deleteScheduleOverrideSupabase(env, session, String(safeArgs[0] || '').trim())
+        : await saveScheduleOverrideSupabase(env, session, safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {});
+      if (method === 'saveScheduleOverride' && result && result.success && result.override && ctx) {
+        const o = result.override;
+        const recipients = [];
+        const pushTeacher = id => {
+          const clean = String(id || '').trim();
+          if (clean && clean !== String(session.userID || '').trim() && !recipients.some(item => item.id === clean)) recipients.push({role:'guru', id:clean});
+        };
+        pushTeacher(o.guruAsliID);
+        pushTeacher(o.guruMakeupID);
+        const slotDate = o.tanggalAsli ? formatDbDateDmy(o.tanggalAsli) : '';
+        const makeupText = o.tanggalMakeup ? ` Make-up: ${formatDbDateDmy(o.tanggalMakeup)} ${o.jamMulaiMakeup || ''}.` : '';
+        if (recipients.length) {
+          ctx.waitUntil(pushToUniqueRecipients(env, recipients, {
+            title:'Pergantian Jadwal',
+            body:pushText(`${o.siswaAsli || 'Siswa'} · ${slotDate || '-'}${o.siswaPengganti ? ` · slot dipakai ${o.siswaPengganti}` : ''}.${makeupText}`),
+            url:'/?open=section-pengganti',
+            tag:'schedule-override-' + String(o.overrideID || Date.now())
+          }).catch(error => console.error('Schedule override push failed:', error)));
+        }
+      }
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Schedule override operation failed:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
 
@@ -2115,6 +2176,36 @@ function mapReplacement(row) {
   };
 }
 
+function mapScheduleOverride(row) {
+  return {
+    overrideID: row.override_id || '',
+    jadwalID: row.original_schedule_id || '',
+    tanggalAsli: formatDbDateIso(row.original_date),
+    hariAsli: row.original_day_name || '',
+    jamMulaiAsli: formatDbTime(row.original_start_time),
+    jamSelesaiAsli: formatDbTime(row.original_end_time),
+    guruAsliID: row.original_teacher_id || '',
+    guruAsli: row.original_teacher_name_snapshot || '',
+    ruanganAsli: row.original_room || '',
+    instrumenAsli: row.original_instrument || '',
+    siswaAsliID: row.absent_student_id || '',
+    siswaAsli: row.absent_student_name_snapshot || '',
+    siswaPenggantiID: row.slot_student_id || '',
+    siswaPengganti: row.slot_student_name_snapshot || '',
+    instrumenPengganti: row.slot_instrument || '',
+    tanggalMakeup: formatDbDateIso(row.makeup_date),
+    jamMulaiMakeup: formatDbTime(row.makeup_start_time),
+    jamSelesaiMakeup: formatDbTime(row.makeup_end_time),
+    guruMakeupID: row.makeup_teacher_id || '',
+    guruMakeup: row.makeup_teacher_name_snapshot || '',
+    ruanganMakeup: row.makeup_room || '',
+    alasan: row.reason || '',
+    catatan: row.notes || '',
+    status: row.status || 'Aktif',
+    dibuatOleh: row.created_by_name || ''
+  };
+}
+
 function mapAnnouncement(row) {
   return {
     pengumumanID: row.announcement_id || '',
@@ -2142,6 +2233,32 @@ function mapTeacherAttendance(row) {
     catatan: row.notes || '',
     dicatatOleh: row.recorded_by || '',
     tandaTangan: row.signature_data || ''
+  };
+}
+
+function mapRepertoire(row) {
+  const youtube = buildYouTubeMeta(row.video_url || '');
+  return {
+    repertoireID: row.repertoire_id || '',
+    siswaID: row.student_id || '',
+    namaSiswa: row.student_name_snapshot || '',
+    guruID: row.teacher_id || '',
+    guru: row.teacher_name_snapshot || '',
+    instrumen: row.instrument || 'Musik',
+    judulLagu: row.song_title || '',
+    composer: row.composer || '',
+    keySignature: row.key_signature || '',
+    level: row.level || '',
+    progress: Number(row.progress_percent || 0),
+    status: row.status || 'Belajar',
+    tanggalMulai: formatDbDateIso(row.start_date),
+    targetTampil: formatDbDateIso(row.target_date),
+    tanggalTampilTerakhir: formatDbDateIso(row.last_performed_date),
+    eventTampil: row.performance_event || '',
+    videoUrl: row.video_url || '',
+    youtube,
+    catatan: row.notes || '',
+    lastUpdated: formatProgressUpdated(row.updated_at || row.created_at)
   };
 }
 
@@ -2462,9 +2579,241 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
   };
 }
 
+async function getRepertoireDataSupabase(env, session) {
+  let rows = [];
+  if (session.userType === 'siswa') {
+    rows = await sbRows(env, 'student_repertoire', { student_id:`eq.${session.userID}`, active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
+  } else if (session.userType === 'guru') {
+    const classes = await sbRows(env, 'student_classes', { teacher_id:`eq.${session.userID}` });
+    const directStudents = await sbRows(env, 'students', { teacher_id:`eq.${session.userID}` });
+    const allowedIds = new Set([
+      ...classes.map(row => String(row.student_id || '').trim()).filter(Boolean),
+      ...directStudents.map(row => String(row.student_id || '').trim()).filter(Boolean)
+    ]);
+    const allowedClassKeys = new Set(classes.map(row => `${String(row.student_id || '').trim()}|${String(row.instrument || '').trim().toLowerCase()}`));
+    const allRows = await sbRows(env, 'student_repertoire', { active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
+    rows = allRows.filter(row => {
+      const studentId = String(row.student_id || '').trim();
+      const instrument = String(row.instrument || '').trim().toLowerCase();
+      if (allowedClassKeys.has(`${studentId}|${instrument}`)) return true;
+      if (allowedIds.has(studentId) && !instrument) return true;
+      return String(row.teacher_id || '').trim() === String(session.userID || '').trim();
+    });
+  } else if (session.userType === 'admin') {
+    rows = await sbRows(env, 'student_repertoire', { active:'eq.true', order:'target_date.asc.nullslast,updated_at.desc.nullslast,created_at.desc' });
+  } else {
+    throw new Error('Akses repertoire tidak valid.');
+  }
+
+  return { success:true, items:rows.map(mapRepertoire) };
+}
+
+async function saveStudentRepertoireSupabase(env, session, payload) {
+  if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat menyimpan repertoire.');
+  const repertoireId = String(payload.repertoireID || '').trim();
+  const studentId = String(payload.siswaID || '').trim();
+  if (!studentId) throw new Error('Siswa belum dipilih.');
+  if (!(await annualExamTeacherCanAccessStudent(env, session, studentId))) throw new Error('Anda tidak memiliki akses ke siswa ini.');
+  const students = await sbRows(env, 'students', { student_id:`eq.${studentId}`, limit:'1' });
+  const student = students[0];
+  if (!student) throw new Error('Data siswa tidak ditemukan.');
+
+  let existing = null;
+  if (repertoireId) {
+    const existingRows = await sbRows(env, 'student_repertoire', { repertoire_id:`eq.${repertoireId}`, limit:'1' });
+    existing = existingRows[0] || null;
+    if (!existing) throw new Error('Data repertoire tidak ditemukan.');
+    if (String(existing.student_id || '').trim() !== studentId) throw new Error('Repertoire tidak cocok dengan siswa yang dipilih.');
+  }
+
+  const classRows = await sbRows(env, 'student_classes', { student_id:`eq.${studentId}`, order:'created_at.asc' });
+  const requestedInstrument = String(payload.instrumen || existing?.instrument || student.instrument || 'Musik').trim();
+  const selectedClass = classRows.find(row => String(row.instrument || '').trim().toLowerCase() === requestedInstrument.toLowerCase()) || classRows[0] || null;
+  const teacherId = session.userType === 'guru'
+    ? String(session.userID || '').trim()
+    : String(existing?.teacher_id || selectedClass?.teacher_id || student.teacher_id || '').trim();
+  const teacherName = session.userType === 'guru'
+    ? String(session.userName || '').trim()
+    : String(existing?.teacher_name_snapshot || selectedClass?.teacher_name_snapshot || student.teacher_name_snapshot || '').trim();
+
+  const normalizedStatus = ['belajar','siap tampil','dikuasai','sudah tampil'].includes(String(payload.status || '').trim().toLowerCase())
+    ? String(payload.status || '').trim()
+    : 'Belajar';
+
+  const body = {
+    student_id: studentId,
+    student_name_snapshot: String(student.name || '').trim(),
+    teacher_id: teacherId || null,
+    teacher_name_snapshot: teacherName || null,
+    instrument: requestedInstrument || 'Musik',
+    song_title: String(payload.judulLagu || '').trim(),
+    composer: String(payload.composer || '').trim(),
+    key_signature: String(payload.keySignature || '').trim(),
+    level: String(payload.level || '').trim(),
+    progress_percent: Math.max(0, Math.min(100, Math.round(Number(payload.progress || 0) || 0))),
+    status: normalizedStatus,
+    start_date: formatDbDateIso(payload.tanggalMulai) || null,
+    target_date: formatDbDateIso(payload.targetTampil) || null,
+    last_performed_date: formatDbDateIso(payload.tanggalTampilTerakhir) || null,
+    performance_event: String(payload.eventTampil || '').trim(),
+    video_url: String(payload.videoUrl || '').trim(),
+    notes: String(payload.catatan || '').trim(),
+    active: true,
+    updated_at: new Date().toISOString()
+  };
+
+  if (!body.song_title) throw new Error('Judul lagu wajib diisi.');
+
+  let response;
+  if (existing) {
+    response = await supabaseRest(env, `/rest/v1/student_repertoire?repertoire_id=eq.${encodeURIComponent(repertoireId)}`, {
+      method:'PATCH',
+      headers:{ 'Content-Type':'application/json', Prefer:'return=representation' },
+      body:JSON.stringify(body)
+    });
+  } else {
+    response = await supabaseRest(env, '/rest/v1/student_repertoire', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Prefer:'return=representation' },
+      body:JSON.stringify(body)
+    });
+  }
+  const row = Array.isArray(response) ? response[0] : null;
+  return {
+    success:true,
+    message: existing ? 'Repertoire berhasil diperbarui.' : 'Repertoire berhasil ditambahkan.',
+    item: row ? mapRepertoire(row) : null
+  };
+}
+
+async function deleteStudentRepertoireSupabase(env, session, payload) {
+  if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat menghapus repertoire.');
+  const repertoireId = String(payload.repertoireID || '').trim();
+  if (!repertoireId) throw new Error('Repertoire ID tidak ditemukan.');
+  const rows = await sbRows(env, 'student_repertoire', { repertoire_id:`eq.${repertoireId}`, limit:'1' });
+  const row = rows[0];
+  if (!row) throw new Error('Data repertoire tidak ditemukan.');
+  if (!(await annualExamTeacherCanAccessStudent(env, session, String(row.student_id || '').trim()))) throw new Error('Anda tidak memiliki akses ke siswa ini.');
+  await supabaseRest(env, `/rest/v1/student_repertoire?repertoire_id=eq.${encodeURIComponent(repertoireId)}`, { method:'DELETE', headers:{ Prefer:'return=minimal' } });
+  return { success:true, message:'Repertoire berhasil dihapus.', repertoireID:repertoireId };
+}
+
+async function getScheduleOverrideRowsForSession(env, session) {
+  const rows = await sbRows(env, 'schedule_overrides', { status:'eq.Aktif', order:'original_date.desc,created_at.desc' });
+  if (session.userType === 'admin') return rows;
+  if (session.userType === 'siswa') {
+    const id = String(session.userID || '').trim();
+    return rows.filter(row => String(row.absent_student_id || '') === id || String(row.slot_student_id || '') === id);
+  }
+  if (session.userType === 'guru') {
+    const schedules = await sbRows(env, 'schedules', { teacher_id:`eq.${session.userID}` });
+    const ids = new Set(schedules.map(row => String(row.schedule_id || '')).filter(Boolean));
+    return rows.filter(row => ids.has(String(row.original_schedule_id || '')) || String(row.makeup_teacher_id || '') === String(session.userID || ''));
+  }
+  return [];
+}
+
+async function saveScheduleOverrideSupabase(env, session, rawPayload) {
+  if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat membuat pergantian jadwal.');
+  const p = rawPayload && typeof rawPayload === 'object' ? rawPayload : {};
+  const scheduleId = String(p.jadwalID || '').trim();
+  const originalDate = formatDbDateIso(p.tanggalAsli);
+  if (!scheduleId || !originalDate) throw new Error('Jadwal asli dan tanggal terdampak wajib dipilih.');
+
+  const scheduleRows = await sbRows(env, 'schedules', { schedule_id:`eq.${scheduleId}`, limit:'1' });
+  const schedule = scheduleRows[0];
+  if (!schedule) throw new Error('Jadwal asli tidak ditemukan.');
+  if (session.userType === 'guru' && String(schedule.teacher_id || '') !== String(session.userID || '')) throw new Error('Anda tidak memiliki akses ke jadwal ini.');
+
+  const expectedDay = String(schedule.day_name || '').trim().toLowerCase();
+  const actualDay = String(dayNameFromIsoJs(originalDate) || '').trim().toLowerCase();
+  if (expectedDay && actualDay && expectedDay !== actualDay) throw new Error(`Tanggal terdampak harus jatuh pada hari ${schedule.day_name}.`);
+
+  const absentId = String(schedule.student_id || '').trim();
+  const absentName = String(schedule.student_name_snapshot || p.siswaAsli || '').trim();
+  let slotStudent = null;
+  const slotStudentId = String(p.siswaPenggantiID || '').trim();
+  if (slotStudentId) {
+    const rows = await sbRows(env, 'students', { student_id:`eq.${slotStudentId}`, limit:'1' });
+    slotStudent = rows[0] || null;
+    if (!slotStudent) throw new Error('Siswa pengganti slot tidak ditemukan.');
+    if (session.userType === 'guru' && !(await annualExamTeacherCanAccessStudent(env, session, slotStudentId))) throw new Error('Siswa pengganti bukan siswa yang dapat Anda akses.');
+  }
+
+  const makeupDate = formatDbDateIso(p.tanggalMakeup);
+  const makeupStart = normalizeApiTime(p.jamMulaiMakeup);
+  const makeupEnd = normalizeApiTime(p.jamSelesaiMakeup);
+  const makeupTeacherId = String(p.guruMakeupID || schedule.teacher_id || session.userID || '').trim();
+  let makeupTeacherName = String(p.guruMakeup || schedule.teacher_name_snapshot || session.userName || '').trim();
+  if (makeupTeacherId) {
+    const teachers = await sbRows(env, 'teachers', { teacher_id:`eq.${makeupTeacherId}`, limit:'1' });
+    if (teachers[0]) makeupTeacherName = String(teachers[0].name || makeupTeacherName).trim();
+  }
+  if (makeupDate && (!makeupStart || !makeupEnd)) throw new Error('Jam mulai dan selesai make-up wajib diisi.');
+
+  const payload = {
+    original_schedule_id:scheduleId,
+    original_date:originalDate,
+    original_day_name:String(schedule.day_name || '').trim(),
+    original_start_time:normalizeApiTime(schedule.start_time),
+    original_end_time:normalizeApiTime(schedule.end_time),
+    original_teacher_id:String(schedule.teacher_id || '').trim() || null,
+    original_teacher_name_snapshot:String(schedule.teacher_name_snapshot || '').trim(),
+    original_room:String(schedule.room || '').trim(),
+    original_instrument:String(schedule.instrument || 'Musik').trim(),
+    absent_student_id:absentId || null,
+    absent_student_name_snapshot:absentName,
+    slot_student_id:slotStudentId || null,
+    slot_student_name_snapshot:slotStudent ? String(slotStudent.name || '').trim() : '',
+    slot_instrument:slotStudent ? String(p.instrumenPengganti || slotStudent.instrument || schedule.instrument || '').trim() : '',
+    makeup_date:makeupDate || null,
+    makeup_start_time:makeupStart || null,
+    makeup_end_time:makeupEnd || null,
+    makeup_teacher_id:makeupTeacherId || null,
+    makeup_teacher_name_snapshot:makeupTeacherName || '',
+    makeup_room:String(p.ruanganMakeup || schedule.room || '').trim(),
+    reason:String(p.alasan || 'Lainnya').trim(),
+    notes:String(p.catatan || '').trim(),
+    status:'Aktif',
+    created_by_role:session.userType,
+    created_by_id:String(session.userID || '').trim() || null,
+    created_by_name:String(session.userName || '').trim(),
+    updated_at:new Date().toISOString()
+  };
+
+  const overrideId = String(p.overrideID || '').trim();
+  let result;
+  if (overrideId) {
+    result = await supabaseRest(env, `/rest/v1/schedule_overrides?override_id=eq.${encodeURIComponent(overrideId)}`, {
+      method:'PATCH', headers:{'Content-Type':'application/json',Prefer:'return=representation'}, body:JSON.stringify(payload)
+    });
+  } else {
+    payload.created_at = new Date().toISOString();
+    result = await supabaseRest(env, '/rest/v1/schedule_overrides', {
+      method:'POST', headers:{'Content-Type':'application/json',Prefer:'return=representation'}, body:JSON.stringify(payload)
+    });
+  }
+  const row = Array.isArray(result) ? result[0] : null;
+  return { success:true, message:'Pergantian jadwal berhasil disimpan.', override:row ? mapScheduleOverride(row) : null };
+}
+
+async function deleteScheduleOverrideSupabase(env, session, overrideId) {
+  if (!['guru','admin'].includes(session.userType)) throw new Error('Akses hapus pergantian ditolak.');
+  if (!overrideId) throw new Error('ID pergantian tidak ditemukan.');
+  const rows = await sbRows(env, 'schedule_overrides', { override_id:`eq.${overrideId}`, limit:'1' });
+  const row = rows[0];
+  if (!row) throw new Error('Pergantian jadwal tidak ditemukan.');
+  if (session.userType === 'guru') {
+    const schedules = await sbRows(env, 'schedules', { schedule_id:`eq.${row.original_schedule_id}`, teacher_id:`eq.${session.userID}`, limit:'1' });
+    if (!schedules.length && String(row.makeup_teacher_id || '') !== String(session.userID || '')) throw new Error('Anda tidak memiliki akses menghapus pergantian ini.');
+  }
+  await supabaseRest(env, `/rest/v1/schedule_overrides?override_id=eq.${encodeURIComponent(overrideId)}`, { method:'DELETE', headers:{Prefer:'return=minimal'} });
+  return { success:true, message:'Pergantian jadwal berhasil dihapus.', overrideID:overrideId };
+}
+
 async function buildStudentDashboardSupabase(env, session) {
   const id = session.userID;
-  const [students, classes, schedules, attendance, assignments, progress, replacements, announcements] =
+  const [students, classes, schedules, attendance, assignments, progress, replacements, announcements, scheduleOverrides] =
     await Promise.all([
       sbRows(env, 'students', { student_id:`eq.${id}`, limit:'1' }),
       sbRows(env, 'student_classes', { student_id:`eq.${id}`, order:'created_at.asc' }),
@@ -2473,7 +2822,8 @@ async function buildStudentDashboardSupabase(env, session) {
       sbRows(env, 'assignments', { student_id:`eq.${id}`, order:'created_at.desc' }),
       sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
       sbRows(env, 'replacement_schedules', { student_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' })
+      sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
+      getScheduleOverrideRowsForSession(env, session)
     ]);
 
   const student = students[0];
@@ -2548,6 +2898,7 @@ async function buildStudentDashboardSupabase(env, session) {
     learningProgressList:mappedProgressList,
     studentReports,
     jadwalPenggantiList:replacements.map(mapReplacement),
+    scheduleOverrides:scheduleOverrides.map(mapScheduleOverride),
     pengumumanList:activeAnnouncementsForRole(
       announcements, 'siswa', student, new Set(), new Set()
     )
@@ -2556,7 +2907,7 @@ async function buildStudentDashboardSupabase(env, session) {
 
 async function buildTeacherDashboardSupabase(env, session) {
   const id = session.userID;
-  const [teachers, students, classes, schedules, attendance, assignments, progress, replacements, announcements, publications] =
+  const [teachers, students, classes, schedules, attendance, assignments, progress, replacements, announcements, publications, scheduleOverrides] =
     await Promise.all([
       sbRows(env, 'teachers', { teacher_id:`eq.${id}`, limit:'1' }),
       sbRows(env, 'students', { order:'name.asc' }),
@@ -2567,7 +2918,8 @@ async function buildTeacherDashboardSupabase(env, session) {
       sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
       sbRows(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
       sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' })
+      sbRows(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' }),
+      getScheduleOverrideRowsForSession(env, session)
     ]);
 
   const teacher = teachers[0];
@@ -2676,6 +3028,7 @@ async function buildTeacherDashboardSupabase(env, session) {
     learningProgressList:mappedTeacherProgress,
     teacherReports,
     jadwalPenggantiList:replacements.map(mapReplacement),
+    scheduleOverrides:scheduleOverrides.map(mapScheduleOverride),
     pengumumanList:activeAnnouncementsForRole(
       announcements, 'guru', null, studentIds, studentNames, teacher
     )
@@ -2683,7 +3036,7 @@ async function buildTeacherDashboardSupabase(env, session) {
 }
 
 async function buildAdminDashboardSupabase(env, session) {
-  const [admins, students, teachers, classes, schedules, attendance, progress, replacements, announcements, history, teacherAttendance] =
+  const [admins, students, teachers, classes, schedules, attendance, progress, replacements, announcements, history, teacherAttendance, scheduleOverrides, publications] =
     await Promise.all([
       sbRows(env, 'admins', { admin_id:`eq.${session.userID}`, limit:'1' }),
       sbRows(env, 'students', { order:'name.asc' }),
@@ -2695,7 +3048,9 @@ async function buildAdminDashboardSupabase(env, session) {
       sbRows(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' }),
       sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
       sbRows(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc' })
+      sbRows(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc' }),
+      getScheduleOverrideRowsForSession(env, session),
+      sbRows(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' })
     ]);
 
   const admin = admins[0] || null;
@@ -2742,6 +3097,29 @@ async function buildAdminDashboardSupabase(env, session) {
     students.map(s => String(s.name || '').trim().toLowerCase()).filter(Boolean)
   );
 
+  const mappedAdminProgress = progress.map(mapProgress);
+  const adminProgressById = new Map(mappedAdminProgress.map(item => [String(item.progressID || ''), item]));
+  const adminStudentByPublicId = new Map(students.map(item => [String(item.student_id || ''), item]));
+  const adminReports = publications.map(mapStudent360Publication).filter(Boolean).map(publication => {
+    const progressItem = adminProgressById.get(String(publication.progressID || '')) || null;
+    const student = adminStudentByPublicId.get(String(publication.studentID || '')) || null;
+    const studentClasses = siswaList.find(item => String(item.siswaID || '') === String(publication.studentID || ''))?.kelasList || [];
+    const matchingClass = studentClasses.find(item =>
+      progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
+    ) || studentClasses[0] || null;
+    return {
+      ...publication,
+      studentID:String(publication.studentID || ''),
+      studentName:student?.name || progressItem?.namaSiswa || '',
+      period:progressItem?.periode || '',
+      periodType:progressItem?.tipePeriode || '',
+      teacher:progressItem?.guru || publication.sentBy || '',
+      instrument:matchingClass?.instrumen || student?.instrument || '',
+      grade:matchingClass?.grade || student?.grade || '',
+      status:'Terkirim'
+    };
+  });
+
   return {
     success:true,
     userType:'admin',
@@ -2764,8 +3142,10 @@ async function buildAdminDashboardSupabase(env, session) {
       .filter(row => knownNames.has(String(row.student_name_snapshot || '').trim().toLowerCase()))
       .map(row => mapSchedule(row, true)),
     absensiList:attendance.map(mapAttendance),
-    learningProgressList:progress.map(mapProgress),
+    learningProgressList:mappedAdminProgress,
+    adminReports,
     jadwalPenggantiList:replacements.map(mapReplacement),
+    scheduleOverrides:scheduleOverrides.map(mapScheduleOverride),
     pengumumanList:activeAnnouncementsForRole(
       announcements, 'admin', null, new Set(), new Set()
     ),

@@ -209,7 +209,7 @@
     }
 
     function restoreDashboardWidgetStates() {
-      ['dashboardTodayScheduleWidget','dashboardLatestStudentsWidget','formAbsensiContainer','studentReportAdminBox'].forEach(widgetId => {
+      ['dashboardTodayScheduleWidget','dashboardLatestStudentsWidget','formAbsensiContainer','studentReportAdminBox','formJadwalPenggantiBox'].forEach(widgetId => {
         applyDashboardWidgetState(widgetId, localStorage.getItem('legacyWidget:' + widgetId) === '1');
       });
     }

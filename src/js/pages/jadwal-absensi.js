@@ -49,12 +49,35 @@
         },
         dayHeaderFormat: { weekday: 'short' },
         eventClick: function(info) {
+          const props = info.event.extendedProps || {};
+          if (props.isScheduleOverride) {
+            alert(`${props.overrideLabel || 'Pergantian Jadwal'}
+Siswa: ${info.event.title}
+Tanggal: ${props.tanggal || '-'}
+Jam: ${props.jam || '-'}
+Ruangan: ${props.ruangan || '-'}
+Guru: ${props.guru || '-'}${props.keterangan ? `
+${props.keterangan}` : ''}`);
+            return;
+          }
           const jID = info.event.id;
           if (currentUser.userType !== 'siswa') {
             openEditJadwalModal(jID);
           } else {
-            alert(`Jadwal Pelajaran:\nSiswa: ${info.event.title}\nJam: ${info.event.extendedProps.jam}\nRuangan: ${info.event.extendedProps.ruangan}\nGuru: ${info.event.extendedProps.guru}`);
+            alert(`Jadwal Pelajaran:
+Siswa: ${info.event.title}
+Jam: ${props.jam}
+Ruangan: ${props.ruangan}
+Guru: ${props.guru}`);
           }
+        },
+        eventDidMount: function(info) {
+          const props = info.event.extendedProps || {};
+          if (!props.scheduleId || !info.event.start) return;
+          const d = info.event.start;
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const hidden = (globalScheduleOverrides || []).some(item => String(item.jadwalID || '') === String(props.scheduleId || '') && String(item.tanggalAsli || '') === key && String(item.status || 'Aktif').toLowerCase() === 'aktif');
+          if (hidden && info.el) info.el.style.display = 'none';
         }
       });
       calendarInstance.render();
@@ -81,11 +104,40 @@
           backgroundColor: '#F15A24',
           borderColor: '#ea580c',
           extendedProps: {
+            scheduleId: j.jadwalID,
             jam: `${j.jamMulai} - ${j.jamSelesai}`,
             ruangan: j.ruangan,
             guru: j.guru || '-'
           }
         };
+      });
+
+      (globalScheduleOverrides || []).forEach(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || {
+          jadwalID:item.jadwalID || '', hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '',
+          guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik'
+        };
+        if (String(item.status || 'Aktif').toLowerCase() !== 'aktif') return;
+        if (item.siswaPengganti && item.tanggalAsli) {
+          events.push({
+            id:`override-slot-${item.overrideID}`,
+            title:`${item.siswaPengganti} (${item.instrumenPengganti || schedule.instrumen || 'Musik'})`,
+            start:`${item.tanggalAsli}T${schedule.jamMulai || '00:00'}:00`,
+            end:`${item.tanggalAsli}T${schedule.jamSelesai || '00:00'}:00`,
+            backgroundColor:'#f59e0b', borderColor:'#d97706',
+            extendedProps:{ isScheduleOverride:true, overrideLabel:'🔄 Menggantikan Slot', tanggal:item.tanggalAsli, jam:`${schedule.jamMulai || '-'} - ${schedule.jamSelesai || '-'}`, ruangan:schedule.ruangan || '-', guru:schedule.guru || '-', keterangan:`Menggantikan jadwal ${item.siswaAsli || '-'}` }
+          });
+        }
+        if (item.tanggalMakeup && item.jamMulaiMakeup && item.jamSelesaiMakeup) {
+          events.push({
+            id:`override-makeup-${item.overrideID}`,
+            title:`${item.siswaAsli || '-'} (${schedule.instrumen || 'Musik'})`,
+            start:`${item.tanggalMakeup}T${item.jamMulaiMakeup}:00`,
+            end:`${item.tanggalMakeup}T${item.jamSelesaiMakeup}:00`,
+            backgroundColor:'#2563eb', borderColor:'#1d4ed8',
+            extendedProps:{ isScheduleOverride:true, overrideLabel:'➕ Make-up Class', tanggal:item.tanggalMakeup, jam:`${item.jamMulaiMakeup} - ${item.jamSelesaiMakeup}`, ruangan:item.ruanganMakeup || '-', guru:item.guruMakeup || schedule.guru || '-', keterangan:`Pengganti kelas ${formatAcademyDate(item.tanggalAsli)}` }
+          });
+        }
       });
 
       calendarInstance.addEventSource(events);
@@ -130,7 +182,7 @@
           <td data-label="Instrumen"><b>${escapeTaskHtml(j.instrumen || 'Gitar')}</b></td>
           <td data-label="Ruangan">${escapeTaskHtml(j.ruangan || '-')}</td>
           <td data-label="Guru">${escapeTaskHtml(j.guru || '-')}</td>
-          <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(j.status || 'Aktif')}</span></td>`;
+          <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(j.status || 'Aktif')}</span>${(globalScheduleOverrides || []).some(item => String(item.jadwalID || '') === String(j.jadwalID || '') && String(item.status || 'Aktif').toLowerCase() === 'aktif') ? '<div class="schedule-override-table-note">⇄ Ada pergantian tanggal tertentu</div>' : ''}</td>`;
         
         if (!isSiswa) {
           rowHtml += `<td data-label="Aksi"><div class="table-actions">
@@ -164,10 +216,19 @@
       const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
       const day = formDay;
       const currentValue = select.value;
-      const scheduleNames = new Set((globalJadwalList || [])
-        .filter(item => !day || String(item.hari || '').trim().toLowerCase() === day)
-        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
-        .filter(Boolean));
+      const selectedDate = String(document.getElementById('absensiTanggal')?.value || '').trim();
+      const baseSchedules = (globalJadwalList || []).filter(item => !day || String(item.hari || '').trim().toLowerCase() === day);
+      const scheduleNames = new Set(baseSchedules.map(item => String(item.namaSiswa || '').trim().toLowerCase()).filter(Boolean));
+      if (selectedDate) {
+        (globalScheduleOverrides || []).forEach(override => {
+          if (String(override.status || 'Aktif').toLowerCase() !== 'aktif') return;
+          if (String(override.tanggalAsli || '') === selectedDate) {
+            scheduleNames.delete(String(override.siswaAsli || '').trim().toLowerCase());
+            if (override.siswaPengganti) scheduleNames.add(String(override.siswaPengganti || '').trim().toLowerCase());
+          }
+          if (String(override.tanggalMakeup || '') === selectedDate && override.siswaAsli) scheduleNames.add(String(override.siswaAsli || '').trim().toLowerCase());
+        });
+      }
       const students = (globalSiswaList || []).filter(student => {
         const name = String(student.nama || '').trim();
         if (!name) return false;

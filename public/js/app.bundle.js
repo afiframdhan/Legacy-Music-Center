@@ -267,8 +267,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let globalTugasList = [];
     let globalGuruList = [];
     let globalJadwalPenggantiList = [];
+    let globalScheduleOverrides = [];
     let globalPengumumanList = [];
     let globalLearningProgressList = [];
+    let globalRepertoireList = [];
     let globalStudentHistory = [];
     let globalTeacherAttendanceList = [];
     let studentReportView = 'all';
@@ -623,7 +625,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function restoreDashboardWidgetStates() {
-      ['dashboardTodayScheduleWidget','dashboardLatestStudentsWidget','formAbsensiContainer','studentReportAdminBox'].forEach(widgetId => {
+      ['dashboardTodayScheduleWidget','dashboardLatestStudentsWidget','formAbsensiContainer','studentReportAdminBox','formJadwalPenggantiBox'].forEach(widgetId => {
         applyDashboardWidgetState(widgetId, localStorage.getItem('legacyWidget:' + widgetId) === '1');
       });
     }
@@ -722,6 +724,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         pengumuman: `<svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>`,
         ruang: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 8h2"></path><path d="M13 8h2"></path><path d="M9 12h2"></path><path d="M13 12h2"></path></svg>`,
         progress: `<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
+        repertoire: `<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
         tugas: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
         laporan: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>`,
         sertifikat: `<svg viewBox="0 0 24 24"><path d="M12 2l3 2 3-.5.5 3L21 9l-2 3 .5 3-3 .5L14 19l-2 3-2-3-2.5-3.5-3-.5.5-3-2-3 2.5-2.5.5-3 3 .5z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
@@ -735,6 +738,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
@@ -746,6 +750,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Ujian & Sertifikat', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
@@ -763,6 +768,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         menus = [ 
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
+          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
@@ -832,6 +838,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (sectionId === 'section-learning-progress') {
         setTimeout(() => refreshLearningProgressPage(), 0);
+      }
+
+      if (sectionId === 'section-repertoire') {
+        setTimeout(() => loadRepertoirePage(), 0);
       }
 
       if (sectionId === 'section-annual-exam') {
@@ -978,8 +988,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
+        globalScheduleOverrides = data.scheduleOverrides || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
+        globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 
@@ -987,12 +999,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
           globalGuruList = gList || [];
           if (data.userType === 'siswa') renderSiswa(data);
           if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
-          if (data.userType === 'guru' && typeof renderStudent360Access === 'function') renderStudent360Access(data);
+          if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
           renderLearningProgressViews();
           if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
           setupFilterDropdown();
           renderTabelJadwal();
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           renderTabelRiwayat();
           renderTabelTugas();
           renderTabelJadwalPengganti();
@@ -1188,7 +1201,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         document.getElementById('addStudentExtraClassesBox').style.display = 'none';
         document.getElementById('editStudentExtraClassesBox').style.display = 'none';
 
-        document.getElementById('formJadwalPenggantiBox').style.display = 'none';
+        document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'none';
         document.getElementById('dashboardAcademyUpdatesGuru').style.display = 'block';
 
@@ -1228,6 +1241,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         
         const filterSiswaGuru = document.getElementById('filterSiswaGuru');
         if(filterSiswaGuru) filterSiswaGuru.innerHTML = optFilterGuru;
+        if (typeof refreshSiswaGuruFilterByInstrument === 'function') refreshSiswaGuruFilterByInstrument();
 
         const filterJadwalGuru = document.getElementById('filterJadwalGuru');
         if(filterJadwalGuru) filterJadwalGuru.innerHTML = optFilterGuru;
@@ -1318,26 +1332,106 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
 
+    function learningProgressStudentClasses(student) {
+      if (typeof getStudentClassesForUI === 'function') return getStudentClassesForUI(student);
+      return Array.isArray(student?.kelasList) && student.kelasList.length
+        ? student.kelasList
+        : [{ instrumen:student?.instrumen || '', guru:student?.guru || '', guruID:student?.guruID || '' }];
+    }
+
+    function learningProgressStudentMatchesFilters(student, teacherValue, instrumentValue) {
+      const teacherNeedle = String(teacherValue || '').trim().toLowerCase();
+      const instrumentNeedle = String(instrumentValue || '').trim().toLowerCase();
+      if (!teacherNeedle && !instrumentNeedle) return true;
+      return learningProgressStudentClasses(student).some(item => {
+        const teacherId = String(item.guruID || '').trim().toLowerCase();
+        const teacherName = String(item.guru || '').trim().toLowerCase();
+        const instrument = String(item.instrumen || '').trim().toLowerCase();
+        const teacherOk = !teacherNeedle || teacherId === teacherNeedle || teacherName === teacherNeedle;
+        const instrumentOk = !instrumentNeedle || instrument === instrumentNeedle;
+        return teacherOk && instrumentOk;
+      });
+    }
+
+    function populateLearningProgressRoleFilters() {
+      const isStudent = currentUser.userType === 'siswa';
+      const isAdmin = currentUser.userType === 'admin';
+      const teacherGroup = document.getElementById('lpPageTeacherGroup');
+      const instrumentGroup = document.getElementById('lpPageInstrumentGroup');
+      const teacherSelect = document.getElementById('lpPageTeacher');
+      const instrumentSelect = document.getElementById('lpPageInstrument');
+      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
+      const studentGroup = document.getElementById('lpPageStudentGroup');
+
+      if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
+      if (instrumentGroup) instrumentGroup.style.display = isStudent ? 'none' : 'block';
+      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (studentGroup) studentGroup.style.display = isStudent ? 'none' : 'block';
+
+      if (isAdmin && teacherSelect) {
+        const oldTeacher = teacherSelect.value;
+        const teachers = (globalGuruList || []).slice().sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+        teacherSelect.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(item => `<option value="${escapeTaskHtml(item.id || item.nama || '')}">${escapeTaskHtml(item.nama || '-')} (${escapeTaskHtml(item.instrumen || 'Musik')})</option>`).join('');
+        teacherSelect.value = Array.from(teacherSelect.options).some(opt => opt.value === oldTeacher) ? oldTeacher : '';
+      } else if (teacherSelect) {
+        teacherSelect.value = '';
+      }
+
+      if (instrumentSelect && !isStudent) {
+        const oldInstrument = instrumentSelect.value;
+        const selectedTeacher = isAdmin ? String(teacherSelect?.value || '').trim() : '';
+        const instruments = new Set();
+        (globalSiswaList || []).forEach(student => {
+          learningProgressStudentClasses(student).forEach(item => {
+            const teacherId = String(item.guruID || '').trim();
+            const teacherName = String(item.guru || '').trim();
+            const teacherMatch = !selectedTeacher || teacherId === selectedTeacher || teacherName.toLowerCase() === selectedTeacher.toLowerCase();
+            if (teacherMatch && String(item.instrumen || '').trim()) instruments.add(String(item.instrumen || '').trim());
+          });
+        });
+        const values = [...instruments].sort((a,b) => a.localeCompare(b,'id'));
+        instrumentSelect.innerHTML = '<option value="">Semua Instrumen</option>' + values.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+        instrumentSelect.value = values.includes(oldInstrument) ? oldInstrument : '';
+      } else if (instrumentSelect) {
+        instrumentSelect.value = '';
+      }
+    }
+
     function refreshLearningProgressPage(resetPeriod, fromSearch) {
       const studentSelect = document.getElementById('lpPageStudent');
       const typeSelect = document.getElementById('lpPagePeriodType');
       const periodSelect = document.getElementById('lpPagePeriod');
       const content = document.getElementById('learningProgressPageContent');
       if (!studentSelect || !typeSelect || !periodSelect || !content) return;
+
       const isStudent = currentUser.userType === 'siswa';
-      const allNames = isStudent ? [currentUser.userName] : [...new Set((globalSiswaList || []).map(item => String(item.nama || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const isAdmin = currentUser.userType === 'admin';
+      populateLearningProgressRoleFilters();
+
+      const teacherValue = isAdmin ? String(document.getElementById('lpPageTeacher')?.value || '').trim() : '';
+      const instrumentValue = !isStudent ? String(document.getElementById('lpPageInstrument')?.value || '').trim() : '';
       const searchInput = document.getElementById('lpPageStudentSearch');
       const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
-      const names = searchTerm ? allNames.filter(name => name.toLowerCase().includes(searchTerm)) : allNames;
+
+      let roleStudents = isStudent
+        ? [{ nama:currentUser.userName, siswaID:currentUser.userID }]
+        : (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+
+      if (!isStudent) {
+        roleStudents = roleStudents.filter(student => learningProgressStudentMatchesFilters(student, teacherValue, instrumentValue));
+      }
+      if (searchTerm) roleStudents = roleStudents.filter(student => String(student.nama || '').toLowerCase().includes(searchTerm));
+      roleStudents.sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+
+      const names = [...new Set(roleStudents.map(item => String(item.nama || '').trim()).filter(Boolean))];
       const oldStudent = studentSelect.value;
-      const allStudentsOption = !isStudent ? '<option value="">Semua Siswa</option>' : '';
-      studentSelect.innerHTML = allStudentsOption + (names.length ? names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('') : (!isStudent ? '' : '<option value="">Tidak ada siswa ditemukan</option>'));
-      if (isStudent) studentSelect.value = currentUser.userName;
-      else if (oldStudent && names.includes(oldStudent)) studentSelect.value = oldStudent;
-      else studentSelect.value = '';
-      document.getElementById('lpPageStudentGroup').style.display = isStudent ? 'none' : 'block';
-      const searchGroup = document.getElementById('lpPageStudentSearchGroup');
-      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (isStudent) {
+        studentSelect.innerHTML = `<option value="${escapeTaskHtml(currentUser.userName || '')}">${escapeTaskHtml(currentUser.userName || 'Siswa')}</option>`;
+        studentSelect.value = currentUser.userName || '';
+      } else {
+        studentSelect.innerHTML = '<option value="">Semua Siswa</option>' + names.map(name => `<option value="${escapeTaskHtml(name)}">${escapeTaskHtml(name)}</option>`).join('');
+        studentSelect.value = oldStudent && names.includes(oldStudent) ? oldStudent : '';
+      }
 
       const selectedStudent = isStudent ? currentUser.userName : studentSelect.value;
       globalSelectedLearningProgressStudent = selectedStudent || '';
@@ -1742,6 +1836,184 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       }
     }
 
+    function getStudentByNameForOverride(name) {
+      return (globalSiswaList || []).find(item => String(item.nama || '').trim().toLowerCase() === String(name || '').trim().toLowerCase()) || null;
+    }
+
+    function scheduleOverrideStudentClasses(student) {
+      if (!student) return [];
+      if (typeof getStudentClassesForUI === 'function') {
+        try { return getStudentClassesForUI(student) || []; } catch (_) {}
+      }
+      if (Array.isArray(student.kelasList) && student.kelasList.length) return student.kelasList;
+      return String(student.instrumen || '').split(',').map(value => ({ instrumen:value.trim(), guru:student.guru || '' })).filter(item => item.instrumen);
+    }
+
+    function scheduleOverrideStudentHasInstrument(student, instrument) {
+      const needle = String(instrument || '').trim().toLowerCase();
+      if (!needle) return true;
+      return scheduleOverrideStudentClasses(student).some(item => String(item.instrumen || '').trim().toLowerCase() === needle);
+    }
+
+    function populateScheduleOverrideInstrumentFilter() {
+      const select = document.getElementById('penggantiInstrumenFilter');
+      if (!select) return;
+      const current = select.value;
+      const values = [...new Set((globalSiswaList || []).flatMap(student => scheduleOverrideStudentClasses(student).map(item => String(item.instrumen || '').trim())).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      select.innerHTML = '<option value="">Semua Instrumen</option>' + values.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      if (values.includes(current)) select.value = current;
+    }
+
+    function syncMakeupTeacherFilter() {
+      const select = document.getElementById('makeupFilterTeacher');
+      if (!select) return;
+      const instrument = String(document.getElementById('makeupFilterInstrument')?.value || '').trim().toLowerCase();
+      const current = select.value;
+      let teachers = (globalGuruList || []).slice();
+      if (instrument) {
+        const allowed = new Set();
+        (globalJadwalList || []).forEach(item => {
+          if (String(item.instrumen || '').trim().toLowerCase() === instrument && item.guru) allowed.add(String(item.guru).trim().toLowerCase());
+        });
+        teachers = teachers.filter(item => allowed.has(String(item.nama || '').trim().toLowerCase()));
+      }
+      select.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(item => `<option value="${escapeTaskHtml(item.nama || '')}">${escapeTaskHtml(item.nama || '-')}</option>`).join('');
+      if (teachers.some(item => String(item.nama || '') === current)) select.value = current;
+    }
+
+    function refreshScheduleOverrideFormOptions() {
+      const absentSelect = document.getElementById('penggantiSiswaSelect');
+      const slotSelect = document.getElementById('penggantiSiswaSlotSelect');
+      if (!absentSelect || !slotSelect) return;
+      populateScheduleOverrideInstrumentFilter();
+      const instrument = String(document.getElementById('penggantiInstrumenFilter')?.value || '').trim();
+      const currentAbsent = absentSelect.value;
+      const currentSlot = slotSelect.value;
+      const students = (globalSiswaList || [])
+        .filter(item => String(item.status || '').toLowerCase() !== 'keluar')
+        .filter(item => scheduleOverrideStudentHasInstrument(item, instrument))
+        .sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+      const instrumentSuffix = instrument ? ` • ${escapeTaskHtml(instrument)}` : '';
+      absentSelect.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.nama || '')}">${escapeTaskHtml(item.nama || '-')}${instrumentSuffix}</option>`).join('');
+      slotSelect.innerHTML = '<option value="">— Slot dikosongkan / tidak diganti siswa lain —</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')}${instrumentSuffix}</option>`).join('');
+      if (students.some(item => item.nama === currentAbsent)) absentSelect.value = currentAbsent;
+      else absentSelect.value = '';
+      if (students.some(item => String(item.siswaID || '') === currentSlot)) slotSelect.value = currentSlot;
+      else slotSelect.value = '';
+      refreshScheduleOverrideOriginalScheduleOptions();
+    }
+
+    function refreshScheduleOverrideOriginalScheduleOptions() {
+      const studentName = String(document.getElementById('penggantiSiswaSelect')?.value || '').trim();
+      const scheduleSelect = document.getElementById('penggantiJadwalAsliSelect');
+      if (!scheduleSelect) return;
+      const current = scheduleSelect.value;
+      const instrument = String(document.getElementById('penggantiInstrumenFilter')?.value || '').trim().toLowerCase();
+      const schedules = (globalJadwalList || []).filter(item =>
+        String(item.namaSiswa || '').trim().toLowerCase() === studentName.toLowerCase() &&
+        (!instrument || String(item.instrumen || '').trim().toLowerCase() === instrument)
+      );
+      scheduleSelect.innerHTML = '<option value="">Pilih jadwal asli...</option>' + schedules.map(item => `<option value="${escapeTaskHtml(item.jadwalID || '')}">${escapeTaskHtml(item.hari || '-')} • ${escapeTaskHtml(item.jamMulai || '-')}–${escapeTaskHtml(item.jamSelesai || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')} • ${escapeTaskHtml(item.guru || '-')}</option>`).join('');
+      if (schedules.some(item => String(item.jadwalID || '') === current)) scheduleSelect.value = current;
+      else if (schedules[0]) scheduleSelect.value = schedules[0].jadwalID || '';
+      const selected = schedules.find(item => String(item.jadwalID || '') === String(scheduleSelect.value || '')) || schedules[0] || null;
+      if (selected) {
+        const guruSelect = document.getElementById('penggantiGuruSelect');
+        if (guruSelect && selected.guru) guruSelect.value = selected.guru;
+        const roomSelect = document.getElementById('penggantiRuanganSelect');
+        if (roomSelect && selected.ruangan && Array.from(roomSelect.options).some(opt => opt.value === selected.ruangan)) roomSelect.value = selected.ruangan;
+      }
+      syncScheduleOverrideOriginalDateHint();
+    }
+
+    function syncScheduleOverrideOriginalDateHint() {
+      const scheduleId = String(document.getElementById('penggantiJadwalAsliSelect')?.value || '').trim();
+      const date = String(document.getElementById('penggantiTanggalAsli')?.value || '').trim();
+      const schedule = (globalJadwalList || []).find(item => String(item.jadwalID || '') === scheduleId) || null;
+      const hint = document.getElementById('penggantiJadwalAsliHint');
+      if (!hint) return;
+      if (!schedule) { hint.textContent = ''; return; }
+      let text = `Jadwal normal: ${schedule.hari || '-'}, ${schedule.jamMulai || '-'}–${schedule.jamSelesai || '-'} • ${schedule.ruangan || '-'} • ${schedule.guru || '-'}`;
+      if (date) {
+        const actual = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][new Date(date + 'T12:00:00').getDay()] || '';
+        if (actual && String(actual).toLowerCase() !== String(schedule.hari || '').toLowerCase()) text += ` • ⚠️ Tanggal ini adalah ${actual}, bukan ${schedule.hari}.`;
+      }
+      hint.textContent = text;
+    }
+
+    function handleSaveScheduleOverride(e) {
+      e.preventDefault();
+      const scheduleId = String(document.getElementById('penggantiJadwalAsliSelect')?.value || '').trim();
+      const schedule = (globalJadwalList || []).find(item => String(item.jadwalID || '') === scheduleId) || null;
+      const slotStudentId = String(document.getElementById('penggantiSiswaSlotSelect')?.value || '').trim();
+      const slotStudent = (globalSiswaList || []).find(item => String(item.siswaID || '') === slotStudentId) || null;
+      const teacherName = String(document.getElementById('penggantiGuruSelect')?.value || '').trim();
+      const teacher = (globalGuruList || []).find(item => String(item.nama || '').trim() === teacherName) || null;
+      const makeupDate = String(document.getElementById('penggantiTanggal')?.value || '').trim();
+      const makeupStart = String(document.getElementById('penggantiJamMulai')?.value || '').trim();
+      const makeupEnd = String(document.getElementById('penggantiJamSelesai')?.value || '').trim();
+      if (makeupDate && (!makeupStart || !makeupEnd)) {
+        showAlert('alertDanger','Jika tanggal make-up diisi, jam mulai dan selesai juga wajib diisi.');
+        return false;
+      }
+      const payload = {
+        overrideID:String(document.getElementById('scheduleOverrideID')?.value || '').trim(),
+        jadwalID:scheduleId,
+        tanggalAsli:String(document.getElementById('penggantiTanggalAsli')?.value || '').trim(),
+        siswaAsli:String(document.getElementById('penggantiSiswaSelect')?.value || '').trim(),
+        siswaPenggantiID:slotStudentId,
+        instrumenPengganti:slotStudent ? (schedule?.instrumen || document.getElementById('penggantiInstrumenFilter')?.value || '') : '',
+        tanggalMakeup:makeupDate,
+        jamMulaiMakeup:makeupStart,
+        jamSelesaiMakeup:makeupEnd,
+        guruMakeupID:teacher ? (teacher.id || '') : '',
+        guruMakeup:teacherName,
+        ruanganMakeup:String(document.getElementById('penggantiRuanganSelect')?.value || '').trim(),
+        alasan:String(document.getElementById('penggantiAlasan')?.value || 'Lainnya').trim(),
+        catatan:String(document.getElementById('penggantiCatatan')?.value || '').trim()
+      };
+      if (!payload.jadwalID || !payload.tanggalAsli) {
+        showAlert('alertDanger','Pilih jadwal asli dan tanggal yang diganti.');
+        return false;
+      }
+      const btn = document.getElementById('btnSubmitPengganti');
+      if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+      google.script.run.withSuccessHandler(res => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
+        showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', (res && res.message) || 'Pergantian gagal disimpan.');
+        if (res && res.success) {
+          if (res.override) {
+            const id = String(res.override.overrideID || '');
+            globalScheduleOverrides = (globalScheduleOverrides || []).filter(item => String(item.overrideID || '') !== id);
+            globalScheduleOverrides.unshift(res.override);
+            renderTabelJadwalPengganti();
+            if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+          }
+          document.getElementById('formAddJadwalPengganti')?.reset();
+          if (document.getElementById('scheduleOverrideID')) document.getElementById('scheduleOverrideID').value = '';
+          refreshScheduleOverrideFormOptions();
+          fetchDashboardData();
+        }
+      }).withFailureHandler(error => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
+        showAlert('alertDanger','Gagal menyimpan pergantian: ' + (error.message || error));
+      }).saveScheduleOverride(payload);
+      return false;
+    }
+
+    function handleDeleteScheduleOverride(id) {
+      if (!confirm('Hapus pergantian jadwal ini? Jadwal rutin tetap tidak berubah.')) return;
+      google.script.run.withSuccessHandler(res => {
+        showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', (res && res.message) || 'Pergantian gagal dihapus.');
+        if (res && res.success) {
+          globalScheduleOverrides = (globalScheduleOverrides || []).filter(item => String(item.overrideID || '') !== String(id || ''));
+          renderTabelJadwalPengganti();
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+          fetchDashboardData();
+        }
+      }).withFailureHandler(error => showAlert('alertDanger','Gagal menghapus pergantian: ' + (error.message || error))).deleteScheduleOverride(id);
+    }
+
     function handleAddJadwalPengganti(e) {
       e.preventDefault();
       const btn = document.getElementById('btnSubmitPengganti');
@@ -1782,18 +2054,23 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       const isAdmin = currentUser.userType === 'admin';
       const isGuru = currentUser.userType === 'guru';
       box.style.display = isAdmin || isGuru ? 'grid' : 'none';
-      document.getElementById('makeupFilterClassGroup').style.display = isAdmin ? 'block' : 'none';
-      document.getElementById('makeupFilterTeacherGroup').style.display = isAdmin ? 'block' : 'none';
-      document.getElementById('makeupFilterDayGroup').style.display = isAdmin || isGuru ? 'block' : 'none';
-      const classSelect = document.getElementById('makeupFilterClass');
-      const teacherSelect = document.getElementById('makeupFilterTeacher');
-      const currentClass = classSelect.value;
-      const currentTeacher = teacherSelect.value;
-      const classes = [...new Set(globalSiswaList.map(item => item.instrumen || item.kelas).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
-      classSelect.innerHTML = '<option value="">Semua Kelas</option>' + classes.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
-      teacherSelect.innerHTML = '<option value="">Semua Guru</option>' + globalGuruList.map(item => `<option value="${escapeTaskHtml(item.nama)}">${escapeTaskHtml(item.nama)}</option>`).join('');
-      if (classes.includes(currentClass)) classSelect.value = currentClass;
-      if (globalGuruList.some(item => item.nama === currentTeacher)) teacherSelect.value = currentTeacher;
+      const instrumentGroup = document.getElementById('makeupFilterInstrumentGroup');
+      const teacherGroup = document.getElementById('makeupFilterTeacherGroup');
+      const dayGroup = document.getElementById('makeupFilterDayGroup');
+      const searchGroup = document.getElementById('makeupFilterSearchGroup');
+      if (instrumentGroup) instrumentGroup.style.display = isAdmin || isGuru ? 'block' : 'none';
+      if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
+      if (dayGroup) dayGroup.style.display = isAdmin || isGuru ? 'block' : 'none';
+      if (searchGroup) searchGroup.style.display = isAdmin || isGuru ? 'block' : 'none';
+      const instrumentSelect = document.getElementById('makeupFilterInstrument');
+      const currentInstrument = instrumentSelect ? instrumentSelect.value : '';
+      const instruments = [...new Set((globalJadwalList || []).map(item => String(item.instrumen || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      if (instrumentSelect) {
+        instrumentSelect.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+        if (instruments.includes(currentInstrument)) instrumentSelect.value = currentInstrument;
+      }
+      syncMakeupTeacherFilter();
+      refreshScheduleOverrideFormOptions();
     }
 
     function renderTabelJadwalPengganti() {
@@ -1801,15 +2078,35 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if (!container) return;
       container.innerHTML = '';
       const isAdmin = currentUser.userType === 'admin';
-      const classFilter = isAdmin ? String(document.getElementById('makeupFilterClass')?.value || '').toLowerCase() : '';
+      const searchFilter = currentUser.userType !== 'siswa' ? String(document.getElementById('makeupFilterSearch')?.value || '').trim().toLowerCase() : '';
+      const instrumentFilter = currentUser.userType !== 'siswa' ? String(document.getElementById('makeupFilterInstrument')?.value || '').toLowerCase() : '';
       const teacherFilter = isAdmin ? String(document.getElementById('makeupFilterTeacher')?.value || '').toLowerCase() : '';
       const dayFilter = currentUser.userType !== 'siswa' ? String(document.getElementById('makeupFilterDay')?.value || '').toLowerCase() : '';
-      const list = globalJadwalPenggantiList.filter(item => {
-        const student = globalSiswaList.find(row => String(row.nama || '').toLowerCase() === String(item.namaSiswa || '').toLowerCase());
-        const studentClass = String(student ? (student.instrumen || student.kelas || '') : '').toLowerCase();
-        return (!classFilter || studentClass === classFilter) && (!teacherFilter || String(item.guru || '').toLowerCase() === teacherFilter) && (!dayFilter || String(item.hariPelaksanaan || '').toLowerCase() === dayFilter);
+      const overrides = (globalScheduleOverrides || []).filter(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || null;
+        const instrument = String(schedule?.instrumen || item.instrumenAsli || '').toLowerCase();
+        const teacher = String(schedule?.guru || item.guruAsli || item.guruMakeup || '').toLowerCase();
+        const day = String(schedule?.hari || item.hariAsli || '').toLowerCase();
+        const name = `${item.siswaAsli || ''} ${item.siswaPengganti || ''}`.toLowerCase();
+        return (!searchFilter || name.includes(searchFilter)) && (!instrumentFilter || instrument === instrumentFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
       });
-      if (list.length === 0) {
+      overrides.forEach(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || { hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '', guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik' };
+        const slotText = item.siswaPengganti ? `${escapeTaskHtml(item.siswaPengganti)} memakai slot ${escapeTaskHtml(item.siswaAsli || '-')}` : `Slot ${escapeTaskHtml(item.siswaAsli || '-')} dikosongkan`;
+        const makeupText = item.tanggalMakeup ? `${escapeTaskHtml(formatAcademyDate(item.tanggalMakeup))} • ${escapeTaskHtml(item.jamMulaiMakeup || '-')}–${escapeTaskHtml(item.jamSelesaiMakeup || '-')} • ${escapeTaskHtml(item.ruanganMakeup || '-')}` : 'Belum dijadwalkan';
+        const deleteButton = currentUser.userType !== 'siswa' ? `<button class="btn-action btn-delete" onclick="handleDeleteScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Hapus</button>` : '';
+        container.innerHTML += `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
+      });
+
+      const list = (globalJadwalPenggantiList || []).filter(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || null;
+        const instrument = String(schedule?.instrumen || '').trim().toLowerCase();
+        const teacher = String(item.guru || schedule?.guru || '').trim().toLowerCase();
+        const day = String(item.hariPelaksanaan || schedule?.hari || '').trim().toLowerCase();
+        const name = String(item.namaSiswa || '').trim().toLowerCase();
+        return (!searchFilter || name.includes(searchFilter)) && (!instrumentFilter || instrument === instrumentFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
+      });
+      if (list.length === 0 && overrides.length === 0) {
         container.innerHTML = '<div class="academy-empty">Belum ada jadwal pergantian yang tersedia.</div>';
         return;
       }
@@ -1989,6 +2286,11 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       globalPengumumanList.slice(0,5).forEach(item => items.push({ id:`announcement:${item.pengumumanID || item.judul}`, type:'section-pengumuman', title:item.judul || 'Pengumuman Academy', detail:item.isi || 'Ada pengumuman baru.' }));
       const today = new Date().toISOString().slice(0,10);
       globalJadwalPenggantiList.filter(item => String(item.tanggalPelaksanaan || '') >= today).slice(0,5).forEach(item => items.push({ id:`makeup:${item.penggantiID}`, type:'section-pengganti', title:`Jadwal pergantian ${item.namaSiswa || ''}`, detail:`${formatAcademyDate(item.tanggalPelaksanaan)} · ${item.jamMulai || '-'} · ${item.ruangan || '-'}` }));
+      (globalScheduleOverrides || []).filter(item => String(item.status || 'Aktif').toLowerCase() === 'aktif' && (!item.tanggalAsli || String(item.tanggalAsli) >= today)).slice(0,5).forEach(item => {
+        const slotInfo = item.siswaPengganti ? `${item.siswaPengganti} memakai slot ${item.siswaAsli || '-'}` : `Slot ${item.siswaAsli || '-'} dikosongkan`;
+        const makeupInfo = item.tanggalMakeup ? ` • Make-up ${formatAcademyDate(item.tanggalMakeup)} ${item.jamMulaiMakeup || ''}` : '';
+        items.push({ id:`override:${item.overrideID}`, type:'section-pengganti', title:`Pergantian jadwal ${item.siswaAsli || ''}`, detail:`${formatAcademyDate(item.tanggalAsli)} • ${slotInfo}${makeupInfo}` });
+      });
       const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
       const now = new Date();
       const currentMinute = now.getHours() * 60 + now.getMinutes();
@@ -2045,6 +2347,485 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if (center && !center.contains(event.target)) document.getElementById('notificationPanel')?.classList.remove('open');
     });
 
+
+    let repertoirePageLoaded = false;
+    let repertoireActiveDetailId = '';
+    let repertoireLoadRequestId = 0;
+
+    function loadRepertoirePage() {
+      const addBtn = document.getElementById('repertoireAddButton');
+      const printBtn = document.getElementById('repertoirePrintButton');
+      const studentWrap = document.getElementById('repertoireStudentFilterWrap');
+      const teacherWrap = document.getElementById('repertoireTeacherFilterWrap');
+      const loading = document.getElementById('repertoireLoadingState');
+      const list = document.getElementById('repertoireList');
+      const requestId = ++repertoireLoadRequestId;
+
+      if (addBtn) addBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      if (printBtn) printBtn.style.display = 'inline-flex';
+      if (studentWrap) studentWrap.style.display = currentUser.userType === 'siswa' ? 'none' : 'block';
+      if (teacherWrap) teacherWrap.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
+
+      // Selalu ambil snapshot terbaru saat tab Repertoire dibuka. Ini mencegah
+      // halaman kosong/stale yang sebelumnya baru pulih setelah browser direfresh.
+      if (loading) {
+        loading.style.display = 'block';
+        loading.textContent = repertoirePageLoaded ? 'Memperbarui daftar repertoire...' : 'Memuat data repertoire...';
+      }
+      if (!repertoirePageLoaded && list) list.innerHTML = '';
+
+      google.script.run
+        .withSuccessHandler(result => {
+          if (requestId !== repertoireLoadRequestId) return;
+          if (!result || result.success === false) {
+            if (loading) loading.style.display = 'none';
+            showAlert('alertDanger', (result && result.message) || 'Data repertoire gagal dimuat.');
+            return;
+          }
+          globalRepertoireList = Array.isArray(result.items) ? result.items : [];
+          repertoirePageLoaded = true;
+          populateRepertoireFilters();
+          renderRepertoirePage();
+        })
+        .withFailureHandler(error => {
+          if (requestId !== repertoireLoadRequestId) return;
+          if (loading) loading.style.display = 'none';
+          showAlert('alertDanger', 'Data repertoire gagal dimuat: ' + (error.message || error));
+        })
+        .getRepertoireData();
+    }
+
+    function repertoireStudentMatchesTeacher(student, teacherValue) {
+      const needle = String(teacherValue || '').trim().toLowerCase();
+      if (!needle) return true;
+      const teacherIdNeedle = needle;
+      const classes = Array.isArray(student?.kelasList) ? student.kelasList : [];
+      return classes.some(item =>
+        String(item.guruID || '').trim().toLowerCase() === teacherIdNeedle ||
+        String(item.guru || '').trim().toLowerCase() === teacherIdNeedle
+      ) || String(student?.guruID || '').trim().toLowerCase() === teacherIdNeedle ||
+        String(student?.guru || '').trim().toLowerCase().split(',').map(v => v.trim()).includes(teacherIdNeedle);
+    }
+
+    function populateRepertoireFilters() {
+      const studentSelect = document.getElementById('repertoireStudentFilter');
+      const teacherSelect = document.getElementById('repertoireTeacherFilter');
+      const instrumentSelect = document.getElementById('repertoireInstrumentFilter');
+      const statusSelect = document.getElementById('repertoireStatusFilter');
+      const searchInput = document.getElementById('repertoireSearch');
+      if (!studentSelect || !instrumentSelect || !statusSelect) return;
+
+      if (searchInput) {
+        searchInput.placeholder = currentUser.userType === 'siswa'
+          ? 'Cari judul lagu, composer, event...'
+          : 'Cari judul lagu, siswa, composer, event...';
+      }
+
+      if (currentUser.userType === 'admin' && teacherSelect) {
+        const currentTeacher = teacherSelect.value;
+        const teachers = (globalGuruList || []).slice().sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+        teacherSelect.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(item => `<option value="${escapeTaskHtml(item.id || item.nama || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
+        teacherSelect.value = Array.from(teacherSelect.options).some(opt => opt.value === currentTeacher) ? currentTeacher : '';
+      }
+
+      if (currentUser.userType !== 'siswa') {
+        const currentStudent = studentSelect.value;
+        const selectedTeacher = currentUser.userType === 'admin' ? String(teacherSelect?.value || '').trim() : '';
+        let students = (globalSiswaList || []).slice();
+        if (currentUser.userType === 'admin' && selectedTeacher) {
+          students = students.filter(item => repertoireStudentMatchesTeacher(item, selectedTeacher));
+        }
+        students.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+        studentSelect.innerHTML = '<option value="">Semua Siswa</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
+        studentSelect.value = Array.from(studentSelect.options).some(opt => opt.value === currentStudent) ? currentStudent : '';
+      } else {
+        studentSelect.innerHTML = `<option value="${escapeTaskHtml(currentUser.userID || '')}">${escapeTaskHtml(currentUser.userName || 'Siswa Saya')}</option>`;
+        studentSelect.value = currentUser.userID || '';
+      }
+
+      const roleItems = repertoireRoleItems();
+      const instruments = [...new Set(roleItems.map(item => String(item.instrumen || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'id'));
+      const statuses = [...new Set(roleItems.map(item => String(item.status || '').trim()).filter(Boolean))];
+      const currentInstrument = instrumentSelect.value;
+      const currentStatus = statusSelect.value;
+
+      instrumentSelect.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      instrumentSelect.value = Array.from(instrumentSelect.options).some(opt => opt.value === currentInstrument) ? currentInstrument : '';
+
+      const fallbackStatuses = ['Belajar', 'Siap Tampil', 'Dikuasai', 'Sudah Tampil'];
+      const mergedStatuses = [...new Set([...fallbackStatuses, ...statuses])];
+      statusSelect.innerHTML = '<option value="">Semua Status</option>' + mergedStatuses.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      statusSelect.value = Array.from(statusSelect.options).some(opt => opt.value === currentStatus) ? currentStatus : '';
+    }
+
+    function handleRepertoireTeacherFilterChange() {
+      populateRepertoireFilters();
+      renderRepertoirePage();
+    }
+
+    function repertoireRoleItems() {
+      let items = Array.isArray(globalRepertoireList) ? globalRepertoireList.slice() : [];
+      if (currentUser.userType === 'siswa') {
+        items = items.filter(item => String(item.siswaID || '').trim() === String(currentUser.userID || '').trim());
+      }
+      if (currentUser.userType === 'guru') {
+        const ownId = String(currentUser.userID || '').trim();
+        const ownName = String(currentUser.userName || '').trim().toLowerCase();
+        const allowedStudents = new Set((globalSiswaList || []).map(item => String(item.siswaID || '').trim()).filter(Boolean));
+        items = items.filter(item =>
+          String(item.guruID || '').trim() === ownId ||
+          String(item.guru || '').trim().toLowerCase() === ownName ||
+          allowedStudents.has(String(item.siswaID || '').trim())
+        );
+      }
+      return items;
+    }
+
+    function repertoireFilteredItems() {
+      const search = String(document.getElementById('repertoireSearch')?.value || '').trim().toLowerCase();
+      const studentId = String(document.getElementById('repertoireStudentFilter')?.value || '').trim();
+      const teacher = String(document.getElementById('repertoireTeacherFilter')?.value || '').trim().toLowerCase();
+      const instrument = String(document.getElementById('repertoireInstrumentFilter')?.value || '').trim().toLowerCase();
+      const status = String(document.getElementById('repertoireStatusFilter')?.value || '').trim().toLowerCase();
+      let items = repertoireRoleItems();
+
+      if (currentUser.userType === 'admin' && teacher) {
+        const teacherObj = (globalGuruList || []).find(item => String(item.id || '').trim().toLowerCase() === teacher || String(item.nama || '').trim().toLowerCase() === teacher);
+        const teacherName = String(teacherObj?.nama || '').trim().toLowerCase();
+        const matchingStudents = new Set((globalSiswaList || []).filter(item => repertoireStudentMatchesTeacher(item, teacher)).map(item => String(item.siswaID || '').trim()));
+        items = items.filter(item =>
+          String(item.guruID || '').trim().toLowerCase() === teacher ||
+          (teacherName && String(item.guru || '').trim().toLowerCase() === teacherName) ||
+          matchingStudents.has(String(item.siswaID || '').trim())
+        );
+      }
+      if (studentId) items = items.filter(item => String(item.siswaID || '').trim() === studentId);
+      if (instrument) items = items.filter(item => String(item.instrumen || '').trim().toLowerCase() === instrument);
+      if (status) items = items.filter(item => String(item.status || '').trim().toLowerCase() === status);
+      if (search) {
+        items = items.filter(item => [
+          item.judulLagu, item.namaSiswa, item.composer, item.instrumen, item.keySignature, item.level, item.eventTampil, item.catatan
+        ].some(value => String(value || '').toLowerCase().includes(search)));
+      }
+
+      items.sort((a, b) => {
+        const dateA = String(a.targetTampil || a.lastUpdated || '');
+        const dateB = String(b.targetTampil || b.lastUpdated || '');
+        return dateB.localeCompare(dateA) || String(a.judulLagu || '').localeCompare(String(b.judulLagu || ''), 'id');
+      });
+      return items;
+    }
+
+    function renderRepertoirePage() {
+      renderRepertoireStats();
+      renderRepertoireList();
+      renderRepertoireSummary();
+      const loading = document.getElementById('repertoireLoadingState');
+      if (loading) loading.style.display = 'none';
+    }
+
+    function renderRepertoireStats() {
+      const items = repertoireFilteredItems();
+      const total = items.length;
+      const ready = items.filter(item => String(item.status || '').toLowerCase() === 'siap tampil').length;
+      const mastered = items.filter(item => ['dikuasai', 'sudah tampil'].includes(String(item.status || '').toLowerCase())).length;
+      const average = total ? Math.round(items.reduce((sum, item) => sum + (Number(item.progress || 0) || 0), 0) / total) : 0;
+      const byId = id => document.getElementById(id);
+      if (byId('repertoireStatTotal')) byId('repertoireStatTotal').textContent = String(total);
+      if (byId('repertoireStatReady')) byId('repertoireStatReady').textContent = String(ready);
+      if (byId('repertoireStatMastered')) byId('repertoireStatMastered').textContent = String(mastered);
+      if (byId('repertoireStatAverage')) byId('repertoireStatAverage').textContent = average + '%';
+    }
+
+    function repertoireStatusTone(status) {
+      const value = String(status || '').trim().toLowerCase();
+      if (value === 'siap tampil') return 'ready';
+      if (value === 'dikuasai') return 'mastered';
+      if (value === 'sudah tampil') return 'performed';
+      return 'learning';
+    }
+
+    function renderRepertoireList() {
+      const container = document.getElementById('repertoireList');
+      if (!container) return;
+      const items = repertoireFilteredItems();
+      if (!items.length) {
+        container.innerHTML = '<div class="repertoire-empty">Belum ada daftar repertoire yang sesuai filter.</div>';
+        return;
+      }
+      container.innerHTML = items.map(item => {
+        const progress = Math.max(0, Math.min(100, Number(item.progress || 0) || 0));
+        const target = item.targetTampil ? formatAcademyDate(item.targetTampil) : 'Belum ada target';
+        return `<button type="button" class="repertoire-item repertoire-item-compact" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')">
+          <div class="repertoire-item-head compact">
+            <div class="repertoire-song-copy">
+              <div class="repertoire-item-title">${escapeTaskHtml(item.judulLagu || '-')}</div>
+              <div class="repertoire-item-subtitle">${escapeTaskHtml(item.namaSiswa || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}${item.composer ? ` • ${escapeTaskHtml(item.composer)}` : ''}</div>
+            </div>
+            <span class="repertoire-badge ${repertoireStatusTone(item.status)}">${escapeTaskHtml(item.status || 'Belajar')}</span>
+          </div>
+          <div class="repertoire-compact-meta">
+            <span>${escapeTaskHtml(item.keySignature || '-')}</span>
+            <span>${escapeTaskHtml(item.level || '-')}</span>
+            <span>Target: ${escapeTaskHtml(target)}</span>
+            <strong>${progress}%</strong>
+          </div>
+          <div class="repertoire-progress compact"><i style="width:${progress}%"></i></div>
+        </button>`;
+      }).join('');
+    }
+
+    function renderRepertoireSummary() {
+      const box = document.getElementById('repertoireSummary');
+      if (!box) return;
+      const items = repertoireFilteredItems();
+      const selectedStudentId = String(document.getElementById('repertoireStudentFilter')?.value || '').trim();
+      const student = (globalSiswaList || []).find(item => String(item.siswaID || '') === selectedStudentId) || null;
+      const upcoming = items.filter(item => item.targetTampil).slice().sort((a,b) => String(a.targetTampil).localeCompare(String(b.targetTampil))).slice(0,4);
+      const ready = items.filter(item => String(item.status || '').toLowerCase() === 'siap tampil').slice(0,4);
+      const performed = items.filter(item => item.tanggalTampilTerakhir || String(item.status || '').toLowerCase() === 'sudah tampil').slice(0,4);
+      const focusStudentLabel = currentUser.userType === 'siswa'
+        ? (currentUser.userName || 'Siswa')
+        : (student ? `${student.nama || '-'} • ${student.instrumen || 'Musik'}` : 'Semua siswa');
+
+      const listHtml = (list, emptyText, formatter) => list.length
+        ? `<div class="repertoire-summary-list">${list.map(item => formatter(item)).join('')}</div>`
+        : `<div class="repertoire-empty small">${escapeTaskHtml(emptyText)}</div>`;
+
+      box.innerHTML = `
+        <div class="repertoire-summary-card repertoire-summary-overview">
+          <div class="repertoire-summary-head"><strong>Ringkasan Fokus</strong><span>${escapeTaskHtml(focusStudentLabel)}</span></div>
+          <div class="repertoire-summary-body">
+            <div class="repertoire-summary-chip"><span>Total Lagu</span><b>${items.length}</b></div>
+            <div class="repertoire-summary-chip"><span>Rata-rata</span><b>${items.length ? Math.round(items.reduce((sum, item) => sum + (Number(item.progress || 0) || 0), 0) / items.length) : 0}%</b></div>
+            <div class="repertoire-summary-chip"><span>Siap Tampil</span><b>${ready.length}</b></div>
+            <div class="repertoire-summary-chip"><span>Sudah Tampil</span><b>${performed.length}</b></div>
+          </div>
+          ${student ? `<div class="repertoire-student-note">Grade: <b>${escapeTaskHtml(student.kelas || '-')}</b> • Guru: <b>${escapeTaskHtml(student.guru || '-')}</b></div>` : ''}
+        </div>
+        <div class="repertoire-summary-card">
+          <div class="repertoire-summary-head"><strong>Siap Tampil</strong><span>Prioritas terdekat</span></div>
+          ${listHtml(ready, 'Belum ada repertoire yang siap tampil.', item => `<button type="button" class="repertoire-summary-row" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')"><b>${escapeTaskHtml(item.judulLagu || '-')}</b><span>${escapeTaskHtml(item.namaSiswa || '-')} • ${escapeTaskHtml(item.instrumen || '')}</span></button>`)}
+        </div>
+        <div class="repertoire-summary-card">
+          <div class="repertoire-summary-head"><strong>Agenda Tampil</strong><span>Target mendatang</span></div>
+          ${listHtml(upcoming, 'Belum ada target tampil yang dijadwalkan.', item => `<button type="button" class="repertoire-summary-row" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')"><b>${escapeTaskHtml(item.judulLagu || '-')}</b><span>${escapeTaskHtml(formatAcademyDate(item.targetTampil))}${item.eventTampil ? ` • ${escapeTaskHtml(item.eventTampil)}` : ''}</span></button>`)}
+        </div>
+        <div class="repertoire-summary-card">
+          <div class="repertoire-summary-head"><strong>Riwayat Tampil</strong><span>Performance history</span></div>
+          ${listHtml(performed, 'Belum ada riwayat penampilan.', item => `<button type="button" class="repertoire-summary-row" onclick="openRepertoireDetail('${escapeTaskHtml(item.repertoireID || '')}')"><b>${escapeTaskHtml(item.judulLagu || '-')}</b><span>${item.tanggalTampilTerakhir ? escapeTaskHtml(formatAcademyDate(item.tanggalTampilTerakhir)) : '-'}${item.eventTampil ? ` • ${escapeTaskHtml(item.eventTampil)}` : ''}</span></button>`)}
+        </div>`;
+    }
+
+    function openRepertoireModalById(repertoireID) {
+      const item = (globalRepertoireList || []).find(entry => String(entry.repertoireID || '') === String(repertoireID || ''));
+      openRepertoireModal(item || null);
+    }
+
+    function openRepertoireModal(item = null) {
+      if (currentUser.userType === 'siswa') return;
+      const modal = document.getElementById('modalRepertoire');
+      if (!modal) return;
+      document.getElementById('repertoireFormTitle').textContent = item ? 'Edit Repertoire Siswa' : 'Tambah Repertoire Siswa';
+      document.getElementById('repertoireID').value = item ? (item.repertoireID || '') : '';
+      populateRepertoireStudentSelect('repertoireSiswa', item ? item.siswaID : (document.getElementById('repertoireStudentFilter')?.value || ''));
+      populateRepertoireInstrumentOptions('repertoireSiswa', 'repertoireInstrumen', item ? item.instrumen : '');
+      document.getElementById('repertoireJudulLagu').value = item ? (item.judulLagu || '') : '';
+      document.getElementById('repertoireComposer').value = item ? (item.composer || '') : '';
+      document.getElementById('repertoireKeySignature').value = item ? (item.keySignature || '') : '';
+      document.getElementById('repertoireLevel').value = item ? (item.level || '') : '';
+      document.getElementById('repertoireStatus').value = item ? (item.status || 'Belajar') : 'Belajar';
+      document.getElementById('repertoireProgress').value = item ? (Number(item.progress || 0) || 0) : 0;
+      document.getElementById('repertoireTanggalMulai').value = item ? (item.tanggalMulai || '') : '';
+      document.getElementById('repertoireTargetTampil').value = item ? (item.targetTampil || '') : '';
+      document.getElementById('repertoireTanggalTampilTerakhir').value = item ? (item.tanggalTampilTerakhir || '') : '';
+      document.getElementById('repertoireEventTampil').value = item ? (item.eventTampil || '') : '';
+      document.getElementById('repertoireVideoUrl').value = item ? (item.videoUrl || '') : '';
+      document.getElementById('repertoireCatatan').value = item ? (item.catatan || '') : '';
+      modal.style.display = 'flex';
+    }
+
+    function closeRepertoireModal() {
+      const modal = document.getElementById('modalRepertoire');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function populateRepertoireStudentSelect(selectId, selectedValue = '') {
+      const select = document.getElementById(selectId);
+      if (!select) return;
+      let students = (globalSiswaList || []).slice();
+      if (currentUser.userType === 'guru') {
+        // globalSiswaList pada dashboard guru memang hanya berisi siswa yang dapat diakses guru tersebut.
+        students = students.filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+      }
+      students.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+      select.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
+      select.value = Array.from(select.options).some(opt => opt.value === selectedValue) ? selectedValue : (students[0] ? String(students[0].siswaID || '') : '');
+      populateRepertoireInstrumentOptions(selectId, 'repertoireInstrumen', document.getElementById('repertoireInstrumen')?.value || '');
+    }
+
+    function populateRepertoireInstrumentOptions(studentSelectId, targetSelectId, selectedValue = '') {
+      const studentId = String(document.getElementById(studentSelectId)?.value || '').trim();
+      const select = document.getElementById(targetSelectId);
+      if (!select) return;
+      const student = (globalSiswaList || []).find(item => String(item.siswaID || '') === studentId) || null;
+      const options = student && Array.isArray(student.kelasList) && student.kelasList.length
+        ? [...new Set(student.kelasList.map(item => String(item.instrumen || '').trim()).filter(Boolean))]
+        : (student && student.instrumen ? String(student.instrumen).split(',').map(item => item.trim()).filter(Boolean) : []);
+      const list = options.length ? options : ['Gitar'];
+      select.innerHTML = list.map(value => `<option value="${escapeTaskHtml(value)}">${escapeTaskHtml(value)}</option>`).join('');
+      if (selectedValue && Array.from(select.options).some(opt => opt.value === selectedValue)) select.value = selectedValue;
+    }
+
+    function handleSaveRepertoire(event) {
+      event.preventDefault();
+      const payload = {
+        repertoireID: document.getElementById('repertoireID').value,
+        siswaID: document.getElementById('repertoireSiswa').value,
+        judulLagu: document.getElementById('repertoireJudulLagu').value,
+        composer: document.getElementById('repertoireComposer').value,
+        instrumen: document.getElementById('repertoireInstrumen').value,
+        keySignature: document.getElementById('repertoireKeySignature').value,
+        level: document.getElementById('repertoireLevel').value,
+        status: document.getElementById('repertoireStatus').value,
+        progress: document.getElementById('repertoireProgress').value,
+        tanggalMulai: document.getElementById('repertoireTanggalMulai').value,
+        targetTampil: document.getElementById('repertoireTargetTampil').value,
+        tanggalTampilTerakhir: document.getElementById('repertoireTanggalTampilTerakhir').value,
+        eventTampil: document.getElementById('repertoireEventTampil').value,
+        videoUrl: document.getElementById('repertoireVideoUrl').value,
+        catatan: document.getElementById('repertoireCatatan').value
+      };
+
+      const saveButton = document.getElementById('btnSaveRepertoire');
+      if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Menyimpan...'; }
+      google.script.run
+        .withSuccessHandler(result => {
+          if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Simpan Repertoire'; }
+          if (!result || result.success === false) {
+            showAlert('alertDanger', (result && result.message) || 'Repertoire gagal disimpan.');
+            return;
+          }
+          closeRepertoireModal();
+          showAlert('alertSuccess', result.message || 'Repertoire berhasil disimpan.');
+          loadRepertoirePage();
+        })
+        .withFailureHandler(error => {
+          if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Simpan Repertoire'; }
+          showAlert('alertDanger', 'Repertoire gagal disimpan: ' + (error.message || error));
+        })
+        .saveStudentRepertoire(payload);
+      return false;
+    }
+
+    function confirmDeleteRepertoire(repertoireID) {
+      if (currentUser.userType === 'siswa') return;
+      const item = (globalRepertoireList || []).find(entry => String(entry.repertoireID || '') === String(repertoireID || ''));
+      const title = item ? item.judulLagu : 'item repertoire ini';
+      if (!confirm(`Hapus ${title}?`)) return;
+      google.script.run
+        .withSuccessHandler(result => {
+          if (!result || result.success === false) {
+            showAlert('alertDanger', (result && result.message) || 'Repertoire gagal dihapus.');
+            return;
+          }
+          closeRepertoireDetail();
+          showAlert('alertSuccess', result.message || 'Repertoire berhasil dihapus.');
+          loadRepertoirePage();
+        })
+        .withFailureHandler(error => {
+          showAlert('alertDanger', 'Repertoire gagal dihapus: ' + (error.message || error));
+        })
+        .deleteStudentRepertoire(repertoireID);
+    }
+
+    function openRepertoireDetail(repertoireID) {
+      const item = (globalRepertoireList || []).find(entry => String(entry.repertoireID || '') === String(repertoireID || ''));
+      if (!item) return;
+      repertoireActiveDetailId = String(repertoireID || '');
+      const modal = document.getElementById('modalRepertoireDetail');
+      const body = document.getElementById('repertoireDetailBody');
+      if (!modal || !body) return;
+      const youtubeHtml = item.youtube && item.youtube.embedUrl
+        ? `<iframe class="repertoire-video-frame" src="${escapeTaskHtml(item.youtube.embedUrl)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen title="Preview Video"></iframe>`
+        : (item.videoUrl ? `<a class="repertoire-link" href="${escapeTaskHtml(item.videoUrl)}" target="_blank" rel="noopener">Buka referensi video</a>` : '<span class="repertoire-muted">Belum ada video referensi.</span>');
+      body.innerHTML = `
+        <div class="repertoire-detail-top">
+          <div>
+            <h3>${escapeTaskHtml(item.judulLagu || '-')}</h3>
+            <p>${escapeTaskHtml(item.namaSiswa || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')} • ${escapeTaskHtml(item.composer || '-')}</p>
+          </div>
+          <span class="repertoire-badge ${repertoireStatusTone(item.status)}">${escapeTaskHtml(item.status || 'Belajar')}</span>
+        </div>
+        <div class="repertoire-detail-grid">
+          <div class="repertoire-meta"><span>Key Signature</span><strong>${escapeTaskHtml(item.keySignature || '-')}</strong></div>
+          <div class="repertoire-meta"><span>Level</span><strong>${escapeTaskHtml(item.level || '-')}</strong></div>
+          <div class="repertoire-meta"><span>Progress</span><strong>${escapeTaskHtml(String(item.progress || 0))}%</strong></div>
+          <div class="repertoire-meta"><span>Terakhir Update</span><strong>${escapeTaskHtml(item.lastUpdated || '-')}</strong></div>
+          <div class="repertoire-meta"><span>Tanggal Mulai</span><strong>${escapeTaskHtml(item.tanggalMulai ? formatAcademyDate(item.tanggalMulai) : '-')}</strong></div>
+          <div class="repertoire-meta"><span>Target Tampil</span><strong>${escapeTaskHtml(item.targetTampil ? formatAcademyDate(item.targetTampil) : '-')}</strong></div>
+          <div class="repertoire-meta"><span>Tampil Terakhir</span><strong>${escapeTaskHtml(item.tanggalTampilTerakhir ? formatAcademyDate(item.tanggalTampilTerakhir) : '-')}</strong></div>
+          <div class="repertoire-meta"><span>Event / Catatan Tampil</span><strong>${escapeTaskHtml(item.eventTampil || '-')}</strong></div>
+        </div>
+        <div class="repertoire-progress detail"><i style="width:${Math.max(0, Math.min(100, Number(item.progress || 0) || 0))}%"></i></div>
+        <div class="repertoire-detail-block"><strong>Catatan Coach</strong><p>${escapeTaskHtml(item.catatan || 'Belum ada catatan khusus.')}</p></div>
+        <div class="repertoire-detail-block"><strong>Video Referensi / Evaluasi</strong>${youtubeHtml}</div>`;
+      const editBtn = document.getElementById('btnEditRepertoireDetail');
+      const deleteBtn = document.getElementById('btnDeleteRepertoireDetail');
+      if (editBtn) editBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      if (deleteBtn) deleteBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      modal.style.display = 'flex';
+    }
+
+    function closeRepertoireDetail() {
+      const modal = document.getElementById('modalRepertoireDetail');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function editActiveRepertoireDetail() {
+      if (!repertoireActiveDetailId) return;
+      closeRepertoireDetail();
+      openRepertoireModalById(repertoireActiveDetailId);
+    }
+
+    function deleteActiveRepertoireDetail() {
+      if (!repertoireActiveDetailId) return;
+      confirmDeleteRepertoire(repertoireActiveDetailId);
+    }
+
+    function printRepertoireView() {
+      const items = repertoireFilteredItems();
+      const logoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+      const title = 'Repertoire / Daftar Lagu Siswa';
+      const focusStudent = String(document.getElementById('repertoireStudentFilter')?.selectedOptions?.[0]?.textContent || '').trim();
+      const focusLabel = currentUser.userType === 'siswa' ? currentUser.userName : (focusStudent && focusStudent !== 'Semua Siswa' ? focusStudent : 'Semua Siswa');
+      const win = window.open('', '_blank', 'width=1200,height=900');
+      if (!win) return;
+      const rows = items.map((item, index) => `<tr>
+        <td>${index + 1}</td>
+        <td><b>${escapeTaskHtml(item.judulLagu || '-')}</b><br><span>${escapeTaskHtml(item.composer || '-')}</span></td>
+        <td>${escapeTaskHtml(item.namaSiswa || '-')}</td>
+        <td>${escapeTaskHtml(item.instrumen || '-')}</td>
+        <td>${escapeTaskHtml(item.keySignature || '-')}</td>
+        <td>${escapeTaskHtml(item.level || '-')}</td>
+        <td>${escapeTaskHtml(item.status || '-')}</td>
+        <td>${escapeTaskHtml(String(item.progress || 0))}%</td>
+        <td>${escapeTaskHtml(item.targetTampil ? formatAcademyDate(item.targetTampil) : '-')}</td>
+        <td>${escapeTaskHtml(item.eventTampil || '-')}</td>
+      </tr>`).join('');
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
+        *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#eef2f6;color:#17232d}.toolbar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;justify-content:flex-end;padding:12px 18px;background:#17232d}.toolbar button{border:0;border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer}.pdf{background:#f15a24;color:#fff}.print{background:#fff;color:#17232d}.close{background:#334155;color:#fff}.hint{margin-right:auto;color:#cbd5e1;font-size:12px}.sheet{width:min(1120px,calc(100% - 32px));margin:24px auto;background:#fff;padding:28px;box-shadow:0 12px 30px rgba(15,23,42,.12)}header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #f15a24;padding-bottom:16px;margin-bottom:18px}.brand{display:flex;align-items:center;gap:16px}.brand img{width:145px;height:auto}.brand-copy h1{margin:0;font-size:23px}.brand-copy p{margin:5px 0 0;color:#64748b;font-size:12px}.meta{text-align:right;font-size:11px;color:#64748b;line-height:1.6}.summary{display:flex;gap:10px;margin:0 0 16px}.summary div{flex:1;border:1px solid #fed7aa;background:#fff8f4;border-radius:10px;padding:10px}.summary span{display:block;color:#9a3412;font-size:10px}.summary b{display:block;font-size:17px;margin-top:3px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{border:1px solid #d8dee8;padding:7px;vertical-align:top}th{background:#fff3ed;text-align:left;color:#9a3412}td span{color:#64748b}footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;text-align:center}@page{size:A4 landscape;margin:10mm}@media print{body{background:#fff}.toolbar{display:none}.sheet{width:100%;margin:0;padding:0;box-shadow:none}}
+      </style></head><body><div class="toolbar"><span class="hint">Simpan PDF membuka dialog cetak; pilih “Save as PDF / Simpan sebagai PDF”.</span><button class="pdf" onclick="lmcSavePdf('paper','landscape','Repertoire-Legacy-Music-Center.pdf',this)">Simpan PDF</button><button class="print" onclick="lmcPrintDoc('paper','landscape','Repertoire-Legacy-Music-Center.pdf',this)">Cetak</button><button class="close" onclick="window.close()">Tutup</button></div><main class="sheet" id="paper"><header><div class="brand"><img src="${escapeTaskHtml(logoUrl)}" alt="Legacy Music Center"><div class="brand-copy"><h1>${title}</h1><p>${escapeTaskHtml(focusLabel || 'Semua Siswa')}</p></div></div><div class="meta">Legacy Music Center<br>Dicetak ${new Date().toLocaleString('id-ID')}</div></header><div class="summary"><div><span>Total Lagu</span><b>${items.length}</b></div><div><span>Siap Tampil</span><b>${items.filter(i=>String(i.status||'').toLowerCase()==='siap tampil').length}</b></div><div><span>Dikuasai / Sudah Tampil</span><b>${items.filter(i=>['dikuasai','sudah tampil'].includes(String(i.status||'').toLowerCase())).length}</b></div><div><span>Rata-rata Progress</span><b>${items.length ? Math.round(items.reduce((s,i)=>s+(Number(i.progress||0)||0),0)/items.length) : 0}%</b></div></div><table><thead><tr><th>No</th><th>Lagu / Composer</th><th>Siswa</th><th>Instrumen</th><th>Key</th><th>Level</th><th>Status</th><th>Progress</th><th>Target Tampil</th><th>Event</th></tr></thead><tbody>${rows || '<tr><td colspan="10">Belum ada data repertoire.</td></tr>'}</tbody></table><footer>Legacy Music Center • Repertoire / Daftar Lagu Siswa</footer></main><script>function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
+async function lmcEnsurePdf(){await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',function(){return typeof window.html2canvas==='function';});await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){return !!(window.jspdf&&window.jspdf.jsPDF);});}
+function lmcIsIOS(){return /iPad|iPhone|iPod/i.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+async function lmcWaitImages(root){var imgs=Array.prototype.slice.call(root.querySelectorAll('img'));await Promise.all(imgs.map(function(img){if(img.complete)return Promise.resolve();return new Promise(function(resolve){var done=function(){resolve();};img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(resolve,1800);});}));}
+async function lmcCreatePdf(targetId,orientation,filename){await lmcEnsurePdf();var target=document.getElementById(targetId);if(!target)throw new Error('Dokumen tidak ditemukan.');await lmcWaitImages(target);var canvas=await window.html2canvas(target,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0});var jsPDF=window.jspdf.jsPDF;var landscape=orientation==='landscape';var pageW=landscape?297:210,pageH=landscape?210:297;var pdf=new jsPDF({orientation:landscape?'landscape':'portrait',unit:'mm',format:'a4',compress:true});var sliceH=Math.floor(canvas.width*(pageH/pageW));var y=0,pageIndex=0;while(y<canvas.height){var h=Math.min(sliceH,canvas.height-y);var slice=document.createElement('canvas');slice.width=canvas.width;slice.height=h;var ctx=slice.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,slice.width,slice.height);ctx.drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);var data=slice.toDataURL('image/jpeg',0.94);if(pageIndex>0)pdf.addPage('a4',landscape?'landscape':'portrait');var drawH=pageW*(h/canvas.width);pdf.addImage(data,'JPEG',0,0,pageW,Math.min(drawH,pageH),undefined,'FAST');y+=h;pageIndex++;}return {blob:pdf.output('blob'),filename:filename};}
+async function lmcShareOrDownload(blob,filename,title,preferPrint){var file=new File([blob],filename,{type:'application/pdf'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:title||filename,text:preferPrint?'Pilih Print/Cetak dari menu berbagi.':''});return true;}catch(e){if(e&&e.name==='AbortError')return true;}}var url=URL.createObjectURL(blob);if(preferPrint&&lmcIsIOS()){var opened=window.open(url,'_blank');if(!opened)window.location.href=url;setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}var a=document.createElement('a');a.href=url;a.download=filename;a.rel='noopener';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},120000);return true;}
+async function lmcSavePdf(targetId,orientation,filename,button){var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan PDF...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Legacy Music Center',false);}catch(e){alert('Gagal membuat PDF: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Simpan PDF';}}}
+async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS()){window.print();return;}var old=button?button.textContent:'';try{if(button){button.disabled=true;button.textContent='Menyiapkan Cetak...';}var r=await lmcCreatePdf(targetId,orientation,filename);await lmcShareOrDownload(r.blob,r.filename,'Cetak dokumen Legacy Music Center',true);}catch(e){alert('Gagal menyiapkan cetak: '+(e&&e.message?e.message:e));}finally{if(button){button.disabled=false;button.textContent=old||'Cetak';}}}<\/script></body></html>`);
+      win.document.close();
+      win.focus();
+    }
 
     function filterAdminByGuru() {
       renderDashboardViews();
@@ -2217,6 +2998,42 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       restoreDashboardWidgetStates();
     }
 
+    function getTeachersForStudentInstrumentFilter(instrumentValue) {
+      const needle = String(instrumentValue || '').trim().toLowerCase();
+      const teacherNames = new Set();
+      if (needle) {
+        (globalSiswaList || []).forEach(student => {
+          getStudentClassesForUI(student).forEach(item => {
+            if (String(item.instrumen || '').trim().toLowerCase() === needle && String(item.guru || '').trim()) {
+              teacherNames.add(String(item.guru || '').trim().toLowerCase());
+            }
+          });
+        });
+      }
+      return (globalGuruList || []).filter(guru => {
+        if (!needle) return true;
+        const nameMatch = teacherNames.has(String(guru.nama || '').trim().toLowerCase());
+        const teacherInstruments = String(guru.instrumen || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+        return nameMatch || teacherInstruments.includes(needle);
+      });
+    }
+
+    function refreshSiswaGuruFilterByInstrument() {
+      if (currentUser.userType !== 'admin') return;
+      const instrument = document.getElementById('filterSiswaInstrumen')?.value || '';
+      const select = document.getElementById('filterSiswaGuru');
+      if (!select) return;
+      const oldValue = select.value;
+      const teachers = getTeachersForStudentInstrumentFilter(instrument).slice().sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
+      select.innerHTML = '<option value="">-- Semua Guru --</option>' + teachers.map(g => `<option value="${escapeTaskHtml(g.nama || '')}">${escapeTaskHtml(g.nama || '-')} (${escapeTaskHtml(g.instrumen || 'Musik')})</option>`).join('');
+      select.value = Array.from(select.options).some(option => option.value === oldValue) ? oldValue : '';
+    }
+
+    function handleSiswaInstrumenFilterChange() {
+      refreshSiswaGuruFilterByInstrument();
+      applySiswaFilters();
+    }
+
     function applySiswaFilters() {
       let result = [...globalSiswaList];
       const urutan = document.getElementById('filterSiswaUrutan') ? document.getElementById('filterSiswaUrutan').value : 'terbaru';
@@ -2234,11 +3051,12 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         const filterInst = document.getElementById('filterSiswaInstrumen') ? document.getElementById('filterSiswaInstrumen').value.trim().toLowerCase() : '';
         const filterGuru = document.getElementById('filterSiswaGuru') ? document.getElementById('filterSiswaGuru').value.trim().toLowerCase() : '';
 
-        if (filterInst !== '') {
-          result = result.filter(s => studentHasClassValue(s, 'instrumen', filterInst));
-        }
-        if (filterGuru !== '') {
-          result = result.filter(s => studentHasClassValue(s, 'guru', filterGuru));
+        if (filterInst !== '' || filterGuru !== '') {
+          result = result.filter(s => getStudentClassesForUI(s).some(item => {
+            const instrumentMatch = !filterInst || String(item.instrumen || '').trim().toLowerCase() === filterInst;
+            const teacherMatch = !filterGuru || String(item.guru || '').trim().toLowerCase() === filterGuru;
+            return instrumentMatch && teacherMatch;
+          }));
         }
 
       }
@@ -3272,7 +4090,9 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
     function renderStudent360Access(data) {
       const reports = currentUser.userType === 'guru'
         ? (Array.isArray(data?.teacherReports) ? data.teacherReports : [])
-        : (Array.isArray(data?.studentReports) ? data.studentReports : []);
+        : currentUser.userType === 'admin'
+          ? (Array.isArray(data?.adminReports) ? data.adminReports : [])
+          : (Array.isArray(data?.studentReports) ? data.studentReports : []);
 
       const latestBox = document.getElementById('student360LatestCard');
       const historyBox = document.getElementById('student360ReportHistory');
@@ -3300,7 +4120,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
       if (!historyBox) return;
 
-      if (currentUser.userType === 'guru') {
+      if (currentUser.userType === 'guru' || currentUser.userType === 'admin') {
         if (filters) filters.style.display = 'grid';
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length
@@ -4020,12 +4840,35 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
         },
         dayHeaderFormat: { weekday: 'short' },
         eventClick: function(info) {
+          const props = info.event.extendedProps || {};
+          if (props.isScheduleOverride) {
+            alert(`${props.overrideLabel || 'Pergantian Jadwal'}
+Siswa: ${info.event.title}
+Tanggal: ${props.tanggal || '-'}
+Jam: ${props.jam || '-'}
+Ruangan: ${props.ruangan || '-'}
+Guru: ${props.guru || '-'}${props.keterangan ? `
+${props.keterangan}` : ''}`);
+            return;
+          }
           const jID = info.event.id;
           if (currentUser.userType !== 'siswa') {
             openEditJadwalModal(jID);
           } else {
-            alert(`Jadwal Pelajaran:\nSiswa: ${info.event.title}\nJam: ${info.event.extendedProps.jam}\nRuangan: ${info.event.extendedProps.ruangan}\nGuru: ${info.event.extendedProps.guru}`);
+            alert(`Jadwal Pelajaran:
+Siswa: ${info.event.title}
+Jam: ${props.jam}
+Ruangan: ${props.ruangan}
+Guru: ${props.guru}`);
           }
+        },
+        eventDidMount: function(info) {
+          const props = info.event.extendedProps || {};
+          if (!props.scheduleId || !info.event.start) return;
+          const d = info.event.start;
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const hidden = (globalScheduleOverrides || []).some(item => String(item.jadwalID || '') === String(props.scheduleId || '') && String(item.tanggalAsli || '') === key && String(item.status || 'Aktif').toLowerCase() === 'aktif');
+          if (hidden && info.el) info.el.style.display = 'none';
         }
       });
       calendarInstance.render();
@@ -4052,11 +4895,40 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
           backgroundColor: '#F15A24',
           borderColor: '#ea580c',
           extendedProps: {
+            scheduleId: j.jadwalID,
             jam: `${j.jamMulai} - ${j.jamSelesai}`,
             ruangan: j.ruangan,
             guru: j.guru || '-'
           }
         };
+      });
+
+      (globalScheduleOverrides || []).forEach(item => {
+        const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || {
+          jadwalID:item.jadwalID || '', hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '',
+          guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik'
+        };
+        if (String(item.status || 'Aktif').toLowerCase() !== 'aktif') return;
+        if (item.siswaPengganti && item.tanggalAsli) {
+          events.push({
+            id:`override-slot-${item.overrideID}`,
+            title:`${item.siswaPengganti} (${item.instrumenPengganti || schedule.instrumen || 'Musik'})`,
+            start:`${item.tanggalAsli}T${schedule.jamMulai || '00:00'}:00`,
+            end:`${item.tanggalAsli}T${schedule.jamSelesai || '00:00'}:00`,
+            backgroundColor:'#f59e0b', borderColor:'#d97706',
+            extendedProps:{ isScheduleOverride:true, overrideLabel:'🔄 Menggantikan Slot', tanggal:item.tanggalAsli, jam:`${schedule.jamMulai || '-'} - ${schedule.jamSelesai || '-'}`, ruangan:schedule.ruangan || '-', guru:schedule.guru || '-', keterangan:`Menggantikan jadwal ${item.siswaAsli || '-'}` }
+          });
+        }
+        if (item.tanggalMakeup && item.jamMulaiMakeup && item.jamSelesaiMakeup) {
+          events.push({
+            id:`override-makeup-${item.overrideID}`,
+            title:`${item.siswaAsli || '-'} (${schedule.instrumen || 'Musik'})`,
+            start:`${item.tanggalMakeup}T${item.jamMulaiMakeup}:00`,
+            end:`${item.tanggalMakeup}T${item.jamSelesaiMakeup}:00`,
+            backgroundColor:'#2563eb', borderColor:'#1d4ed8',
+            extendedProps:{ isScheduleOverride:true, overrideLabel:'➕ Make-up Class', tanggal:item.tanggalMakeup, jam:`${item.jamMulaiMakeup} - ${item.jamSelesaiMakeup}`, ruangan:item.ruanganMakeup || '-', guru:item.guruMakeup || schedule.guru || '-', keterangan:`Pengganti kelas ${formatAcademyDate(item.tanggalAsli)}` }
+          });
+        }
       });
 
       calendarInstance.addEventSource(events);
@@ -4101,7 +4973,7 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
           <td data-label="Instrumen"><b>${escapeTaskHtml(j.instrumen || 'Gitar')}</b></td>
           <td data-label="Ruangan">${escapeTaskHtml(j.ruangan || '-')}</td>
           <td data-label="Guru">${escapeTaskHtml(j.guru || '-')}</td>
-          <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(j.status || 'Aktif')}</span></td>`;
+          <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(j.status || 'Aktif')}</span>${(globalScheduleOverrides || []).some(item => String(item.jadwalID || '') === String(j.jadwalID || '') && String(item.status || 'Aktif').toLowerCase() === 'aktif') ? '<div class="schedule-override-table-note">⇄ Ada pergantian tanggal tertentu</div>' : ''}</td>`;
         
         if (!isSiswa) {
           rowHtml += `<td data-label="Aksi"><div class="table-actions">
@@ -4135,10 +5007,19 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
       const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
       const day = formDay;
       const currentValue = select.value;
-      const scheduleNames = new Set((globalJadwalList || [])
-        .filter(item => !day || String(item.hari || '').trim().toLowerCase() === day)
-        .map(item => String(item.namaSiswa || '').trim().toLowerCase())
-        .filter(Boolean));
+      const selectedDate = String(document.getElementById('absensiTanggal')?.value || '').trim();
+      const baseSchedules = (globalJadwalList || []).filter(item => !day || String(item.hari || '').trim().toLowerCase() === day);
+      const scheduleNames = new Set(baseSchedules.map(item => String(item.namaSiswa || '').trim().toLowerCase()).filter(Boolean));
+      if (selectedDate) {
+        (globalScheduleOverrides || []).forEach(override => {
+          if (String(override.status || 'Aktif').toLowerCase() !== 'aktif') return;
+          if (String(override.tanggalAsli || '') === selectedDate) {
+            scheduleNames.delete(String(override.siswaAsli || '').trim().toLowerCase());
+            if (override.siswaPengganti) scheduleNames.add(String(override.siswaPengganti || '').trim().toLowerCase());
+          }
+          if (String(override.tanggalMakeup || '') === selectedDate && override.siswaAsli) scheduleNames.add(String(override.siswaAsli || '').trim().toLowerCase());
+        });
+      }
       const students = (globalSiswaList || []).filter(student => {
         const name = String(student.nama || '').trim();
         if (!name) return false;
