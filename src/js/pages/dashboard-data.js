@@ -52,6 +52,7 @@
           renderNotificationCenter();
           if (notificationTimer) clearInterval(notificationTimer);
           notificationTimer = setInterval(renderNotificationCenter, 60000);
+          if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
         }).withFailureHandler(error => {
           if (requestNumber === dashboardRequestNumber) showAlert('alertDanger', 'Daftar guru gagal dimuat: ' + (error.message || error));
         }).getGuruList();
@@ -236,7 +237,7 @@
         document.getElementById('addStudentExtraClassesBox').style.display = 'none';
         document.getElementById('editStudentExtraClassesBox').style.display = 'none';
 
-        document.getElementById('formJadwalPenggantiBox').style.display = 'block';
+        document.getElementById('formJadwalPenggantiBox').style.display = 'none';
         document.getElementById('formPengumumanBox').style.display = 'none';
         document.getElementById('dashboardAcademyUpdatesGuru').style.display = 'block';
 
