@@ -295,7 +295,7 @@ Guru: ${props.guru}`);
       refreshAdminAttendanceLive();
       adminAttendanceSyncTimer = setInterval(() => {
         if (document.visibilityState === 'visible' && currentUser.userType === 'admin') refreshAdminAttendanceLive();
-      }, 8000);
+      }, 3000);
     }
 
     function refreshAdminAttendanceLive() {
