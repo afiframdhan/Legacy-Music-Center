@@ -1291,6 +1291,41 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return record.tipePeriode === 'Tiga Bulan' || /-Q|~/.test(String(record.periode || '').toUpperCase()) ? 'Tiga Bulan' : 'Bulanan';
     }
 
+    function learningProgressSignatureCandidates(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return [];
+      const list = [];
+      const push = url => { const clean=String(url||'').trim(); if(clean && !list.includes(clean)) list.push(clean); };
+      if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) { push(raw); return list; }
+      let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+      if (!match) match = raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if (match && match[1]) {
+        const id = decodeURIComponent(match[1]);
+        push(`https://lh3.googleusercontent.com/d/${id}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1200`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
+      }
+      push(raw);
+      return list;
+    }
+
+    function learningProgressSignatureFallback(img) {
+      if (!img) return;
+      try {
+        const list = JSON.parse(img.dataset.lpSignatureFallbacks || '[]');
+        const index = Number(img.dataset.lpSignatureFallbackIndex || 0);
+        if (index < list.length) { img.dataset.lpSignatureFallbackIndex = String(index + 1); img.src = list[index]; return; }
+      } catch (_) {}
+      img.style.display = 'none';
+    }
+
+    function learningProgressSignatureHtml(url, alt='Tanda tangan', inlineStyle='') {
+      const candidates = learningProgressSignatureCandidates(url);
+      if (!candidates.length) return '';
+      return `<img src="${escapeTaskHtml(candidates[0])}" data-lp-signature-fallbacks='${escapeTaskHtml(JSON.stringify(candidates.slice(1)))}' data-lp-signature-fallback-index="0" onerror="learningProgressSignatureFallback(this)" alt="${escapeTaskHtml(alt)}"${inlineStyle ? ` style="${inlineStyle}"` : ''}>`;
+    }
+
     function getCurrentLearningProgress(studentName, period, periodType) {
       const records = globalLearningProgressList.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(studentName || '').trim().toLowerCase());
       if (period) return records.find(item => String(item.periode || '') === String(period) && (!periodType || getLearningProgressPeriodType(item) === periodType)) || null;
@@ -1703,7 +1738,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         return `<div class="lp-form-component"><div class="lp-form-component-title"><span>${category.icon} ${category.label}</span><span>${percent}/100</span></div><div class="task-status ${percent === 100 ? 'done' : (percent > 0 ? 'open' : '')}" style="display:inline-block;margin-bottom:8px;">${escapeTaskHtml(getLearningComponentStatusText(progress, category.key))}</div><div class="lp-component-bar"><span style="width:${percent}%"></span></div><div style="font-size:11px;line-height:1.55;color:#64748b;margin-top:9px;white-space:pre-line;">${escapeTaskHtml(progress[category.key + 'Catatan'] || 'Belum ada catatan khusus.')}</div></div>`;
       }).join('');
       document.getElementById('lpDetailTitle').textContent = `Progress Belajar • ${progress.namaSiswa}`;
-      const signatures = `<div class="lp-detail-notes"><div class="lp-note"><span>Guru / Coach</span>${progress.guruSignatureUrl ? `<img src="${escapeTaskHtml(progress.guruSignatureUrl)}" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.guru || '-')}</p></div><div class="lp-note"><span>Kepala Sekolah</span>${progress.kepalaSekolahSignatureUrl ? `<img src="${escapeTaskHtml(progress.kepalaSekolahSignatureUrl)}" style="max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;">` : ''}<p>${escapeTaskHtml(progress.kepalaSekolahNama || '-')}</p></div></div>`;
+      const signatures = `<div class="lp-detail-notes"><div class="lp-note"><span>Guru / Coach</span>${learningProgressSignatureHtml(progress.guruSignatureUrl,'Tanda tangan guru','max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;')}<p>${escapeTaskHtml(progress.guru || '-')}</p></div><div class="lp-note"><span>Kepala Sekolah</span>${learningProgressSignatureHtml(progress.kepalaSekolahSignatureUrl,'Tanda tangan kepala sekolah','max-width:150px;max-height:65px;object-fit:contain;display:block;margin:4px 0;')}<p>${escapeTaskHtml(progress.kepalaSekolahNama || '-')}</p></div></div>`;
       document.getElementById('lpDetailBody').innerHTML = `<div class="lp-summary" style="margin-bottom:18px;"><div class="lp-ring" style="--lp-progress:${overall * 3.6}deg"><div class="lp-ring-value">${overall}</div></div><div class="lp-summary-info"><h3>${escapeTaskHtml(progress.level || '-')}</h3><div class="lp-main-bar"><span style="width:${overall}%"></span></div><div class="lp-period">${escapeTaskHtml(progress.kelas || '-')} • ${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}<br>Diperbarui ${escapeTaskHtml(progress.lastUpdated || '-')} oleh ${escapeTaskHtml(progress.guru || '-')}</div></div><div class="lp-target"><div class="lp-target-icon">◎</div><div><strong>Target Berikutnya</strong><p>${escapeTaskHtml(progress.targetBerikutnya || 'Belum ditentukan.')}</p></div></div></div><div class="lp-form-components">${rows}</div><div class="lp-detail-notes">${progress.kelebihan ? `<div class="lp-note"><span>Kelebihan</span><p>${escapeTaskHtml(progress.kelebihan)}</p></div>` : ''}${progress.perluDitingkatkan ? `<div class="lp-note"><span>Perlu ditingkatkan</span><p>${escapeTaskHtml(progress.perluDitingkatkan)}</p></div>` : ''}</div>${signatures}`;
       document.getElementById('lpDetailEditButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       document.getElementById('lpDetailDeleteButton').style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
@@ -1787,7 +1822,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const score=Math.max(0,Math.min(100,Number(progress[category.key+'Progress'])||0));
         return `<tr><td><b>${escapeTaskHtml(category.label)}</b></td><td>${escapeTaskHtml(progress[category.key+'Status']||'Belum Dimulai')}</td><td class="score">${score}/100</td><td>${escapeTaskHtml(progress[category.key+'Catatan']||'-')}</td></tr>`;
       }).join('');
-      const signature=(url,name,role)=>`<div class="signature"><div class="signature-role">${role}</div><div class="signature-image">${url?`<img src="${escapeTaskHtml(url)}">`:''}</div><b>${escapeTaskHtml(name||'-')}</b></div>`;
+      const signature=(url,name,role)=>{const candidates=learningProgressSignatureCandidates(url);const src=candidates[0]||'';return `<div class="signature"><div class="signature-role">${role}</div><div class="signature-image">${src?`<img src="${escapeTaskHtml(src)}">`:''}</div><b>${escapeTaskHtml(name||'-')}</b></div>`;};
       const safeName=String(progress.namaSiswa||'Siswa').replace(/[^a-z0-9_-]+/gi,'-');
       const report=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Laporan Progress ${escapeTaskHtml(progress.namaSiswa)}</title><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4 portrait;margin:14mm}html,body{margin:0;background:#e6edf5;font-family:Arial,sans-serif;color:#17232d}.toolbar{position:sticky;top:0;z-index:30;background:#122033;padding:12px;text-align:center}.toolbar button{border:0;border-radius:12px;padding:11px 16px;font-weight:800;margin:0 4px;font-size:15px}.ghost{background:#fff;color:#334155}.secondary{background:#fff0e9;color:#c2410c}.primary{background:#f15a24;color:#fff}.viewport{padding:14px;overflow:auto}.paper{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:14mm;box-shadow:0 12px 36px #0002;transform-origin:top left}.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:2.5px solid #f15a24;padding-bottom:10px;margin-bottom:13px;min-height:78px}.brand-logo{width:128px;height:78px;object-fit:contain;object-position:left center}.brand h1{font-size:20px;margin:0 0 5px}.brand strong{color:#f15a24}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.meta div,.summary{background:#fff7f2;border:1px solid #fed9c6;border-radius:10px;padding:8px}.meta span{display:block;color:#7b8aa0;font-size:8px;text-transform:uppercase;margin-bottom:3px}.summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.summary b{font-size:23px;color:#f15a24}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#f15a24;color:#fff;padding:7px;text-align:left}th:nth-child(1){width:20%}th:nth-child(2){width:18%}th:nth-child(3){width:14%}td{border:1px solid #dfe6ee;padding:7px;vertical-align:top;line-height:1.35;word-wrap:break-word}.score{text-align:center;font-weight:bold;white-space:nowrap}.notes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.note{border:1px solid #dfe6ee;border-radius:10px;padding:9px;min-height:52px}.note b{display:block;color:#f15a24;margin-bottom:4px}.signatures{display:flex;justify-content:space-around;gap:28px;margin-top:20px;text-align:center}.signature{width:220px}.signature-role{font-size:9px;font-weight:700;color:#64748b;margin-bottom:6px}.signature-image{height:64px;display:flex;align-items:center;justify-content:center}.signature img{max-width:160px;max-height:60px;object-fit:contain}.footer{margin-top:14px;padding-top:7px;border-top:1px solid #e8edf2;color:#94a3b8;font-size:8px;text-align:right}@media print{html,body{background:#fff}.toolbar{display:none!important}.viewport{padding:0;overflow:visible}.paper{box-shadow:none;transform:none!important}}</style></head><body><div class="toolbar"><button class="ghost" onclick="window.close()">Tutup</button><button class="secondary" onclick="lmcSavePdf('paper','portrait','Laporan-Progress-${safeName}.pdf',this)">Simpan PDF</button><button class="primary" onclick="lmcPrintDoc('paper','portrait','Laporan-Progress-${safeName}.pdf',this)">Cetak</button></div><div class="viewport" id="viewport"><div class="paper" id="paper"><div class="brand"><img class="brand-logo" src="${logoDataUrl}" alt="Legacy Music Center"><div style="text-align:right"><h1>Laporan Progress Belajar</h1><strong>${escapeTaskHtml(getLearningProgressPeriodType(progress))}</strong></div></div><div class="meta"><div><span>Nama Siswa</span><b>${escapeTaskHtml(progress.namaSiswa)}</b></div><div><span>Kelas</span><b>${escapeTaskHtml(progress.kelas||'-')}</b></div><div><span>Level</span><b>${escapeTaskHtml(progress.level||'-')}</b></div><div><span>Periode</span><b>${escapeTaskHtml(formatLearningProgressPeriod(progress.periode))}</b></div></div><div class="summary"><div><b style="font-size:12px">Nilai Keseluruhan</b><br>Rata-rata dari tujuh komponen</div><b>${Number(progress.overallProgress)||0}/100</b></div><table><thead><tr><th>Komponen</th><th>Status</th><th>Nilai/Proses</th><th>Catatan</th></tr></thead><tbody>${rows}</tbody></table><div class="notes"><div class="note"><b>Kelebihan</b>${escapeTaskHtml(progress.kelebihan||'-')}</div><div class="note"><b>Perlu Ditingkatkan</b>${escapeTaskHtml(progress.perluDitingkatkan||'-')}</div><div class="note"><b>Target Berikutnya</b>${escapeTaskHtml(progress.targetBerikutnya||'-')}</div><div class="note"><b>Terakhir Diperbarui</b>${escapeTaskHtml(progress.lastUpdated||'-')}</div></div><div class="signatures">${signature(progress.guruSignatureUrl,progress.guru,'Guru / Coach')}${signature(progress.kepalaSekolahSignatureUrl,progress.kepalaSekolahNama,'Kepala Sekolah')}</div><div class="footer">Dokumen resmi Legacy Music Center • Dicetak dari sistem Progress Belajar</div></div></div><script>function lmcLoadScript(src,test){return new Promise(function(resolve,reject){try{if(test()){resolve();return;}var old=document.querySelector('script[data-lmc-src="'+src+'"]');if(old){old.addEventListener('load',function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));},{once:true});old.addEventListener('error',function(){reject(new Error('Gagal memuat library PDF.'));},{once:true});return;}var s=document.createElement('script');s.src=src;s.async=true;s.dataset.lmcSrc=src;s.onload=function(){test()?resolve():reject(new Error('Library PDF tidak siap.'));};s.onerror=function(){reject(new Error('Gagal memuat library PDF.'));};document.head.appendChild(s);}catch(e){reject(e);}})}
 async function lmcEnsurePdf(){await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',function(){return typeof window.html2canvas==='function';});await lmcLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(){return !!(window.jspdf&&window.jspdf.jsPDF);});}
@@ -2411,7 +2446,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       const list = document.getElementById('repertoireList');
       const requestId = ++repertoireLoadRequestId;
 
-      if (addBtn) addBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      if (addBtn) addBtn.style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       if (printBtn) printBtn.style.display = 'inline-flex';
       if (studentWrap) studentWrap.style.display = currentUser.userType === 'siswa' ? 'none' : 'block';
       if (teacherWrap) teacherWrap.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
@@ -2674,6 +2709,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
     function openRepertoireModal(item = null) {
       if (currentUser.userType === 'siswa') return;
+      if (!item && currentUser.userType !== 'guru') { showAlert('alertDanger', 'Hanya guru yang dapat menambahkan repertoire baru.'); return; }
       const modal = document.getElementById('modalRepertoire');
       if (!modal) return;
       document.getElementById('repertoireFormTitle').textContent = item ? 'Edit Repertoire Siswa' : 'Tambah Repertoire Siswa';
@@ -4470,11 +4506,11 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const list=document.getElementById('annualExamList');
       if (!list) return;
       const isStudent=currentUser.userType==='siswa';
-      document.getElementById('annualExamPageTitle').textContent=isStudent?'Sertifikat':'Ujian Tahunan & Sertifikat';
-      document.getElementById('annualExamPageSubtitle').textContent=isStudent?'Sertifikat ujian tahunan yang telah diterbitkan untuk kamu.':'Kelola penilaian ujian tahunan, hasil ujian, dan sertifikat siswa.';
+      document.getElementById('annualExamPageTitle').textContent=isStudent?'Sertifikat':(currentUser.userType==='admin'?'Hasil Ujian Tahunan & Sertifikat':'Ujian Tahunan & Sertifikat');
+      document.getElementById('annualExamPageSubtitle').textContent=isStudent?'Sertifikat ujian tahunan yang telah diterbitkan untuk kamu.':(currentUser.userType==='admin'?'Lihat hasil ujian tahunan dan sertifikat seluruh siswa. Penilaian dibuat oleh guru.':'Kelola penilaian ujian tahunan, hasil ujian, dan sertifikat siswa.');
       const staffActions=document.getElementById('annualExamStaffActions');
       const filters=document.getElementById('annualExamFilters');
-      if(staffActions) staffActions.style.display=isStudent?'none':'flex';
+      if(staffActions) staffActions.style.display=currentUser.userType==='guru'?'flex':'none';
       if(filters) filters.style.display=isStudent?'none':'grid';
       list.innerHTML='<div class="annual-exam-empty">Memuat data ujian...</div>';
       google.script.run.withSuccessHandler(res=>{
@@ -4514,7 +4550,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         if(year)rows=rows.filter(x=>String(x.examDate||'').startsWith(year));
       }
       renderAnnualExamSummary(rows);
-      if(!rows.length){box.innerHTML=`<div class="annual-exam-empty"><strong>${currentUser.userType==='siswa'?'Belum ada sertifikat':'Belum ada hasil ujian'}</strong><span>${currentUser.userType==='siswa'?'Sertifikat akan muncul setelah guru atau admin mengirimkannya.':'Klik “Penilaian Ujian” untuk membuat hasil ujian tahunan.'}</span></div>`;return;}
+      if(!rows.length){box.innerHTML=`<div class="annual-exam-empty"><strong>${currentUser.userType==='siswa'?'Belum ada sertifikat':'Belum ada hasil ujian'}</strong><span>${currentUser.userType==='siswa'?'Sertifikat akan muncul setelah guru mengirimkannya.':(currentUser.userType==='admin'?'Belum ada hasil ujian yang dibuat guru.':'Klik “Penilaian Ujian” untuk membuat hasil ujian tahunan.')}</span></div>`;return;}
       box.innerHTML=`<div class="annual-exam-grid">${rows.map(annualExamCardHtml).join('')}</div>`;
     }
 
@@ -4538,10 +4574,11 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         <div class="annual-exam-card-top"><div><span class="annual-exam-kicker">${annualExamEscape(exam.instrument||'Musik')} • ${annualExamEscape(exam.gradeExam||'-')}</span><h3>${student}</h3><p>${annualExamEscape(formatAcademyDate(exam.examDate||''))} • Pengajar: ${annualExamEscape(exam.teacherName||'-')}</p></div><div class="annual-exam-score">${score}</div></div>
         <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
         <div class="annual-exam-card-actions">
-          ${!isStudent?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button><button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          ${currentUser.userType==='guru'?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button>`:''}
+          ${!isStudent?`<button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
           <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
-          ${!isStudent&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
-          ${!isStudent?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
+          ${currentUser.userType==='guru'&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
+          ${currentUser.userType==='guru'?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
         </div>
       </article>`;
     }
@@ -4614,7 +4651,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     }
 
     function openAnnualExamForm(examId=''){
-      if(currentUser.userType==='siswa')return;
+      if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
       const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');
@@ -5136,7 +5173,7 @@ Guru: ${props.guru}`);
       refreshAdminAttendanceLive();
       adminAttendanceSyncTimer = setInterval(() => {
         if (document.visibilityState === 'visible' && currentUser.userType === 'admin') refreshAdminAttendanceLive();
-      }, 8000);
+      }, 3000);
     }
 
     function refreshAdminAttendanceLive() {
@@ -6285,14 +6322,49 @@ function normalizeTaskStatus(task) {
         dateInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       }
 
+      const attendanceInstrument = document.getElementById('teacherAttendanceFilterInstrument');
+      const attendanceTeacher = document.getElementById('teacherAttendanceFilterTeacher');
+      const attendanceStatus = document.getElementById('teacherAttendanceFilterStatus');
+      const attendanceMonth = document.getElementById('teacherAttendanceFilterMonth');
+
+      if (attendanceInstrument) {
+        const keep = attendanceInstrument.value;
+        const instruments = [...new Set((globalGuruList || []).flatMap(guru => getTeacherInstrumentValues(guru.instrumen || '')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+        attendanceInstrument.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(v => `<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+        attendanceInstrument.value = instruments.includes(keep) ? keep : '';
+      }
+
+      if (attendanceTeacher) {
+        const keep = attendanceTeacher.value;
+        const selectedInstrument = String(attendanceInstrument?.value || '').trim().toLowerCase();
+        const teachers = (globalGuruList || []).filter(guru => !selectedInstrument || getTeacherInstrumentValues(guru.instrumen || '').some(v => v.toLowerCase() === selectedInstrument));
+        attendanceTeacher.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(guru => `<option value="${escapeTaskHtml(guru.id || guru.nama || '')}">${escapeTaskHtml(guru.nama || '-')} (${escapeTaskHtml(guru.instrumen || 'Musik')})</option>`).join('');
+        attendanceTeacher.value = [...attendanceTeacher.options].some(opt => opt.value === keep) ? keep : '';
+      }
+
+      const selectedInstrument = String(attendanceInstrument?.value || '').trim().toLowerCase();
+      const selectedTeacher = String(attendanceTeacher?.value || '').trim();
+      const selectedStatus = String(attendanceStatus?.value || '').trim().toLowerCase();
+      const selectedMonth = String(attendanceMonth?.value || '').trim();
+      const teacherById = new Map((globalGuruList || []).map(guru => [String(guru.id || ''), guru]));
+      const teacherByName = new Map((globalGuruList || []).map(guru => [String(guru.nama || '').trim().toLowerCase(), guru]));
+      const filteredAttendance = (globalTeacherAttendanceList || []).filter(item => {
+        const teacher = teacherById.get(String(item.guruID || '')) || teacherByName.get(String(item.namaGuru || '').trim().toLowerCase()) || null;
+        if (selectedInstrument && !(teacher && getTeacherInstrumentValues(teacher.instrumen || '').some(v => v.toLowerCase() === selectedInstrument))) return false;
+        if (selectedTeacher && String(item.guruID || '') !== selectedTeacher && String(item.namaGuru || '').trim().toLowerCase() !== String((teacherById.get(selectedTeacher) || {}).nama || selectedTeacher).trim().toLowerCase()) return false;
+        if (selectedStatus && String(item.status || '').trim().toLowerCase() !== selectedStatus) return false;
+        if (selectedMonth && !String(item.tanggal || '').startsWith(selectedMonth)) return false;
+        return true;
+      });
+
       const attendanceBody = document.getElementById('adminTeacherAttendanceBody');
       if (attendanceBody) {
-        attendanceBody.innerHTML = globalTeacherAttendanceList.length ? globalTeacherAttendanceList.map((item, index) => {
+        attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map((item, index) => {
           const statusKey = String(item.status || '').toLowerCase();
           const badgeClass = statusKey === 'hadir' ? 'badge-success' : (statusKey === 'alpa' ? 'badge-danger' : 'badge-warning');
           const signature = item.tandaTangan && String(item.tandaTangan).startsWith('data:image') ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
           return `<tr class="teacher-attendance-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td data-label="Status"><span><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Jam Masuk">${escapeTaskHtml(item.jamMasuk || '-')}</td><td data-label="Jam Keluar">${escapeTaskHtml(item.jamKeluar || '-')}</td><td data-label="Catatan">${escapeTaskHtml(item.catatan || '-')}</td><td data-label="TTD">${signature}</td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditTeacherAttendance(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteTeacherAttendanceRecord(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Hapus</button></div></td></tr>`;
-        }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Belum ada absensi guru.</td></tr>';
+        }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Tidak ada absensi guru sesuai filter.</td></tr>';
       }
     }
 
@@ -6410,7 +6482,20 @@ function normalizeTaskStatus(task) {
     }
 
     function printTeacherAttendanceReport() {
-      const records = globalTeacherAttendanceList || [];
+      const instrument = String(document.getElementById('teacherAttendanceFilterInstrument')?.value || '').trim().toLowerCase();
+      const teacherValue = String(document.getElementById('teacherAttendanceFilterTeacher')?.value || '').trim();
+      const statusValue = String(document.getElementById('teacherAttendanceFilterStatus')?.value || '').trim().toLowerCase();
+      const monthValue = String(document.getElementById('teacherAttendanceFilterMonth')?.value || '').trim();
+      const teacherById = new Map((globalGuruList || []).map(guru => [String(guru.id || ''), guru]));
+      const teacherByName = new Map((globalGuruList || []).map(guru => [String(guru.nama || '').trim().toLowerCase(), guru]));
+      const records = (globalTeacherAttendanceList || []).filter(item => {
+        const teacher = teacherById.get(String(item.guruID || '')) || teacherByName.get(String(item.namaGuru || '').trim().toLowerCase()) || null;
+        if (instrument && !(teacher && getTeacherInstrumentValues(teacher.instrumen || '').some(v => v.toLowerCase() === instrument))) return false;
+        if (teacherValue && String(item.guruID || '') !== teacherValue && String(item.namaGuru || '').trim().toLowerCase() !== String((teacherById.get(teacherValue) || {}).nama || teacherValue).trim().toLowerCase()) return false;
+        if (statusValue && String(item.status || '').trim().toLowerCase() !== statusValue) return false;
+        if (monthValue && !String(item.tanggal || '').startsWith(monthValue)) return false;
+        return true;
+      });
       if (!records.length) { showAlert('alertDanger', 'Belum ada data absensi guru untuk dicetak.'); return; }
       const printWindow = window.open('', '_blank', 'width=1000,height=760');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
@@ -6548,6 +6633,34 @@ function normalizeTaskStatus(task) {
       return false;
     }
 
+    function mapAttendanceMutationForUi(row, fallback = {}) {
+      if (!row || typeof row !== 'object') return null;
+      const rawDate = String(row.attendance_date || row.tanggal || fallback.tanggal || '').slice(0,10);
+      const dateParts = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return {
+        absensiID: row.attendance_id || row.absensiID || '',
+        namaSiswa: row.student_name_snapshot || row.namaSiswa || fallback.namaSiswa || '',
+        tanggal: dateParts ? `${dateParts[3]}-${dateParts[2]}-${dateParts[1]}` : (row.tanggal || fallback.tanggal || ''),
+        pertemuanKe: row.meeting_number ?? row.pertemuanKe ?? fallback.pertemuanKe ?? '',
+        status: row.status || fallback.status || '',
+        materi: row.material ?? row.materi ?? fallback.materi ?? '',
+        lagu: row.song ?? row.lagu ?? fallback.lagu ?? '',
+        catatan: row.notes ?? row.catatan ?? fallback.catatan ?? '',
+        tandaTangan: row.teacher_signature_data ?? row.tandaTangan ?? fallback.tandaTangan ?? '',
+        guruCatat: row.teacher_name_snapshot ?? row.guruCatat ?? fallback.guru ?? currentUser.userName ?? '',
+        ttdSiswa: row.student_signature_data ?? row.ttdSiswa ?? fallback.ttdSiswa ?? ''
+      };
+    }
+
+    function upsertAttendanceLocally(item) {
+      if (!item || !item.absensiID) return;
+      const index = (globalAbsensiList || []).findIndex(row => String(row.absensiID || '') === String(item.absensiID || ''));
+      if (index >= 0) globalAbsensiList[index] = item;
+      else globalAbsensiList.unshift(item);
+      setupFilterDropdown();
+      renderTabelRiwayat();
+    }
+
     function addAbsensiCombined(e) {
       e.preventDefault();
       
@@ -6582,11 +6695,14 @@ function normalizeTaskStatus(task) {
       google.script.run.withSuccessHandler(res => {
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if(res.success) {
+          const localItem = mapAttendanceMutationForUi(res.attendance || res.item || null, payload);
+          if (localItem) upsertAttendanceLocally(localItem);
           if (currentUser.userType === 'guru') {
             clearSignature('canvasTtdGuru');
             clearSignature('canvasTtdSiswa');
           }
-          fetchDashboardData();
+          // Rekonsiliasi penuh tetap berjalan setelah UI lokal sudah diperbarui.
+          setTimeout(fetchDashboardData, 150);
         }
       }).recordAbsensi(payload);
     }

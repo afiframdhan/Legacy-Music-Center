@@ -11,7 +11,7 @@
       const list = document.getElementById('repertoireList');
       const requestId = ++repertoireLoadRequestId;
 
-      if (addBtn) addBtn.style.display = currentUser.userType === 'siswa' ? 'none' : 'inline-flex';
+      if (addBtn) addBtn.style.display = currentUser.userType === 'guru' ? 'inline-flex' : 'none';
       if (printBtn) printBtn.style.display = 'inline-flex';
       if (studentWrap) studentWrap.style.display = currentUser.userType === 'siswa' ? 'none' : 'block';
       if (teacherWrap) teacherWrap.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
@@ -274,6 +274,7 @@
 
     function openRepertoireModal(item = null) {
       if (currentUser.userType === 'siswa') return;
+      if (!item && currentUser.userType !== 'guru') { showAlert('alertDanger', 'Hanya guru yang dapat menambahkan repertoire baru.'); return; }
       const modal = document.getElementById('modalRepertoire');
       if (!modal) return;
       document.getElementById('repertoireFormTitle').textContent = item ? 'Edit Repertoire Siswa' : 'Tambah Repertoire Siswa';

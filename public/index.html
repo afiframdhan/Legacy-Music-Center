@@ -1019,6 +1019,12 @@
               </form>
               </div>
               <div class="widget-title" style="margin-bottom:12px;">Riwayat Absensi Guru</div>
+              <div class="filter-grid attendance-filter-panel" id="teacherAttendanceFilterBox" style="margin-bottom:14px;">
+                <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="teacherAttendanceFilterInstrument" onchange="renderAdminTeacherManagement()"><option value="">Semua Instrumen</option></select></div>
+                <div class="form-group" style="margin:0;"><label>Guru</label><select id="teacherAttendanceFilterTeacher" onchange="renderAdminTeacherManagement()"><option value="">Semua Guru</option></select></div>
+                <div class="form-group" style="margin:0;"><label>Status</label><select id="teacherAttendanceFilterStatus" onchange="renderAdminTeacherManagement()"><option value="">Semua Status</option><option value="Hadir">Hadir</option><option value="Izin">Izin</option><option value="Sakit">Sakit</option><option value="Alpa">Alpa</option><option value="Cuti">Cuti</option></select></div>
+                <div class="form-group" style="margin:0;"><label>Bulan</label><input type="month" id="teacherAttendanceFilterMonth" onchange="renderAdminTeacherManagement()"></div>
+              </div>
               <div class="responsive-table modern-data-table teacher-mobile-table" style="padding:0;">
                 <table style="min-width:920px;"><thead><tr><th>No</th><th>Tanggal</th><th>Nama Guru</th><th>Status</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Catatan</th><th>TTD</th><th>Aksi</th></tr></thead><tbody id="adminTeacherAttendanceBody"></tbody></table>
               </div>

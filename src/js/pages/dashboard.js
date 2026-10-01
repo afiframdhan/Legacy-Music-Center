@@ -1591,11 +1591,11 @@
       const list=document.getElementById('annualExamList');
       if (!list) return;
       const isStudent=currentUser.userType==='siswa';
-      document.getElementById('annualExamPageTitle').textContent=isStudent?'Sertifikat':'Ujian Tahunan & Sertifikat';
-      document.getElementById('annualExamPageSubtitle').textContent=isStudent?'Sertifikat ujian tahunan yang telah diterbitkan untuk kamu.':'Kelola penilaian ujian tahunan, hasil ujian, dan sertifikat siswa.';
+      document.getElementById('annualExamPageTitle').textContent=isStudent?'Sertifikat':(currentUser.userType==='admin'?'Hasil Ujian Tahunan & Sertifikat':'Ujian Tahunan & Sertifikat');
+      document.getElementById('annualExamPageSubtitle').textContent=isStudent?'Sertifikat ujian tahunan yang telah diterbitkan untuk kamu.':(currentUser.userType==='admin'?'Lihat hasil ujian tahunan dan sertifikat seluruh siswa. Penilaian dibuat oleh guru.':'Kelola penilaian ujian tahunan, hasil ujian, dan sertifikat siswa.');
       const staffActions=document.getElementById('annualExamStaffActions');
       const filters=document.getElementById('annualExamFilters');
-      if(staffActions) staffActions.style.display=isStudent?'none':'flex';
+      if(staffActions) staffActions.style.display=currentUser.userType==='guru'?'flex':'none';
       if(filters) filters.style.display=isStudent?'none':'grid';
       list.innerHTML='<div class="annual-exam-empty">Memuat data ujian...</div>';
       google.script.run.withSuccessHandler(res=>{
@@ -1635,7 +1635,7 @@
         if(year)rows=rows.filter(x=>String(x.examDate||'').startsWith(year));
       }
       renderAnnualExamSummary(rows);
-      if(!rows.length){box.innerHTML=`<div class="annual-exam-empty"><strong>${currentUser.userType==='siswa'?'Belum ada sertifikat':'Belum ada hasil ujian'}</strong><span>${currentUser.userType==='siswa'?'Sertifikat akan muncul setelah guru atau admin mengirimkannya.':'Klik “Penilaian Ujian” untuk membuat hasil ujian tahunan.'}</span></div>`;return;}
+      if(!rows.length){box.innerHTML=`<div class="annual-exam-empty"><strong>${currentUser.userType==='siswa'?'Belum ada sertifikat':'Belum ada hasil ujian'}</strong><span>${currentUser.userType==='siswa'?'Sertifikat akan muncul setelah guru mengirimkannya.':(currentUser.userType==='admin'?'Belum ada hasil ujian yang dibuat guru.':'Klik “Penilaian Ujian” untuk membuat hasil ujian tahunan.')}</span></div>`;return;}
       box.innerHTML=`<div class="annual-exam-grid">${rows.map(annualExamCardHtml).join('')}</div>`;
     }
 
@@ -1659,10 +1659,11 @@
         <div class="annual-exam-card-top"><div><span class="annual-exam-kicker">${annualExamEscape(exam.instrument||'Musik')} • ${annualExamEscape(exam.gradeExam||'-')}</span><h3>${student}</h3><p>${annualExamEscape(formatAcademyDate(exam.examDate||''))} • Pengajar: ${annualExamEscape(exam.teacherName||'-')}</p></div><div class="annual-exam-score">${score}</div></div>
         <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
         <div class="annual-exam-card-actions">
-          ${!isStudent?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button><button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          ${currentUser.userType==='guru'?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button>`:''}
+          ${!isStudent?`<button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
           <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
-          ${!isStudent&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
-          ${!isStudent?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
+          ${currentUser.userType==='guru'&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
+          ${currentUser.userType==='guru'?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
         </div>
       </article>`;
     }
@@ -1735,7 +1736,7 @@
     }
 
     function openAnnualExamForm(examId=''){
-      if(currentUser.userType==='siswa')return;
+      if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
       const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');

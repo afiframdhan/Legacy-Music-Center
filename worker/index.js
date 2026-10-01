@@ -367,7 +367,7 @@ async function handleRpc(request, env, ctx) {
 
   if (method === 'saveAnnualExam') {
     try {
-      if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat menyimpan penilaian ujian.');
+      if (session.userType !== 'guru') throw new Error('Hanya guru yang dapat menyimpan penilaian ujian.');
       const result = await saveAnnualExamSupabase(env, session, args[0] || {});
       return json({ ok:true, data:result });
     } catch (error) {
@@ -378,7 +378,7 @@ async function handleRpc(request, env, ctx) {
 
   if (method === 'publishAnnualExam') {
     try {
-      if (!['guru','admin'].includes(session.userType)) throw new Error('Akses kirim sertifikat ditolak.');
+      if (session.userType !== 'guru') throw new Error('Hanya guru yang dapat mengirim hasil ujian dan sertifikat.');
       const examId = String(args[0] || '').trim();
       const examBeforePublish = await getAnnualExamSupabase(env, session, examId);
       const result = await publishAnnualExamSupabase(env, session, examId);
@@ -399,7 +399,7 @@ async function handleRpc(request, env, ctx) {
 
   if (method === 'deleteAnnualExam') {
     try {
-      if (!['guru','admin'].includes(session.userType)) throw new Error('Akses hapus hasil ujian ditolak.');
+      if (session.userType !== 'guru') throw new Error('Hanya guru yang dapat menghapus hasil ujian.');
       const result = await deleteAnnualExamSupabase(env, session, String(args[0] || '').trim());
       return json({ ok:true, data:result });
     } catch (error) {
@@ -2620,8 +2620,9 @@ async function getRepertoireDataSupabase(env, session) {
 }
 
 async function saveStudentRepertoireSupabase(env, session, payload) {
-  if (!['guru','admin'].includes(session.userType)) throw new Error('Hanya guru atau admin yang dapat menyimpan repertoire.');
+  if (!['guru','admin'].includes(session.userType)) throw new Error('Akses repertoire ditolak.');
   const repertoireId = String(payload.repertoireID || '').trim();
+  if (!repertoireId && session.userType !== 'guru') throw new Error('Hanya guru yang dapat menambahkan repertoire baru.');
   const studentId = String(payload.siswaID || '').trim();
   if (!studentId) throw new Error('Siswa belum dipilih.');
   if (!(await annualExamTeacherCanAccessStudent(env, session, studentId))) throw new Error('Anda tidak memiliki akses ke siswa ini.');

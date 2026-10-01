@@ -73,14 +73,49 @@
         dateInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       }
 
+      const attendanceInstrument = document.getElementById('teacherAttendanceFilterInstrument');
+      const attendanceTeacher = document.getElementById('teacherAttendanceFilterTeacher');
+      const attendanceStatus = document.getElementById('teacherAttendanceFilterStatus');
+      const attendanceMonth = document.getElementById('teacherAttendanceFilterMonth');
+
+      if (attendanceInstrument) {
+        const keep = attendanceInstrument.value;
+        const instruments = [...new Set((globalGuruList || []).flatMap(guru => getTeacherInstrumentValues(guru.instrumen || '')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+        attendanceInstrument.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(v => `<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+        attendanceInstrument.value = instruments.includes(keep) ? keep : '';
+      }
+
+      if (attendanceTeacher) {
+        const keep = attendanceTeacher.value;
+        const selectedInstrument = String(attendanceInstrument?.value || '').trim().toLowerCase();
+        const teachers = (globalGuruList || []).filter(guru => !selectedInstrument || getTeacherInstrumentValues(guru.instrumen || '').some(v => v.toLowerCase() === selectedInstrument));
+        attendanceTeacher.innerHTML = '<option value="">Semua Guru</option>' + teachers.map(guru => `<option value="${escapeTaskHtml(guru.id || guru.nama || '')}">${escapeTaskHtml(guru.nama || '-')} (${escapeTaskHtml(guru.instrumen || 'Musik')})</option>`).join('');
+        attendanceTeacher.value = [...attendanceTeacher.options].some(opt => opt.value === keep) ? keep : '';
+      }
+
+      const selectedInstrument = String(attendanceInstrument?.value || '').trim().toLowerCase();
+      const selectedTeacher = String(attendanceTeacher?.value || '').trim();
+      const selectedStatus = String(attendanceStatus?.value || '').trim().toLowerCase();
+      const selectedMonth = String(attendanceMonth?.value || '').trim();
+      const teacherById = new Map((globalGuruList || []).map(guru => [String(guru.id || ''), guru]));
+      const teacherByName = new Map((globalGuruList || []).map(guru => [String(guru.nama || '').trim().toLowerCase(), guru]));
+      const filteredAttendance = (globalTeacherAttendanceList || []).filter(item => {
+        const teacher = teacherById.get(String(item.guruID || '')) || teacherByName.get(String(item.namaGuru || '').trim().toLowerCase()) || null;
+        if (selectedInstrument && !(teacher && getTeacherInstrumentValues(teacher.instrumen || '').some(v => v.toLowerCase() === selectedInstrument))) return false;
+        if (selectedTeacher && String(item.guruID || '') !== selectedTeacher && String(item.namaGuru || '').trim().toLowerCase() !== String((teacherById.get(selectedTeacher) || {}).nama || selectedTeacher).trim().toLowerCase()) return false;
+        if (selectedStatus && String(item.status || '').trim().toLowerCase() !== selectedStatus) return false;
+        if (selectedMonth && !String(item.tanggal || '').startsWith(selectedMonth)) return false;
+        return true;
+      });
+
       const attendanceBody = document.getElementById('adminTeacherAttendanceBody');
       if (attendanceBody) {
-        attendanceBody.innerHTML = globalTeacherAttendanceList.length ? globalTeacherAttendanceList.map((item, index) => {
+        attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map((item, index) => {
           const statusKey = String(item.status || '').toLowerCase();
           const badgeClass = statusKey === 'hadir' ? 'badge-success' : (statusKey === 'alpa' ? 'badge-danger' : 'badge-warning');
           const signature = item.tandaTangan && String(item.tandaTangan).startsWith('data:image') ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
           return `<tr class="teacher-attendance-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td data-label="Status"><span><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Jam Masuk">${escapeTaskHtml(item.jamMasuk || '-')}</td><td data-label="Jam Keluar">${escapeTaskHtml(item.jamKeluar || '-')}</td><td data-label="Catatan">${escapeTaskHtml(item.catatan || '-')}</td><td data-label="TTD">${signature}</td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditTeacherAttendance(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteTeacherAttendanceRecord(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Hapus</button></div></td></tr>`;
-        }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Belum ada absensi guru.</td></tr>';
+        }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Tidak ada absensi guru sesuai filter.</td></tr>';
       }
     }
 
@@ -198,7 +233,20 @@
     }
 
     function printTeacherAttendanceReport() {
-      const records = globalTeacherAttendanceList || [];
+      const instrument = String(document.getElementById('teacherAttendanceFilterInstrument')?.value || '').trim().toLowerCase();
+      const teacherValue = String(document.getElementById('teacherAttendanceFilterTeacher')?.value || '').trim();
+      const statusValue = String(document.getElementById('teacherAttendanceFilterStatus')?.value || '').trim().toLowerCase();
+      const monthValue = String(document.getElementById('teacherAttendanceFilterMonth')?.value || '').trim();
+      const teacherById = new Map((globalGuruList || []).map(guru => [String(guru.id || ''), guru]));
+      const teacherByName = new Map((globalGuruList || []).map(guru => [String(guru.nama || '').trim().toLowerCase(), guru]));
+      const records = (globalTeacherAttendanceList || []).filter(item => {
+        const teacher = teacherById.get(String(item.guruID || '')) || teacherByName.get(String(item.namaGuru || '').trim().toLowerCase()) || null;
+        if (instrument && !(teacher && getTeacherInstrumentValues(teacher.instrumen || '').some(v => v.toLowerCase() === instrument))) return false;
+        if (teacherValue && String(item.guruID || '') !== teacherValue && String(item.namaGuru || '').trim().toLowerCase() !== String((teacherById.get(teacherValue) || {}).nama || teacherValue).trim().toLowerCase()) return false;
+        if (statusValue && String(item.status || '').trim().toLowerCase() !== statusValue) return false;
+        if (monthValue && !String(item.tanggal || '').startsWith(monthValue)) return false;
+        return true;
+      });
       if (!records.length) { showAlert('alertDanger', 'Belum ada data absensi guru untuk dicetak.'); return; }
       const printWindow = window.open('', '_blank', 'width=1000,height=760');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
@@ -336,6 +384,34 @@
       return false;
     }
 
+    function mapAttendanceMutationForUi(row, fallback = {}) {
+      if (!row || typeof row !== 'object') return null;
+      const rawDate = String(row.attendance_date || row.tanggal || fallback.tanggal || '').slice(0,10);
+      const dateParts = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return {
+        absensiID: row.attendance_id || row.absensiID || '',
+        namaSiswa: row.student_name_snapshot || row.namaSiswa || fallback.namaSiswa || '',
+        tanggal: dateParts ? `${dateParts[3]}-${dateParts[2]}-${dateParts[1]}` : (row.tanggal || fallback.tanggal || ''),
+        pertemuanKe: row.meeting_number ?? row.pertemuanKe ?? fallback.pertemuanKe ?? '',
+        status: row.status || fallback.status || '',
+        materi: row.material ?? row.materi ?? fallback.materi ?? '',
+        lagu: row.song ?? row.lagu ?? fallback.lagu ?? '',
+        catatan: row.notes ?? row.catatan ?? fallback.catatan ?? '',
+        tandaTangan: row.teacher_signature_data ?? row.tandaTangan ?? fallback.tandaTangan ?? '',
+        guruCatat: row.teacher_name_snapshot ?? row.guruCatat ?? fallback.guru ?? currentUser.userName ?? '',
+        ttdSiswa: row.student_signature_data ?? row.ttdSiswa ?? fallback.ttdSiswa ?? ''
+      };
+    }
+
+    function upsertAttendanceLocally(item) {
+      if (!item || !item.absensiID) return;
+      const index = (globalAbsensiList || []).findIndex(row => String(row.absensiID || '') === String(item.absensiID || ''));
+      if (index >= 0) globalAbsensiList[index] = item;
+      else globalAbsensiList.unshift(item);
+      setupFilterDropdown();
+      renderTabelRiwayat();
+    }
+
     function addAbsensiCombined(e) {
       e.preventDefault();
       
@@ -370,11 +446,14 @@
       google.script.run.withSuccessHandler(res => {
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if(res.success) {
+          const localItem = mapAttendanceMutationForUi(res.attendance || res.item || null, payload);
+          if (localItem) upsertAttendanceLocally(localItem);
           if (currentUser.userType === 'guru') {
             clearSignature('canvasTtdGuru');
             clearSignature('canvasTtdSiswa');
           }
-          fetchDashboardData();
+          // Rekonsiliasi penuh tetap berjalan setelah UI lokal sudah diperbarui.
+          setTimeout(fetchDashboardData, 150);
         }
       }).recordAbsensi(payload);
     }
