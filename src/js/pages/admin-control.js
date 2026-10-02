@@ -112,10 +112,29 @@
       container.innerHTML = items.length ? items.map(item => `
         <article class="admin-audit-row">
           <div class="admin-audit-dot ${escapeTaskHtml(String(item.actorRole || '').toLowerCase())}"></div>
-          <div class="admin-audit-copy"><div><strong>${escapeTaskHtml(item.actionLabel || item.action || '-')}</strong><span class="admin-audit-category">${escapeTaskHtml(item.category || 'Sistem')}</span></div><p>${escapeTaskHtml(item.summary || item.entityName || '-')}</p><small>${escapeTaskHtml(item.actorName || '-')} • ${escapeTaskHtml(item.actorRole || '-')} • ${escapeTaskHtml(formatAdminControlDateTime(item.createdAt))}</small></div>
+          <div class="admin-audit-copy"><div><strong>${escapeTaskHtml(item.actionLabel || item.action || '-')}</strong><span class="admin-audit-category">${escapeTaskHtml(item.category || 'Sistem')}</span></div><p>${escapeTaskHtml(item.summary || item.entityName || '-')}</p><small>${escapeTaskHtml(item.actorName || '-')} • ${escapeTaskHtml(item.actorRole || '-')} • ${escapeTaskHtml(formatAdminControlDateTime(item.createdAt))}</small></div><button type="button" class="admin-audit-delete" onclick="deleteAdminAuditLog('${encodeURIComponent(String(item.auditID || ''))}')" aria-label="Hapus audit">×</button>
         </article>`).join('') : '<div class="admin-control-empty">Tidak ada aktivitas sesuai filter.</div>';
     }
 
+
+    function deleteAdminAuditLog(encodedId) {
+      if (currentUser.userType !== 'admin') return;
+      const auditID = decodeURIComponent(String(encodedId || ''));
+      if (!auditID || !confirm('Hapus aktivitas audit ini?')) return;
+      google.script.run.withSuccessHandler(res => {
+        if (res?.success) { globalAdminAuditLog = globalAdminAuditLog.filter(x => String(x.auditID || '') !== auditID); renderAdminAuditLog(); showAlert('alertSuccess', res.message || 'Audit log dihapus.'); }
+        else showAlert('alertDanger', res?.message || 'Audit log gagal dihapus.');
+      }).withFailureHandler(err => showAlert('alertDanger','Gagal menghapus audit log: '+(err?.message||err))).deleteAdminAuditLog(auditID);
+    }
+
+    function clearAdminAuditLog() {
+      if (currentUser.userType !== 'admin') return;
+      if (!confirm('Hapus SEMUA Audit Log? Tindakan ini tidak dapat dibatalkan.')) return;
+      google.script.run.withSuccessHandler(res => {
+        if (res?.success) { globalAdminAuditLog = []; renderAdminAuditLog(); showAlert('alertSuccess', res.message || 'Semua audit log dihapus.'); }
+        else showAlert('alertDanger', res?.message || 'Audit log gagal dihapus.');
+      }).withFailureHandler(err => showAlert('alertDanger','Gagal menghapus audit log: '+(err?.message||err))).clearAdminAuditLogs();
+    }
     function formatAdminControlDateTime(value) {
       if (!value) return '-';
       const d = new Date(value);

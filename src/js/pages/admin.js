@@ -258,7 +258,7 @@
     }
 
     function deleteExitedStudentRecord(identifier, nama) {
-      const message = `Hapus data siswa keluar "${nama}"? Akun, kelas, jadwal, dan data pada laporan siswa keluar akan dihapus. Riwayat akademik tetap disimpan.`;
+      const message = `Hapus permanen siswa keluar "${nama}" beserta SEMUA data terkait (kelas, jadwal, absensi, tugas, progress, repertoire, ujian, laporan, notifikasi)? Tindakan ini tidak dapat dibatalkan.`;
       if (!confirm(message)) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus data siswa keluar.');
@@ -354,6 +354,7 @@
         noHp: document.getElementById('addSiswaHP').value,
         tglDaftar: document.getElementById('addSiswaTanggalMasuk').value,
         tglKeluar: document.getElementById('addSiswaTanggalKeluar').value,
+        alasanKeluar: document.getElementById('addSiswaAlasanKeluar')?.value.trim() || '',
         status: document.getElementById('addSiswaStatus').value,
         hari: document.getElementById('addJadwalHari').value,
         jamMulai: document.getElementById('addJadwalMulai').value,

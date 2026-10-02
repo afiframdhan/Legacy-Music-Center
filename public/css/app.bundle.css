@@ -566,6 +566,23 @@ html[data-theme="dark"] .operational-legend{color:#94a3b8}
   .admin-operational-calendar{min-height:420px}
 }
 
+/* AUDIT DELETE + MOBILE OPERATIONAL CALENDAR */
+.audit-head-actions{display:flex;gap:8px;flex-wrap:wrap}.btn-danger-soft{background:#fff1f2!important;color:#be123c!important;border:1px solid #fecdd3!important}.admin-audit-row{position:relative;padding-right:46px}.admin-audit-delete{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:9px;border:1px solid #fecdd3;background:#fff1f2;color:#be123c;font-size:20px;line-height:1;cursor:pointer}
+@media(max-width:640px){
+  #section-kalender-operasional .academy-page-head{align-items:flex-start;gap:12px}#section-kalender-operasional .academy-page-head>div:last-child{width:100%}#section-kalender-operasional .academy-page-head .btn{width:100%}
+  #section-kalender-operasional .widget-box{padding:12px 8px;overflow:hidden}#section-kalender-operasional .filter-grid{grid-template-columns:1fr!important;gap:9px}
+  #section-kalender-operasional .operational-legend{gap:8px;font-size:9px;white-space:nowrap;overflow-x:auto;padding-bottom:4px;flex-wrap:nowrap}
+  .admin-operational-calendar{min-height:360px;width:100%;overflow:hidden}.admin-operational-calendar .fc{font-size:11px}.admin-operational-calendar .fc-header-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.admin-operational-calendar .fc-toolbar-chunk:nth-child(2){order:3;width:100%;text-align:center}.admin-operational-calendar .fc-toolbar-title{font-size:17px!important}.admin-operational-calendar .fc-button{padding:.45em .62em!important;font-size:11px!important}.admin-operational-calendar .fc-list-event-time{white-space:nowrap;width:78px}.admin-operational-calendar .fc-list-event-title a{white-space:normal;line-height:1.35}.admin-operational-calendar .fc-list-day-cushion{padding:8px!important}.admin-operational-calendar .fc-scroller{overflow-x:hidden!important}
+}
+html[data-theme="dark"] .admin-audit-delete{background:#3b2024;border-color:#7f1d1d;color:#fda4af}
+@media(max-width:640px){
+  .admin-operational-calendar .fc-list-table{width:100%!important;table-layout:fixed}
+  .admin-operational-calendar .fc-list-event-time{width:74px!important;font-size:10px}
+  .admin-operational-calendar .fc-list-event-graphic{width:22px!important}
+  .admin-operational-calendar .fc-list-event-title{width:auto!important;overflow:hidden}
+  .admin-operational-calendar .fc-list-event-title a{display:block;overflow-wrap:anywhere;word-break:break-word}
+}
+
     /* TUGAS & LATIHAN */
     .task-page-head { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }
     .task-page-head h2 { margin:0 0 5px; color:#101828; font-size:28px; letter-spacing:-.03em; }

@@ -284,10 +284,14 @@
     }
 
 
+    const student360ReportCache = new Map();
+
     function openStudent360Report(identifier) {
       if (!['siswa', 'guru', 'admin'].includes(currentUser.userType)) return;
       if (currentUser.userType !== 'siswa' && !identifier) return;
 
+      const cacheKey = `${currentUser.userType}:${String(identifier || currentUser.userID || '')}`;
+      const cached = student360ReportCache.get(cacheKey);
       const reportWindow = window.open('', '_blank', 'width=1180,height=820');
 
       if (!reportWindow) {
@@ -295,6 +299,12 @@
           'alertDanger',
           'Popup diblokir. Izinkan popup untuk membuka laporan lengkap.'
         );
+        return;
+      }
+
+      if (cached && Date.now() - cached.at < 60000) {
+        const localLogoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+        buildStudent360ReportWindow(cached.data, reportWindow, localLogoUrl);
         return;
       }
 
@@ -337,6 +347,7 @@
             `;
             return;
           }
+          student360ReportCache.set(cacheKey, { at:Date.now(), data });
           const localLogoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
           buildStudent360ReportWindow(data, reportWindow, localLogoUrl);
         })
@@ -1735,7 +1746,17 @@
       box.innerHTML=existingUrl?annualExamImageHtml(existingUrl,'Tanda tangan',''): '<span>Belum ada tanda tangan</span>';
     }
 
+    let annualExamTeacherDirectoryLoaded = false;
     function openAnnualExamForm(examId=''){
+      if (!annualExamTeacherDirectoryLoaded && (!Array.isArray(globalGuruList) || globalGuruList.length <= 1)) {
+        annualExamTeacherDirectoryLoaded = true;
+        google.script.run.withSuccessHandler(list => {
+          if (Array.isArray(list) && list.length) globalGuruList = list;
+          else if (list?.success === false) annualExamTeacherDirectoryLoaded = false;
+          openAnnualExamForm(examId);
+        }).withFailureHandler(() => { annualExamTeacherDirectoryLoaded = false; openAnnualExamForm(examId); }).getGuruList();
+        return;
+      }
       if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;

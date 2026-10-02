@@ -63,6 +63,7 @@
       document.getElementById('editSiswaHP').value = siswa.noHp || '';
       document.getElementById('editSiswaTanggalMasuk').value = primaryClass.tglMulai || siswa.tglDaftar || '';
       document.getElementById('editSiswaTanggalKeluar').value = siswa.tglKeluar || '';
+      const exitReasonEl = document.getElementById('editSiswaAlasanKeluar'); if (exitReasonEl) exitReasonEl.value = siswa.alasanKeluar || '';
       document.getElementById('editSiswaStatus').value = siswa.status;
       if (document.getElementById('editSiswaGuruSelect')) {
         document.getElementById('editSiswaGuruSelect').value = primaryClass.guru || siswa.guru || '';
@@ -102,6 +103,7 @@
         noHp: document.getElementById('editSiswaHP').value,
         tglDaftar: document.getElementById('editSiswaTanggalMasuk').value,
         tglKeluar: document.getElementById('editSiswaTanggalKeluar').value,
+        alasanKeluar: document.getElementById('editSiswaAlasanKeluar')?.value.trim() || '',
         status: status,
         guru: primaryClass.guru,
         guruID: primaryClass.guruID,

@@ -1071,6 +1071,7 @@
               <div class="form-group"><label>No HP</label><input type="text" id="addSiswaHP"></div>
               <div class="form-group"><label>Tanggal Masuk Kelas Utama</label><input type="date" id="addSiswaTanggalMasuk" required><div style="font-size:11px;color:#64748b;margin-top:4px;">Untuk siswa baru, tanggal ini juga menjadi tanggal pertama bergabung di Legacy.</div></div>
               <div class="form-group"><label>Tanggal Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><input type="date" id="addSiswaTanggalKeluar"></div>
+              <div class="form-group"><label>Alasan Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><textarea id="addSiswaAlasanKeluar" rows="2" placeholder="Contoh: pindah kota, jadwal sekolah bentrok, selesai program..."></textarea></div>
               <div class="form-group"><label>Status Siswa</label><select id="addSiswaStatus" required><option value="Aktif">Aktif</option><option value="Cuti">Cuti</option><option value="Keluar">Keluar</option></select></div>
               <hr style="margin:15px 0;">
               <div class="form-group"><label>Hari Mengajar</label><select id="addJadwalHari" required><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option><option value="Minggu">Minggu</option></select></div>
@@ -1148,7 +1149,7 @@
 
         <!-- AUDIT LOG ADMIN -->
         <div class="content-section" id="section-audit-log">
-          <div class="academy-page-head"><div><h2>Audit Log</h2><p>Riwayat perubahan penting untuk membantu admin menelusuri aktivitas sistem.</p></div><div><button type="button" class="btn btn-export" onclick="loadAdminAuditLog()">↻ Refresh</button></div></div>
+          <div class="academy-page-head"><div><h2>Audit Log</h2><p>Riwayat perubahan penting untuk membantu admin menelusuri aktivitas sistem.</p></div><div class="audit-head-actions"><button type="button" class="btn btn-export" onclick="loadAdminAuditLog()">↻ Refresh</button><button type="button" class="btn btn-danger-soft" onclick="clearAdminAuditLog()">🗑 Hapus Semua</button></div></div>
           <div class="widget-box">
             <div class="filter-grid">
               <div class="form-group" style="margin:0;"><label>Cari Aktivitas</label><input type="search" id="adminAuditSearch" placeholder="Aksi, pengguna, siswa, jadwal..." oninput="renderAdminAuditLog()"></div>
@@ -1459,6 +1460,7 @@
         <div class="form-group"><label>No HP</label><input type="text" id="editSiswaHP"></div>
         <div class="form-group"><label>Tanggal Masuk Kelas Utama</label><input type="date" id="editSiswaTanggalMasuk" required><div style="font-size:11px;color:#64748b;margin-top:4px;">Kelas tambahan dapat memiliki tanggal mulai yang berbeda.</div></div>
         <div class="form-group"><label>Tanggal Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><input type="date" id="editSiswaTanggalKeluar"></div>
+        <div class="form-group"><label>Alasan Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><textarea id="editSiswaAlasanKeluar" rows="3" placeholder="Tuliskan alasan siswa keluar"></textarea></div>
         <div class="form-group"><label>Status Siswa</label><select id="editSiswaStatus" required><option value="Aktif">Aktif</option><option value="Cuti">Cuti</option><option value="Keluar">Keluar</option></select></div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Update Data Siswa</button>
       </form>

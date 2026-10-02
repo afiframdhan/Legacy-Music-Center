@@ -438,8 +438,29 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function initApp() {
       initializeThemeSettings();
       const savedSession = getSavedLoginSession();
-      if (savedSession) { currentUser = savedSession; saveLoginSession(currentUser); showApp(); } 
-      else showLogin();
+      if (savedSession) {
+        currentUser = savedSession;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3500);
+        fetch('/api/session', { credentials:'same-origin', cache:'no-store', signal:controller.signal })
+          .then(async response => {
+            clearTimeout(timer);
+            if (response.status === 401) {
+              try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+              currentUser = { userType:'', userID:'', userName:'' };
+              showLogin();
+              const msg=document.getElementById('loginError'); if(msg){msg.textContent='Sesi login perlu diperbarui. Silakan login kembali.';msg.style.display='block';}
+              return;
+            }
+            const payload = await response.json().catch(()=>null);
+            if (response.ok && payload?.ok && payload.data) {
+              currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
+              saveLoginSession(currentUser); showApp(); return;
+            }
+            showApp();
+          })
+          .catch(() => { clearTimeout(timer); showApp(); });
+      } else showLogin();
       
       const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
       const now = new Date();
@@ -821,6 +842,17 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
 
+
+    window.addEventListener('legacy:session-expired', () => {
+      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+      try { sessionStorage.removeItem('userType'); sessionStorage.removeItem('userID'); sessionStorage.removeItem('userName'); } catch (_) {}
+      if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
+      currentUser = { userType:'', userID:'', userName:'' };
+      showLogin();
+      const msg = document.getElementById('loginError');
+      if (msg) { msg.textContent = 'Sesi login berakhir. Silakan login kembali.'; msg.style.display = 'block'; }
+    });
+
     function buildNavigation() {
       const icons = {
         beranda: `<svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`,
@@ -1165,6 +1197,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
     function fetchDashboardData(options = {}) {
       const opts = options && typeof options === 'object' ? options : {};
+      const retryCount = Number(opts.retryCount || 0);
       const now = Date.now();
       if (dashboardLoadInFlight) {
         dashboardRefreshQueued = true;
@@ -1188,6 +1221,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           catch (error) { if (!opts.silent) showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); finishDashboardLoad(); return; }
         }
         if (!data || data.error || data.success === false) {
+          if (retryCount < 2) { finishDashboardLoad(); setTimeout(() => fetchDashboardData({ ...opts, force:true, silent:true, retryCount:retryCount+1 }), 350 * (retryCount + 1)); return; }
           if (!opts.silent) showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
           finishDashboardLoad();
           return;
@@ -1258,6 +1292,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         finishDashboardLoad();
       }).withFailureHandler(error => {
         if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
+        if (retryCount < 2) { finishDashboardLoad(); setTimeout(() => fetchDashboardData({ ...opts, force:true, silent:true, retryCount:retryCount+1 }), 350 * (retryCount + 1)); return; }
         if (!opts.silent) showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
         finishDashboardLoad();
       }).getDashboardData(currentUser.userID, currentUser.userType);
@@ -3344,10 +3379,29 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       container.innerHTML = items.length ? items.map(item => `
         <article class="admin-audit-row">
           <div class="admin-audit-dot ${escapeTaskHtml(String(item.actorRole || '').toLowerCase())}"></div>
-          <div class="admin-audit-copy"><div><strong>${escapeTaskHtml(item.actionLabel || item.action || '-')}</strong><span class="admin-audit-category">${escapeTaskHtml(item.category || 'Sistem')}</span></div><p>${escapeTaskHtml(item.summary || item.entityName || '-')}</p><small>${escapeTaskHtml(item.actorName || '-')} • ${escapeTaskHtml(item.actorRole || '-')} • ${escapeTaskHtml(formatAdminControlDateTime(item.createdAt))}</small></div>
+          <div class="admin-audit-copy"><div><strong>${escapeTaskHtml(item.actionLabel || item.action || '-')}</strong><span class="admin-audit-category">${escapeTaskHtml(item.category || 'Sistem')}</span></div><p>${escapeTaskHtml(item.summary || item.entityName || '-')}</p><small>${escapeTaskHtml(item.actorName || '-')} • ${escapeTaskHtml(item.actorRole || '-')} • ${escapeTaskHtml(formatAdminControlDateTime(item.createdAt))}</small></div><button type="button" class="admin-audit-delete" onclick="deleteAdminAuditLog('${encodeURIComponent(String(item.auditID || ''))}')" aria-label="Hapus audit">×</button>
         </article>`).join('') : '<div class="admin-control-empty">Tidak ada aktivitas sesuai filter.</div>';
     }
 
+
+    function deleteAdminAuditLog(encodedId) {
+      if (currentUser.userType !== 'admin') return;
+      const auditID = decodeURIComponent(String(encodedId || ''));
+      if (!auditID || !confirm('Hapus aktivitas audit ini?')) return;
+      google.script.run.withSuccessHandler(res => {
+        if (res?.success) { globalAdminAuditLog = globalAdminAuditLog.filter(x => String(x.auditID || '') !== auditID); renderAdminAuditLog(); showAlert('alertSuccess', res.message || 'Audit log dihapus.'); }
+        else showAlert('alertDanger', res?.message || 'Audit log gagal dihapus.');
+      }).withFailureHandler(err => showAlert('alertDanger','Gagal menghapus audit log: '+(err?.message||err))).deleteAdminAuditLog(auditID);
+    }
+
+    function clearAdminAuditLog() {
+      if (currentUser.userType !== 'admin') return;
+      if (!confirm('Hapus SEMUA Audit Log? Tindakan ini tidak dapat dibatalkan.')) return;
+      google.script.run.withSuccessHandler(res => {
+        if (res?.success) { globalAdminAuditLog = []; renderAdminAuditLog(); showAlert('alertSuccess', res.message || 'Semua audit log dihapus.'); }
+        else showAlert('alertDanger', res?.message || 'Audit log gagal dihapus.');
+      }).withFailureHandler(err => showAlert('alertDanger','Gagal menghapus audit log: '+(err?.message||err))).clearAdminAuditLogs();
+    }
     function formatAdminControlDateTime(value) {
       if (!value) return '-';
       const d = new Date(value);
@@ -3901,10 +3955,14 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     }
 
 
+    const student360ReportCache = new Map();
+
     function openStudent360Report(identifier) {
       if (!['siswa', 'guru', 'admin'].includes(currentUser.userType)) return;
       if (currentUser.userType !== 'siswa' && !identifier) return;
 
+      const cacheKey = `${currentUser.userType}:${String(identifier || currentUser.userID || '')}`;
+      const cached = student360ReportCache.get(cacheKey);
       const reportWindow = window.open('', '_blank', 'width=1180,height=820');
 
       if (!reportWindow) {
@@ -3912,6 +3970,12 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
           'alertDanger',
           'Popup diblokir. Izinkan popup untuk membuka laporan lengkap.'
         );
+        return;
+      }
+
+      if (cached && Date.now() - cached.at < 60000) {
+        const localLogoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+        buildStudent360ReportWindow(cached.data, reportWindow, localLogoUrl);
         return;
       }
 
@@ -3954,6 +4018,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
             `;
             return;
           }
+          student360ReportCache.set(cacheKey, { at:Date.now(), data });
           const localLogoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
           buildStudent360ReportWindow(data, reportWindow, localLogoUrl);
         })
@@ -5352,7 +5417,17 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       box.innerHTML=existingUrl?annualExamImageHtml(existingUrl,'Tanda tangan',''): '<span>Belum ada tanda tangan</span>';
     }
 
+    let annualExamTeacherDirectoryLoaded = false;
     function openAnnualExamForm(examId=''){
+      if (!annualExamTeacherDirectoryLoaded && (!Array.isArray(globalGuruList) || globalGuruList.length <= 1)) {
+        annualExamTeacherDirectoryLoaded = true;
+        google.script.run.withSuccessHandler(list => {
+          if (Array.isArray(list) && list.length) globalGuruList = list;
+          else if (list?.success === false) annualExamTeacherDirectoryLoaded = false;
+          openAnnualExamForm(examId);
+        }).withFailureHandler(() => { annualExamTeacherDirectoryLoaded = false; openAnnualExamForm(examId); }).getGuruList();
+        return;
+      }
       if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
@@ -6794,6 +6869,7 @@ function normalizeTaskStatus(task) {
       document.getElementById('editSiswaHP').value = siswa.noHp || '';
       document.getElementById('editSiswaTanggalMasuk').value = primaryClass.tglMulai || siswa.tglDaftar || '';
       document.getElementById('editSiswaTanggalKeluar').value = siswa.tglKeluar || '';
+      const exitReasonEl = document.getElementById('editSiswaAlasanKeluar'); if (exitReasonEl) exitReasonEl.value = siswa.alasanKeluar || '';
       document.getElementById('editSiswaStatus').value = siswa.status;
       if (document.getElementById('editSiswaGuruSelect')) {
         document.getElementById('editSiswaGuruSelect').value = primaryClass.guru || siswa.guru || '';
@@ -6833,6 +6909,7 @@ function normalizeTaskStatus(task) {
         noHp: document.getElementById('editSiswaHP').value,
         tglDaftar: document.getElementById('editSiswaTanggalMasuk').value,
         tglKeluar: document.getElementById('editSiswaTanggalKeluar').value,
+        alasanKeluar: document.getElementById('editSiswaAlasanKeluar')?.value.trim() || '',
         status: status,
         guru: primaryClass.guru,
         guruID: primaryClass.guruID,
@@ -7209,7 +7286,7 @@ function normalizeTaskStatus(task) {
     }
 
     function deleteExitedStudentRecord(identifier, nama) {
-      const message = `Hapus data siswa keluar "${nama}"? Akun, kelas, jadwal, dan data pada laporan siswa keluar akan dihapus. Riwayat akademik tetap disimpan.`;
+      const message = `Hapus permanen siswa keluar "${nama}" beserta SEMUA data terkait (kelas, jadwal, absensi, tugas, progress, repertoire, ujian, laporan, notifikasi)? Tindakan ini tidak dapat dibatalkan.`;
       if (!confirm(message)) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus data siswa keluar.');
@@ -7305,6 +7382,7 @@ function normalizeTaskStatus(task) {
         noHp: document.getElementById('addSiswaHP').value,
         tglDaftar: document.getElementById('addSiswaTanggalMasuk').value,
         tglKeluar: document.getElementById('addSiswaTanggalKeluar').value,
+        alasanKeluar: document.getElementById('addSiswaAlasanKeluar')?.value.trim() || '',
         status: document.getElementById('addSiswaStatus').value,
         hari: document.getElementById('addJadwalHari').value,
         jamMulai: document.getElementById('addJadwalMulai').value,

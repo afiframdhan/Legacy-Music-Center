@@ -1,5 +1,6 @@
     function fetchDashboardData(options = {}) {
       const opts = options && typeof options === 'object' ? options : {};
+      const retryCount = Number(opts.retryCount || 0);
       const now = Date.now();
       if (dashboardLoadInFlight) {
         dashboardRefreshQueued = true;
@@ -23,6 +24,7 @@
           catch (error) { if (!opts.silent) showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); finishDashboardLoad(); return; }
         }
         if (!data || data.error || data.success === false) {
+          if (retryCount < 2) { finishDashboardLoad(); setTimeout(() => fetchDashboardData({ ...opts, force:true, silent:true, retryCount:retryCount+1 }), 350 * (retryCount + 1)); return; }
           if (!opts.silent) showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
           finishDashboardLoad();
           return;
@@ -93,6 +95,7 @@
         finishDashboardLoad();
       }).withFailureHandler(error => {
         if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
+        if (retryCount < 2) { finishDashboardLoad(); setTimeout(() => fetchDashboardData({ ...opts, force:true, silent:true, retryCount:retryCount+1 }), 350 * (retryCount + 1)); return; }
         if (!opts.silent) showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
         finishDashboardLoad();
       }).getDashboardData(currentUser.userID, currentUser.userType);

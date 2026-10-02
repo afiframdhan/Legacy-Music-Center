@@ -24,7 +24,7 @@ const ADMIN = new Set([
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance',
   'deleteExitedStudentRecord',
-  'getAdminControlCenter', 'getAdminAuditLogs', 'getAdminDataQuality'
+  'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality'
 ]);
 
 const AUDIT_METHODS = new Set([
@@ -86,6 +86,13 @@ export default {
           error:String(error && error.message ? error.message : error)
         }, 502);
       }
+    }
+
+    if (url.pathname === '/api/session' && request.method === 'GET') {
+      if (!env.SESSION_SECRET) return json({ ok:false, error:'SESSION_SECRET belum dikonfigurasi.' }, 500);
+      const session = await readSession(request, env.SESSION_SECRET);
+      if (!session) return json({ ok:false, error:'Sesi login tidak valid atau sudah berakhir.' }, 401);
+      return json({ ok:true, data:{ userType:session.userType, userID:session.userID, userName:session.userName } });
     }
 
     if (url.pathname === '/api/logout' && request.method === 'POST') {
@@ -298,6 +305,28 @@ async function handleRpc(request, env, ctx) {
     } catch (error) {
       console.error('Admin audit log error:', error);
       return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), items:[] } });
+    }
+  }
+
+  if (method === 'deleteAdminAuditLog') {
+    try {
+      if (session.userType !== 'admin') throw new Error('Akses hanya untuk admin.');
+      const auditId = String(args[0] || '').trim();
+      if (!auditId) throw new Error('ID audit tidak ditemukan.');
+      await supabaseRest(env, `/rest/v1/audit_logs?audit_id=eq.${encodeURIComponent(auditId)}`, { method:'DELETE', headers:{Prefer:'return=minimal'} });
+      return json({ ok:true, data:{ success:true, message:'Audit log berhasil dihapus.' } });
+    } catch (error) {
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'clearAdminAuditLogs') {
+    try {
+      if (session.userType !== 'admin') throw new Error('Akses hanya untuk admin.');
+      await supabaseRest(env, '/rest/v1/audit_logs?audit_id=not.is.null', { method:'DELETE', headers:{Prefer:'return=minimal'} });
+      return json({ ok:true, data:{ success:true, message:'Semua audit log berhasil dihapus.' } });
+    } catch (error) {
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
 
@@ -651,8 +680,14 @@ async function handleRpc(request, env, ctx) {
       const studentId = String(result.siswaID || payload.siswaID || '').trim();
       try {
         await patchStudentClassDatesFromPayload(env, studentId, payload);
+        if (studentId) {
+          await supabaseRest(env, `/rest/v1/students?student_id=eq.${encodeURIComponent(studentId)}`, {
+            method:'PATCH', headers:{'Content-Type':'application/json',Prefer:'return=minimal'},
+            body:JSON.stringify({ exit_reason:String(payload.alasanKeluar || '').trim() || null })
+          });
+        }
       } catch (error) {
-        console.error(`Student class date patch failed for ${method}:`, error);
+        console.error(`Student class date/exit reason patch failed for ${method}:`, error);
       }
     }
 
@@ -1116,22 +1151,20 @@ async function handleRpc(request, env, ctx) {
   }
 
   if (method === 'deleteExitedStudentRecord') {
-    const result = await gasRpc(env, method, safeArgs);
-
-    if (result && result.success === true) {
-      try {
-        await supabaseRpc(env, 'legacy_delete_exited_student', {
-          p_identifier: String(safeArgs[0] || '').trim()
-        });
-        await syncStudentHistoryFromAppsScript(env, session);
-      } catch (error) {
-        console.error('Supabase exited-student mirror failed:', error);
-      }
+    let result;
+    try {
+      result = await purgeExitedStudentSupabase(env, String(safeArgs[0] || '').trim());
+    } catch (error) {
+      console.error('Permanent exited-student purge failed:', error);
+      result = { success:false, message:'Gagal menghapus permanen siswa: ' + String(error && error.message ? error.message : error) };
     }
-
+    if (result && result.success === true && ctx) {
+      ctx.waitUntil(gasRpc(env, 'deleteExitedStudentRecord', safeArgs).catch(error => console.error('Apps Script exited-student shadow cleanup failed:', error)));
+    }
     if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
-      return json({ ok:true, data:result });
+    return json({ ok:true, data:result });
   }
+
 
   const result = await gasRpc(env, method, safeArgs);
   if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
@@ -1139,6 +1172,35 @@ async function handleRpc(request, env, ctx) {
 }
 
 
+
+async function purgeExitedStudentSupabase(env, identifier) {
+  const key = String(identifier || '').trim();
+  if (!key) throw new Error('Identitas siswa kosong.');
+  let rows = await sbRows(env, 'students', { student_id:`eq.${key}`, limit:'1' });
+  if (!rows.length) rows = await sbRows(env, 'students', { name:`eq.${key}`, limit:'1' });
+  const student = rows[0];
+  if (!student) throw new Error('Siswa tidak ditemukan di Supabase.');
+  if (String(student.status || '').trim().toLowerCase() !== 'keluar') throw new Error('Hanya siswa berstatus Keluar yang dapat dihapus permanen.');
+  const id = String(student.student_id || '').trim();
+  const del = async (table, filter) => { try { await supabaseRest(env, `/rest/v1/${table}?${filter}`, { method:'DELETE', headers:{Prefer:'return=minimal'} }); } catch (e) { console.error(`Purge ${table} skipped:`, e); } };
+  await del('push_delivery_events', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
+  await del('push_subscriptions', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
+  await del('student_repertoire', `student_id=eq.${encodeURIComponent(id)}`);
+  await del('annual_exam_assessments', `student_public_id=eq.${encodeURIComponent(id)}`);
+  await del('student_report_publications', `student_id=eq.${encodeURIComponent(id)}`);
+  await del('learning_progress', `student_id=eq.${encodeURIComponent(id)}`);
+  if (student.name) await del('learning_progress', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(student.name)}`);
+  await del('assignments', `student_id=eq.${encodeURIComponent(id)}`);
+  await del('student_attendance', `student_id=eq.${encodeURIComponent(id)}`);
+  await del('schedule_overrides', `absent_student_id=eq.${encodeURIComponent(id)}`);
+  await del('schedule_overrides', `slot_student_id=eq.${encodeURIComponent(id)}`);
+  await del('schedules', `student_id=eq.${encodeURIComponent(id)}`);
+  await del('student_classes', `student_id=eq.${encodeURIComponent(id)}`);
+  await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
+  await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
+  await supabaseRest(env, `/rest/v1/students?student_id=eq.${encodeURIComponent(id)}`, { method:'DELETE', headers:{Prefer:'return=minimal'} });
+  return { success:true, siswaID:id, message:`Siswa ${student.name || ''} dan seluruh data terkait berhasil dihapus permanen.` };
+}
 
 // ============================================================================
 // ANNUAL EXAM + CERTIFICATE — TEST v1
@@ -2846,14 +2908,14 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
     }
   }
 
-  const [classes, schedules, attendance, assignments, progressById, progressByName] = await Promise.all([
+  const [classes, schedules, attendance, assignments, progressById] = await Promise.all([
     sbRows(env, 'student_classes', { student_id:`eq.${studentId}`, order:'created_at.asc' }),
     sbRows(env, 'schedules', { student_id:`eq.${studentId}`, order:'created_at.asc' }),
-    sbRows(env, 'student_attendance', { student_id:`eq.${studentId}`, order:'attendance_date.asc,created_at.asc' }),
-    sbRows(env, 'assignments', { student_id:`eq.${studentId}`, order:'created_at.asc' }),
-    sbRows(env, 'learning_progress', { student_id:`eq.${studentId}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
-    sbRows(env, 'learning_progress', { student_name_snapshot:`eq.${student.name || ''}`, order:'last_updated_at.desc.nullslast,created_at.desc' })
+    sbRows(env, 'student_attendance', { student_id:`eq.${studentId}`, order:'attendance_date.asc,created_at.asc', limit:'180' }),
+    sbRows(env, 'assignments', { student_id:`eq.${studentId}`, order:'created_at.asc', limit:'120' }),
+    sbRows(env, 'learning_progress', { student_id:`eq.${studentId}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'48' })
   ]);
+  const progressByName = progressById.length ? [] : await sbRows(env, 'learning_progress', { student_name_snapshot:`eq.${student.name || ''}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'48' });
 
   const progressMap = new Map();
   [...progressById, ...progressByName].forEach(row => {
@@ -2888,7 +2950,8 @@ async function buildStudent360ReportSupabase(env, session, identifier, options =
       kelas:grades.join(', ') || student.grade || '',
       guru:teachers.join(', ') || student.teacher_name_snapshot || '-',
       tglDaftar:formatDbDateIso(student.registered_on),
-      tglKeluar:formatDbDateIso(student.left_on)
+      tglKeluar:formatDbDateIso(student.left_on),
+      alasanKeluar:student.exit_reason || ''
     },
     classes:mappedClasses,
     schedules:schedules.map(row => mapSchedule(row, true)),
@@ -3411,7 +3474,8 @@ async function buildAdminDashboardSupabase(env, session) {
       guru:uniqueText(kelasList.map(x => x.guru)).join(', ') || student.teacher_name_snapshot || '-',
       kelasList,
       tglDaftar:formatDbDateIso(student.registered_on),
-      tglKeluar:formatDbDateIso(student.left_on)
+      tglKeluar:formatDbDateIso(student.left_on),
+      alasanKeluar:student.exit_reason || ''
     };
   });
 
@@ -3495,7 +3559,12 @@ async function buildAdminDashboardSupabase(env, session) {
 }
 
 function buildStudentHistoryForDashboard(historyRows, students) {
-  const list = historyRows.map(row => ({
+  const studentById = new Map((students || []).map(student => [String(student.student_id || ''), student]));
+  const studentByName = new Map((students || []).map(student => [String(student.name || '').trim().toLowerCase(), student]));
+  const list = historyRows.map(row => {
+    const linked = studentById.get(String(row.student_id || '')) || studentByName.get(String(row.student_name_snapshot || '').trim().toLowerCase()) || null;
+    const isExit = String(row.event_type || '').trim().toLowerCase() === 'keluar';
+    return {
     riwayatID:row.history_id || '',
     nama:row.student_name_snapshot || '',
     jenis:row.event_type || '',
@@ -3504,10 +3573,11 @@ function buildStudentHistoryForDashboard(historyRows, students) {
     statusSesudah:row.new_status || '',
     instrumen:row.instrument || '',
     guru:row.teacher_name_snapshot || '',
-    keterangan:row.description || '',
+    keterangan:(isExit && linked && linked.exit_reason) ? linked.exit_reason : (row.description || ''),
     siswaID:row.student_id || '',
     guruID:row.teacher_id || ''
-  }));
+  };
+  });
 
   const known = new Set(list.map(item =>
     `${String(item.jenis).toLowerCase()}|${String(item.nama).trim().toLowerCase()}|${item.tanggal}`
@@ -3551,7 +3621,7 @@ function buildStudentHistoryForDashboard(historyRows, students) {
         statusSesudah:'Keluar',
         instrumen:student.instrument || 'Gitar',
         guru:student.teacher_name_snapshot || '',
-        keterangan:'Status siswa keluar'
+        keterangan:student.exit_reason || 'Status siswa keluar'
       });
     }
   }

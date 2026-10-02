@@ -71,3 +71,14 @@
       if (typeof initializePushNotifications === 'function') initializePushNotifications();
     }
 
+
+
+    window.addEventListener('legacy:session-expired', () => {
+      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+      try { sessionStorage.removeItem('userType'); sessionStorage.removeItem('userID'); sessionStorage.removeItem('userName'); } catch (_) {}
+      if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
+      currentUser = { userType:'', userID:'', userName:'' };
+      showLogin();
+      const msg = document.getElementById('loginError');
+      if (msg) { msg.textContent = 'Sesi login berakhir. Silakan login kembali.'; msg.style.display = 'block'; }
+    });
