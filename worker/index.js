@@ -140,8 +140,7 @@ async function handleRpc(request, env, ctx) {
       });
     }
 
-    if (!result.success) if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
-      return json({ ok:true, data:result });
+    if (!result.success) return json({ ok:true, data:result });
 
     const session = {
       userType: result.userType,
