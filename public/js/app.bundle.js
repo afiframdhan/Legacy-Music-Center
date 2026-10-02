@@ -730,6 +730,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
         sertifikat: `<svg viewBox="0 0 24 24"><path d="M12 2l3 2 3-.5.5 3L21 9l-2 3 .5 3-3 .5L14 19l-2 3-2-3-2.5-3.5-3-.5.5-3-2-3 2.5-2.5.5-3 3 .5z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
         audit: `<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>`,
         quality: `<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>`,
+        monitoring: `<svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 16l4-5 4 3 5-7"></path></svg>`,
+        operasional: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"></rect><line x1="8" y1="2" x2="8" y2="6"></line><line x1="16" y1="2" x2="16" y2="6"></line><line x1="3" y1="9" x2="21" y2="9"></line><path d="M8 13h3v3H8z"></path></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -748,22 +750,34 @@ let currentUser = { userType: '', userID: '', userName: '' };
           { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas } 
         ];
       } else if(currentUser.userType === 'admin') {
-        menus = [ 
-          { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Ujian & Sertifikat', icon: icons.sertifikat },
-          { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
-          { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
-          { id: 'section-ruang', label: 'Ruang', icon: icons.ruang },
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Riwayat Progress', icon: icons.progress },
-          { id: 'section-daftar-guru', label: 'Daftar Guru', icon: icons.siswa },
-          { id: 'section-absensi-guru', label: 'Absensi Guru', icon: icons.jadwal },
-          { id: 'section-audit-log', label: 'Audit Log', icon: icons.audit },
-          { id: 'section-data-quality', label: 'Data Quality', icon: icons.quality },
-          { id: 'fitur-guru', label: 'Manajemen Kelas', icon: icons.manajemen } 
+        menus = [
+          { id:'dashboard-guru', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Pembelajaran', key:'learning', icon:icons.progress, items:[
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
+            { id:'section-annual-exam', label:'Ujian & Sertifikat', icon:icons.sertifikat },
+            { id:'section-progress', label:'Materi & Progress', icon:icons.progress },
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan }
+          ]},
+          { group:'Siswa & Kelas', key:'students', icon:icons.siswa, items:[
+            { id:'section-siswa', label:'Daftar Siswa', icon:icons.siswa },
+            { id:'section-jadwal', label:'Jadwal Pelajaran', icon:icons.jadwal },
+            { id:'section-pengganti', label:'Jadwal Pergantian', icon:icons.pengganti },
+            { id:'fitur-guru', label:'Manajemen Kelas', icon:icons.manajemen }
+          ]},
+          { group:'Guru', key:'teachers', icon:icons.siswa, items:[
+            { id:'section-daftar-guru', label:'Daftar Guru', icon:icons.siswa },
+            { id:'section-absensi-guru', label:'Absensi Guru', icon:icons.jadwal },
+            { id:'section-monitoring-guru', label:'Monitoring Guru', icon:icons.monitoring }
+          ]},
+          { group:'Operasional', key:'operations', icon:icons.operasional, items:[
+            { id:'section-kalender-operasional', label:'Kalender Operasional', icon:icons.operasional },
+            { id:'section-ruang', label:'Ruang', icon:icons.ruang },
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman }
+          ]},
+          { group:'Kontrol Admin', key:'control', icon:icons.audit, items:[
+            { id:'section-audit-log', label:'Audit Log', icon:icons.audit },
+            { id:'section-data-quality', label:'Data Quality Check', icon:icons.quality }
+          ]}
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
       } else {
@@ -783,14 +797,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'flex');
       }
       
-      menus.forEach((item, index) => {
-        const li = document.createElement('li'); const a = document.createElement('a');
-        a.className = 'nav-link' + (index === 0 ? ' active' : ''); 
-        a.id = 'nav-' + item.id;
-        a.innerHTML = `${item.icon} <span>${item.label}</span>`;
-        a.onclick = () => switchTab(item.id);
-        li.appendChild(a); navMenu.appendChild(li);
-      });
+      if (currentUser.userType === 'admin') {
+        renderAdminGroupedNavigation(navMenu, menus);
+      } else {
+        menus.forEach((item, index) => {
+          const li = document.createElement('li'); const a = document.createElement('a');
+          a.className = 'nav-link' + (index === 0 ? ' active' : '');
+          a.id = 'nav-' + item.id;
+          a.innerHTML = `${item.icon} <span>${item.label}</span>`;
+          a.onclick = () => switchTab(item.id);
+          li.appendChild(a); navMenu.appendChild(li);
+        });
+      }
       document.querySelectorAll('.admin-only-quick-action').forEach(el => el.style.display = currentUser.userType === 'admin' ? 'flex' : 'none');
       const teacherManagementBox = document.getElementById('adminTeacherManagementBox');
       if (teacherManagementBox) teacherManagementBox.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
@@ -816,7 +834,66 @@ let currentUser = { userType: '', userID: '', userName: '' };
       }
     }
 
+    function renderAdminGroupedNavigation(navMenu, menus) {
+      const stored = (() => { try { return JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}'); } catch (_) { return {}; } })();
+      menus.forEach((item, index) => {
+        if (item.standalone) {
+          const li = document.createElement('li');
+          const a = document.createElement('a');
+          a.className = 'nav-link admin-nav-standalone' + (index === 0 ? ' active' : '');
+          a.id = 'nav-' + item.id;
+          a.innerHTML = `${item.icon} <span>${item.label}</span>`;
+          a.onclick = () => switchTab(item.id);
+          li.appendChild(a); navMenu.appendChild(li);
+          return;
+        }
+        const li = document.createElement('li');
+        li.className = 'admin-nav-group';
+        li.dataset.group = item.key;
+        const expanded = stored[item.key] !== false;
+        li.classList.toggle('expanded', expanded);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'admin-nav-group-button';
+        button.innerHTML = `<span class="admin-nav-group-main">${item.icon}<span>${item.group}</span></span><span class="admin-nav-chevron">⌄</span>`;
+        button.onclick = () => toggleAdminNavGroup(item.key);
+        li.appendChild(button);
+        const ul = document.createElement('ul');
+        ul.className = 'admin-nav-submenu';
+        item.items.forEach(child => {
+          const cli = document.createElement('li');
+          const a = document.createElement('a');
+          a.className = 'nav-link admin-nav-child';
+          a.id = 'nav-' + child.id;
+          a.innerHTML = `${child.icon}<span>${child.label}</span>`;
+          a.onclick = () => switchTab(child.id);
+          cli.appendChild(a); ul.appendChild(cli);
+        });
+        li.appendChild(ul); navMenu.appendChild(li);
+      });
+    }
+
+    function toggleAdminNavGroup(key, forceOpen = null) {
+      const group = document.querySelector(`.admin-nav-group[data-group="${key}"]`);
+      if (!group) return;
+      const next = forceOpen === null ? !group.classList.contains('expanded') : Boolean(forceOpen);
+      group.classList.toggle('expanded', next);
+      try {
+        const stored = JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}');
+        stored[key] = next;
+        localStorage.setItem('legacyAdminNavGroups', JSON.stringify(stored));
+      } catch (_) {}
+    }
+
+    function revealAdminNavSection(sectionId) {
+      if (currentUser.userType !== 'admin') return;
+      const link = document.getElementById('nav-' + sectionId);
+      const group = link ? link.closest('.admin-nav-group') : null;
+      if (group && !group.classList.contains('expanded')) toggleAdminNavGroup(group.dataset.group, true);
+    }
+
     function switchTab(sectionId) {
+      revealAdminNavSection(sectionId);
       document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
       const activeLink = document.getElementById('nav-' + sectionId) || (sectionId === 'section-profil' ? document.getElementById('navProfilLink') : null);
       if(activeLink) activeLink.classList.add('active');
@@ -867,12 +944,17 @@ let currentUser = { userType: '', userID: '', userName: '' };
             const canvas = sigCanvases[id].canvas;
             if (canvas) {
               const rect = canvas.parentElement.getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0) {
-                resizeSignaturePad(id);
-              }
+              if (rect.width > 0 && rect.height > 0) resizeSignaturePad(id);
             }
           });
         }, 200);
+      }
+
+      if (sectionId === 'section-monitoring-guru' && currentUser.userType === 'admin') {
+        setTimeout(renderTeacherMonitoring, 0);
+      }
+      if (sectionId === 'section-kalender-operasional' && currentUser.userType === 'admin') {
+        setTimeout(initAdminOperationalCalendar, 0);
       }
 
       closeSidebar();
@@ -2625,6 +2707,206 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
           <div class="admin-quality-copy"><div><strong>${escapeTaskHtml(item.title || '-')}</strong><span>${escapeTaskHtml(item.category || 'Data')}</span></div><p>${escapeTaskHtml(item.detail || '')}</p><small>${escapeTaskHtml(item.entityName || '')}</small></div>
           <button type="button" onclick="switchTab('${escapeTaskHtml(item.section || 'section-siswa')}')">Buka</button>
         </article>`).join('') : '<div class="admin-control-empty good">✓ Tidak ada masalah sesuai filter.</div>';
+    }
+
+    let adminOperationalCalendarInstance = null;
+    let adminOperationalExamRecords = [];
+
+    function adminControlParseDate(value) {
+      const text = String(value || '').trim();
+      if (!text) return null;
+      let m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+      m = text.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+      if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), 12, 0, 0);
+      const d = new Date(text);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function teacherMonitorStudentIds(teacher) {
+      const teacherId = String(teacher?.id || '').trim();
+      const teacherName = String(teacher?.nama || '').trim().toLowerCase();
+      const ids = new Set();
+      (globalSiswaList || []).forEach(student => {
+        const classes = Array.isArray(student.kelasList) ? student.kelasList : [];
+        const match = classes.some(cls =>
+          (teacherId && String(cls.guruID || '').trim() === teacherId) ||
+          (teacherName && String(cls.guru || '').trim().toLowerCase() === teacherName)
+        ) || (teacherName && String(student.guru || '').toLowerCase().split(',').map(v=>v.trim()).includes(teacherName));
+        if (match) ids.add(String(student.siswaID || '').trim());
+      });
+      return ids;
+    }
+
+    function populateTeacherMonitoringFilters() {
+      const select = document.getElementById('teacherMonitorInstrument');
+      if (!select) return;
+      const keep = select.value;
+      const instruments = [...new Set((globalGuruList || []).flatMap(g => String(g.instrumen || '').split(',')).map(v => v.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+      select.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(v => `<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+      if (instruments.includes(keep)) select.value = keep;
+    }
+
+    function renderTeacherMonitoring() {
+      if (currentUser.userType !== 'admin') return;
+      populateTeacherMonitoringFilters();
+      const list = document.getElementById('teacherMonitoringList');
+      if (!list) return;
+      const search = String(document.getElementById('teacherMonitorSearch')?.value || '').trim().toLowerCase();
+      const instrument = String(document.getElementById('teacherMonitorInstrument')?.value || '').trim().toLowerCase();
+      const days = Math.max(1, Number(document.getElementById('teacherMonitorPeriod')?.value || 30));
+      const cutoff = new Date(Date.now() - days * 86400000);
+      cutoff.setHours(0,0,0,0);
+
+      const teachers = (globalGuruList || []).filter(g => {
+        const hay = `${g.nama || ''} ${g.instrumen || ''}`.toLowerCase();
+        if (search && !hay.includes(search)) return false;
+        if (instrument && !String(g.instrumen || '').toLowerCase().split(',').map(v=>v.trim()).includes(instrument)) return false;
+        return true;
+      });
+
+      const summaries = teachers.map(teacher => {
+        const teacherName = String(teacher.nama || '').trim();
+        const teacherId = String(teacher.id || '').trim();
+        const studentIds = teacherMonitorStudentIds(teacher);
+        const schedules = (globalJadwalList || []).filter(j =>
+          (teacherId && String(j.guruID || '').trim() === teacherId) || String(j.guru || '').trim().toLowerCase() === teacherName.toLowerCase()
+        );
+        const studentAttendance = (globalAbsensiList || []).filter(row => {
+          const d = adminControlParseDate(row.tanggal);
+          return d && d >= cutoff && String(row.guruCatat || '').trim().toLowerCase() === teacherName.toLowerCase();
+        });
+        const teacherAttendance = (globalTeacherAttendanceList || []).filter(row => {
+          const d = adminControlParseDate(row.tanggal);
+          return d && d >= cutoff && (String(row.guruID || '').trim() === teacherId || String(row.namaGuru || '').trim().toLowerCase() === teacherName.toLowerCase());
+        });
+        const progress = (globalLearningProgressList || []).filter(row => {
+          const owner = String(row.guruID || '').trim() === teacherId || String(row.guru || '').trim().toLowerCase() === teacherName.toLowerCase();
+          if (!owner) return false;
+          const d = adminControlParseDate(row.lastUpdated);
+          return !d || d >= cutoff;
+        });
+        const overrides = (globalScheduleOverrides || []).filter(row =>
+          String(row.guruAsli || '').trim().toLowerCase() === teacherName.toLowerCase() ||
+          String(row.guruMakeup || '').trim().toLowerCase() === teacherName.toLowerCase()
+        );
+        const pendingMakeup = overrides.filter(row => String(row.status || 'Aktif').toLowerCase() === 'aktif' && !row.tanggalMakeup).length;
+        return {teacher, studentIds, schedules, studentAttendance, teacherAttendance, progress, overrides, pendingMakeup};
+      });
+
+      const summary = document.getElementById('teacherMonitorSummary');
+      if (summary) {
+        const totalStudents = new Set(summaries.flatMap(x => [...x.studentIds])).size;
+        const pending = summaries.reduce((sum,x)=>sum+x.pendingMakeup,0);
+        summary.innerHTML = `<div><span>Guru Ditampilkan</span><b>${summaries.length}</b></div><div><span>Siswa Terkait</span><b>${totalStudents}</b></div><div><span>Jadwal Rutin / Minggu</span><b>${summaries.reduce((sum,x)=>sum+x.schedules.length,0)}</b></div><div class="warning"><span>Make-up Belum Dijadwalkan</span><b>${pending}</b></div>`;
+      }
+
+      list.innerHTML = summaries.length ? summaries.map(x => {
+        const g=x.teacher;
+        const avatar = g.foto ? `<img src="${escapeTaskHtml(g.foto)}" alt="">` : `<span>${escapeTaskHtml(String(g.nama || 'G').charAt(0).toUpperCase())}</span>`;
+        const latestTeacherAttendance = x.teacherAttendance[0];
+        return `<article class="teacher-monitor-card">
+          <div class="teacher-monitor-head"><div class="teacher-monitor-avatar">${avatar}</div><div><h3>${escapeTaskHtml(g.nama || '-')}</h3><p>${escapeTaskHtml(g.instrumen || 'Musik')}</p></div><span class="repertoire-badge ${String(g.status||'Aktif').toLowerCase()==='aktif'?'ready':'learning'}">${escapeTaskHtml(g.status || 'Aktif')}</span></div>
+          <div class="teacher-monitor-metrics">
+            <div><span>Siswa Aktif</span><b>${x.studentIds.size}</b></div>
+            <div><span>Jadwal Mingguan</span><b>${x.schedules.length}</b></div>
+            <div><span>Absensi Siswa ${days}h</span><b>${x.studentAttendance.length}</b></div>
+            <div><span>Update Progress ${days}h</span><b>${x.progress.length}</b></div>
+          </div>
+          <div class="teacher-monitor-notes"><span>Absensi Guru terakhir</span><b>${latestTeacherAttendance ? `${escapeTaskHtml(latestTeacherAttendance.status || '-')} • ${escapeTaskHtml(formatAcademyDate(latestTeacherAttendance.tanggal || ''))}` : 'Belum ada pada periode ini'}</b></div>
+          ${x.pendingMakeup ? `<div class="teacher-monitor-alert">${x.pendingMakeup} make-up terkait guru ini belum dijadwalkan.</div>` : ''}
+          <div class="teacher-monitor-actions"><button type="button" onclick="switchTab('section-jadwal')">Jadwal</button><button type="button" onclick="switchTab('section-absensi-guru')">Absensi Guru</button><button type="button" onclick="switchTab('section-learning-progress')">Progress</button></div>
+        </article>`;
+      }).join('') : '<div class="admin-control-empty">Tidak ada guru sesuai filter.</div>';
+    }
+
+    function populateAdminOperationalFilters() {
+      const teacher = document.getElementById('operationalCalendarTeacher');
+      const instrument = document.getElementById('operationalCalendarInstrument');
+      if (teacher) {
+        const keep=teacher.value;
+        teacher.innerHTML='<option value="">Semua Guru</option>'+(globalGuruList||[]).map(g=>`<option value="${escapeTaskHtml(g.nama||'')}">${escapeTaskHtml(g.nama||'-')}</option>`).join('');
+        if ([...teacher.options].some(o=>o.value===keep)) teacher.value=keep;
+      }
+      if (instrument) {
+        const keep=instrument.value;
+        const values=[...new Set((globalJadwalList||[]).map(j=>String(j.instrumen||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+        instrument.innerHTML='<option value="">Semua Instrumen</option>'+values.map(v=>`<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+        if (values.includes(keep)) instrument.value=keep;
+      }
+    }
+
+    function initAdminOperationalCalendar() {
+      if (currentUser.userType !== 'admin') return;
+      populateAdminOperationalFilters();
+      LegacyVendors.loadFullCalendar().then(() => {
+        const el = document.getElementById('adminOperationalCalendar');
+        if (!el || !window.FullCalendar) return;
+        if (!adminOperationalCalendarInstance) {
+          const compact = window.innerWidth <= 768;
+          adminOperationalCalendarInstance = new FullCalendar.Calendar(el, {
+            initialView: compact ? 'listWeek' : 'dayGridMonth', locale:'id', height:'auto', contentHeight:'auto', expandRows:true,
+            headerToolbar:{left:'prev,next today',center:'title',right:compact?'listWeek,dayGridMonth':'dayGridMonth,timeGridWeek,listWeek'},
+            buttonText:{today:'Hari Ini',month:'Bulan',week:'Minggu',list:'Agenda'}, dayMaxEvents:compact?3:5,
+            eventClick(info){
+              const p=info.event.extendedProps||{};
+              alert(`${p.kindLabel || 'Agenda'}\n${info.event.title}\n${p.detail || ''}`);
+            },
+            eventDidMount(info){
+              const p=info.event.extendedProps||{};
+              if (p.kind !== 'routine' || !p.scheduleId || !info.event.start) return;
+              const d=info.event.start;
+              const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+              const hidden=(globalScheduleOverrides||[]).some(x=>String(x.jadwalID||'')===String(p.scheduleId)&&String(x.tanggalAsli||'')===key&&String(x.status||'Aktif').toLowerCase()==='aktif');
+              if(hidden && info.el) info.el.style.display='none';
+            }
+          });
+          adminOperationalCalendarInstance.render();
+        }
+        refreshAdminOperationalCalendar();
+        google.script.run.withSuccessHandler(res=>{
+          if(res?.success){ adminOperationalExamRecords=Array.isArray(res.exams)?res.exams:[]; refreshAdminOperationalCalendar(); }
+        }).listAnnualExams();
+      }).catch(error => showAlert('alertDanger','Kalender operasional gagal dimuat: '+(error.message||error)));
+    }
+
+    function refreshAdminOperationalCalendar() {
+      if (!adminOperationalCalendarInstance) { initAdminOperationalCalendar(); return; }
+      populateAdminOperationalFilters();
+      const teacher=String(document.getElementById('operationalCalendarTeacher')?.value||'').trim().toLowerCase();
+      const instrument=String(document.getElementById('operationalCalendarInstrument')?.value||'').trim().toLowerCase();
+      const type=String(document.getElementById('operationalCalendarType')?.value||'').trim();
+      const events=[];
+      const dayMap={minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
+      const includeKind=k=>!type || type===k || (type==='override' && ['override','makeup'].includes(k));
+      (globalJadwalList||[]).forEach(j=>{
+        if(!includeKind('routine')) return;
+        if(teacher && String(j.guru||'').trim().toLowerCase()!==teacher) return;
+        if(instrument && String(j.instrumen||'').trim().toLowerCase()!==instrument) return;
+        const day=dayMap[String(j.hari||'').toLowerCase()]; if(day===undefined) return;
+        events.push({id:`op-r-${j.jadwalID}`,title:`${j.namaSiswa||'-'} • ${j.instrumen||'Musik'}`,daysOfWeek:[day],startTime:`${j.jamMulai||'00:00'}:00`,endTime:`${j.jamSelesai||'00:00'}:00`,backgroundColor:'#F15A24',borderColor:'#ea580c',extendedProps:{kind:'routine',kindLabel:'Kelas Rutin',scheduleId:j.jadwalID,detail:`${j.jamMulai||'-'}–${j.jamSelesai||'-'} • ${j.guru||'-'} • ${j.ruangan||'-'}`}});
+      });
+      (globalScheduleOverrides||[]).forEach(x=>{
+        if(String(x.status||'Aktif').toLowerCase()!=='aktif') return;
+        const schedule=(globalJadwalList||[]).find(j=>String(j.jadwalID||'')===String(x.jadwalID||''))||{};
+        const inst=String(x.instrumenAsli||schedule.instrumen||'Musik');
+        const guruAsli=String(x.guruAsli||schedule.guru||'');
+        if(instrument && inst.toLowerCase()!==instrument) return;
+        if(x.siswaPengganti && x.tanggalAsli && includeKind('override') && (!teacher || guruAsli.toLowerCase()===teacher)) events.push({id:`op-o-${x.overrideID}`,title:`${x.siswaPengganti} • ${inst}`,start:`${x.tanggalAsli}T${schedule.jamMulai||x.jamMulaiAsli||'00:00'}:00`,end:`${x.tanggalAsli}T${schedule.jamSelesai||x.jamSelesaiAsli||'00:00'}:00`,backgroundColor:'#f59e0b',borderColor:'#d97706',extendedProps:{kind:'override',kindLabel:'Pergantian Slot',detail:`Menggantikan ${x.siswaAsli||'-'} • ${guruAsli||'-'}`}});
+        if(x.tanggalMakeup&&x.jamMulaiMakeup&&x.jamSelesaiMakeup&&includeKind('makeup')){
+          const g=String(x.guruMakeup||guruAsli||''); if(teacher&&g.toLowerCase()!==teacher) return;
+          events.push({id:`op-m-${x.overrideID}`,title:`${x.siswaAsli||'-'} • ${inst}`,start:`${x.tanggalMakeup}T${x.jamMulaiMakeup}:00`,end:`${x.tanggalMakeup}T${x.jamSelesaiMakeup}:00`,backgroundColor:'#2563eb',borderColor:'#1d4ed8',extendedProps:{kind:'makeup',kindLabel:'Make-up Class',detail:`${g||'-'} • ${x.ruanganMakeup||'-'} • pengganti ${formatAcademyDate(x.tanggalAsli||'')}`}});
+        }
+      });
+      (adminOperationalExamRecords||[]).forEach(exam=>{
+        if(!includeKind('exam')||!exam.examDate) return;
+        if(teacher&&String(exam.teacherName||'').trim().toLowerCase()!==teacher) return;
+        if(instrument&&String(exam.instrument||'').trim().toLowerCase()!==instrument) return;
+        events.push({id:`op-e-${exam.examID}`,title:`Ujian • ${exam.studentName||'-'} • ${exam.instrument||'Musik'}`,start:exam.examDate,allDay:true,backgroundColor:'#7c3aed',borderColor:'#6d28d9',extendedProps:{kind:'exam',kindLabel:'Ujian Tahunan',detail:`${exam.gradeExam||'-'} • Pengajar: ${exam.teacherName||'-'}`}});
+      });
+      adminOperationalCalendarInstance.removeAllEvents();
+      adminOperationalCalendarInstance.addEventSource(events);
+      adminOperationalCalendarInstance.render();
     }
 
     function filterAdminByGuru() {

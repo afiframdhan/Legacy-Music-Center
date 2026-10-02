@@ -1111,6 +1111,41 @@
           </div>
         </div>
 
+
+        <!-- MONITORING GURU ADMIN -->
+        <div class="content-section" id="section-monitoring-guru">
+          <div class="academy-page-head">
+            <div><h2>Monitoring Guru</h2><p>Ringkasan operasional guru: siswa, jadwal, kelengkapan absensi, progress, dan make-up.</p></div>
+            <div><button type="button" class="btn btn-export" onclick="renderTeacherMonitoring()">↻ Refresh Tampilan</button></div>
+          </div>
+          <div class="widget-box admin-monitor-filter">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Cari Guru</label><input type="search" id="teacherMonitorSearch" placeholder="Nama guru / instrumen..." oninput="renderTeacherMonitoring()"></div>
+              <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="teacherMonitorInstrument" onchange="renderTeacherMonitoring()"><option value="">Semua Instrumen</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Periode Aktivitas</label><select id="teacherMonitorPeriod" onchange="renderTeacherMonitoring()"><option value="7">7 Hari</option><option value="30" selected>30 Hari</option><option value="90">90 Hari</option></select></div>
+            </div>
+          </div>
+          <div id="teacherMonitorSummary" class="admin-quality-stats"></div>
+          <div id="teacherMonitoringList" class="teacher-monitor-grid"><div class="admin-control-empty">Memuat monitoring guru...</div></div>
+        </div>
+
+        <!-- KALENDER OPERASIONAL ADMIN -->
+        <div class="content-section" id="section-kalender-operasional">
+          <div class="academy-page-head">
+            <div><h2>Kalender Operasional</h2><p>Gabungan jadwal kelas rutin, pergantian, make-up, ujian, dan agenda sekolah dalam satu kalender admin.</p></div>
+            <div><button type="button" class="btn btn-export" onclick="refreshAdminOperationalCalendar()">↻ Refresh Kalender</button></div>
+          </div>
+          <div class="widget-box">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Guru</label><select id="operationalCalendarTeacher" onchange="refreshAdminOperationalCalendar()"><option value="">Semua Guru</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="operationalCalendarInstrument" onchange="refreshAdminOperationalCalendar()"><option value="">Semua Instrumen</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Jenis Agenda</label><select id="operationalCalendarType" onchange="refreshAdminOperationalCalendar()"><option value="">Semua Agenda</option><option value="routine">Kelas Rutin</option><option value="override">Pergantian / Make-up</option><option value="exam">Ujian</option></select></div>
+            </div>
+            <div class="operational-legend"><span><i class="routine"></i>Kelas Rutin</span><span><i class="override"></i>Pergantian Slot</span><span><i class="makeup"></i>Make-up</span><span><i class="exam"></i>Ujian</span></div>
+            <div id="adminOperationalCalendar" class="admin-operational-calendar"></div>
+          </div>
+        </div>
+
         <!-- AUDIT LOG ADMIN -->
         <div class="content-section" id="section-audit-log">
           <div class="academy-page-head"><div><h2>Audit Log</h2><p>Riwayat perubahan penting untuk membantu admin menelusuri aktivitas sistem.</p></div><div><button type="button" class="btn btn-export" onclick="loadAdminAuditLog()">↻ Refresh</button></div></div>
