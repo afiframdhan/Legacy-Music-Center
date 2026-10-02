@@ -7,10 +7,11 @@
         pengumuman: `<svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>`,
         ruang: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 8h2"></path><path d="M13 8h2"></path><path d="M9 12h2"></path><path d="M13 12h2"></path></svg>`,
         progress: `<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
-        repertoire: `<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
         tugas: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
         laporan: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>`,
         sertifikat: `<svg viewBox="0 0 24 24"><path d="M12 2l3 2 3-.5.5 3L21 9l-2 3 .5 3-3 .5L14 19l-2 3-2-3-2.5-3.5-3-.5.5-3-2-3 2.5-2.5.5-3 3 .5z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
+        audit: `<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>`,
+        quality: `<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -21,7 +22,6 @@
         menus = [ 
           { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
           { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
@@ -33,7 +33,6 @@
         menus = [ 
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Ujian & Sertifikat', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
@@ -44,6 +43,8 @@
           { id: 'section-progress', label: 'Riwayat Progress', icon: icons.progress },
           { id: 'section-daftar-guru', label: 'Daftar Guru', icon: icons.siswa },
           { id: 'section-absensi-guru', label: 'Absensi Guru', icon: icons.jadwal },
+          { id: 'section-audit-log', label: 'Audit Log', icon: icons.audit },
+          { id: 'section-data-quality', label: 'Data Quality', icon: icons.quality },
           { id: 'fitur-guru', label: 'Manajemen Kelas', icon: icons.manajemen } 
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
@@ -51,7 +52,6 @@
         menus = [ 
           { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
           { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
           { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
           { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
           { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
@@ -123,10 +123,6 @@
         setTimeout(() => refreshLearningProgressPage(), 0);
       }
 
-      if (sectionId === 'section-repertoire') {
-        setTimeout(() => loadRepertoirePage(), 0);
-      }
-
       if (sectionId === 'section-annual-exam') {
         setTimeout(() => loadAnnualExamCenter(), 0);
       }
@@ -137,6 +133,14 @@
 
       if (sectionId === 'section-absensi-guru' && currentUser.userType === 'admin') {
         setTimeout(() => { initSignaturePads(); resizeSignaturePad('canvasTtdAbsensiGuru'); }, 80);
+      }
+
+      if (sectionId === 'section-audit-log' && currentUser.userType === 'admin') {
+        setTimeout(() => loadAdminAuditLog(), 0);
+      }
+
+      if (sectionId === 'section-data-quality' && currentUser.userType === 'admin') {
+        setTimeout(() => loadAdminDataQuality(), 0);
       }
 
       if (sectionId === 'section-progress' && currentUser.userType === 'guru') {

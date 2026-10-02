@@ -200,6 +200,9 @@
 
         document.getElementById('guruNextClassWidgetBox').style.display = 'none';
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'block';
+        const controlBox = document.getElementById('adminControlCenterBox');
+        if (controlBox) controlBox.style.display = 'block';
+        setTimeout(() => loadAdminControlCenter(true), 0);
 
         document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'block';
@@ -243,6 +246,8 @@
 
         document.getElementById('guruNextClassWidgetBox').style.display = 'block';
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'none';
+        const controlBox = document.getElementById('adminControlCenterBox');
+        if (controlBox) controlBox.style.display = 'none';
 
         document.getElementById('statTotalSiswaAll').textContent = data.stats.totalSiswa;
         document.getElementById('statSiswaAktif').textContent = (data.siswaList || []).filter(s => String(s.status).toLowerCase() === 'aktif').length;

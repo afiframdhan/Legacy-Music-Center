@@ -158,6 +158,13 @@
                 </div>
               </div>
 
+              <!-- DASHBOARD KONTROL ADMIN -->
+              <div class="widget-box collapsible-widget" id="adminControlCenterBox" style="display:none;">
+                <div class="collapsible-content" id="adminControlCenterWidget">
+                  <div class="admin-control-empty">Memuat dashboard kontrol...</div>
+                </div>
+              </div>
+
               <!-- JADWAL MENGAJAR HARI INI (GURU/ADMIN) -->
               <div class="widget-box collapsible-widget" id="dashboardTodayScheduleWidget">
                 <div class="widget-header">
@@ -1101,6 +1108,41 @@
 
               <button type="submit" id="btnSubmitSiswaCombined" class="btn btn-primary">Simpan Siswa & Jadwal</button>
             </form>
+          </div>
+        </div>
+
+        <!-- AUDIT LOG ADMIN -->
+        <div class="content-section" id="section-audit-log">
+          <div class="academy-page-head"><div><h2>Audit Log</h2><p>Riwayat perubahan penting untuk membantu admin menelusuri aktivitas sistem.</p></div><div><button type="button" class="btn btn-export" onclick="loadAdminAuditLog()">↻ Refresh</button></div></div>
+          <div class="widget-box">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Cari Aktivitas</label><input type="search" id="adminAuditSearch" placeholder="Aksi, pengguna, siswa, jadwal..." oninput="renderAdminAuditLog()"></div>
+              <div class="form-group" style="margin:0;"><label>Kategori</label><select id="adminAuditCategory" onchange="renderAdminAuditLog()"><option value="">Semua Kategori</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Pengguna</label><select id="adminAuditActor" onchange="renderAdminAuditLog()"><option value="">Semua Pengguna</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Periode</label><select id="adminAuditRange" onchange="renderAdminAuditLog()"><option value="7">7 Hari</option><option value="30" selected>30 Hari</option><option value="90">90 Hari</option><option value="all">Semua</option></select></div>
+            </div>
+            <div class="admin-page-meta"><span id="adminAuditCount">0 aktivitas</span><small>Audit log hanya dapat dilihat Admin.</small></div>
+            <div id="adminAuditLogList" class="admin-audit-list"><div class="admin-control-empty">Memuat audit log...</div></div>
+          </div>
+        </div>
+
+        <!-- DATA QUALITY ADMIN -->
+        <div class="content-section" id="section-data-quality">
+          <div class="academy-page-head"><div><h2>Data Quality Check</h2><p>Temukan data kelas, siswa, jadwal, dan progress yang perlu dirapikan.</p></div><div><button type="button" class="btn btn-primary" onclick="loadAdminDataQuality()">Periksa Ulang</button></div></div>
+          <div class="admin-quality-stats">
+            <div><span>Total Temuan</span><b id="adminQualityTotal">0</b></div>
+            <div class="critical"><span>Prioritas Tinggi</span><b id="adminQualityCritical">0</b></div>
+            <div class="warning"><span>Perlu Diperiksa</span><b id="adminQualityWarning">0</b></div>
+            <div><span>Informasi</span><b id="adminQualityInfo">0</b></div>
+          </div>
+          <div class="widget-box">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Cari Temuan</label><input type="search" id="adminQualitySearch" placeholder="Nama siswa, guru, jadwal..." oninput="renderAdminDataQuality()"></div>
+              <div class="form-group" style="margin:0;"><label>Prioritas</label><select id="adminQualitySeverity" onchange="renderAdminDataQuality()"><option value="">Semua Prioritas</option><option value="critical">Prioritas Tinggi</option><option value="warning">Perlu Diperiksa</option><option value="info">Informasi</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Kategori</label><select id="adminQualityCategory" onchange="renderAdminDataQuality()"><option value="">Semua Kategori</option></select></div>
+            </div>
+            <div class="admin-page-meta"><span id="adminQualityCount">0 temuan</span><small>Pemeriksaan tidak mengubah data secara otomatis.</small></div>
+            <div id="adminQualityList" class="admin-quality-list"><div class="admin-control-empty">Memuat pemeriksaan...</div></div>
           </div>
         </div>
 
