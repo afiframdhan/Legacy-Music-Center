@@ -158,6 +158,13 @@
                 </div>
               </div>
 
+              <!-- DASHBOARD KONTROL ADMIN -->
+              <div class="widget-box collapsible-widget" id="adminControlCenterBox" style="display:none;">
+                <div class="collapsible-content" id="adminControlCenterWidget">
+                  <div class="admin-control-empty">Memuat dashboard kontrol...</div>
+                </div>
+              </div>
+
               <!-- JADWAL MENGAJAR HARI INI (GURU/ADMIN) -->
               <div class="widget-box collapsible-widget" id="dashboardTodayScheduleWidget">
                 <div class="widget-header">
@@ -1064,6 +1071,7 @@
               <div class="form-group"><label>No HP</label><input type="text" id="addSiswaHP"></div>
               <div class="form-group"><label>Tanggal Masuk Kelas Utama</label><input type="date" id="addSiswaTanggalMasuk" required><div style="font-size:11px;color:#64748b;margin-top:4px;">Untuk siswa baru, tanggal ini juga menjadi tanggal pertama bergabung di Legacy.</div></div>
               <div class="form-group"><label>Tanggal Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><input type="date" id="addSiswaTanggalKeluar"></div>
+              <div class="form-group"><label>Alasan Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><textarea id="addSiswaAlasanKeluar" rows="2" placeholder="Contoh: pindah kota, jadwal sekolah bentrok, selesai program..."></textarea></div>
               <div class="form-group"><label>Status Siswa</label><select id="addSiswaStatus" required><option value="Aktif">Aktif</option><option value="Cuti">Cuti</option><option value="Keluar">Keluar</option></select></div>
               <hr style="margin:15px 0;">
               <div class="form-group"><label>Hari Mengajar</label><select id="addJadwalHari" required><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option><option value="Minggu">Minggu</option></select></div>
@@ -1101,6 +1109,76 @@
 
               <button type="submit" id="btnSubmitSiswaCombined" class="btn btn-primary">Simpan Siswa & Jadwal</button>
             </form>
+          </div>
+        </div>
+
+
+        <!-- MONITORING GURU ADMIN -->
+        <div class="content-section" id="section-monitoring-guru">
+          <div class="academy-page-head">
+            <div><h2>Monitoring Guru</h2><p>Ringkasan operasional guru: siswa, jadwal, kelengkapan absensi, progress, dan make-up.</p></div>
+            <div><button type="button" class="btn btn-export" onclick="renderTeacherMonitoring()">↻ Refresh Tampilan</button></div>
+          </div>
+          <div class="widget-box admin-monitor-filter">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Cari Guru</label><input type="search" id="teacherMonitorSearch" placeholder="Nama guru / instrumen..." oninput="renderTeacherMonitoring()"></div>
+              <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="teacherMonitorInstrument" onchange="renderTeacherMonitoring()"><option value="">Semua Instrumen</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Periode Aktivitas</label><select id="teacherMonitorPeriod" onchange="renderTeacherMonitoring()"><option value="7">7 Hari</option><option value="30" selected>30 Hari</option><option value="90">90 Hari</option></select></div>
+            </div>
+          </div>
+          <div id="teacherMonitorSummary" class="admin-quality-stats"></div>
+          <div id="teacherMonitoringList" class="teacher-monitor-grid"><div class="admin-control-empty">Memuat monitoring guru...</div></div>
+        </div>
+
+        <!-- KALENDER OPERASIONAL ADMIN -->
+        <div class="content-section" id="section-kalender-operasional">
+          <div class="academy-page-head">
+            <div><h2>Kalender Operasional</h2><p>Gabungan jadwal kelas rutin, pergantian, make-up, ujian, dan agenda sekolah dalam satu kalender admin.</p></div>
+            <div><button type="button" class="btn btn-export" onclick="refreshAdminOperationalCalendar()">↻ Refresh Kalender</button></div>
+          </div>
+          <div class="widget-box">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Guru</label><select id="operationalCalendarTeacher" onchange="refreshAdminOperationalCalendar()"><option value="">Semua Guru</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Instrumen</label><select id="operationalCalendarInstrument" onchange="refreshAdminOperationalCalendar()"><option value="">Semua Instrumen</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Jenis Agenda</label><select id="operationalCalendarType" onchange="refreshAdminOperationalCalendar()"><option value="">Semua Agenda</option><option value="routine">Kelas Rutin</option><option value="override">Pergantian / Make-up</option><option value="exam">Ujian</option></select></div>
+            </div>
+            <div class="operational-legend"><span><i class="routine"></i>Kelas Rutin</span><span><i class="override"></i>Pergantian Slot</span><span><i class="makeup"></i>Make-up</span><span><i class="exam"></i>Ujian</span></div>
+            <div id="adminOperationalCalendar" class="admin-operational-calendar"></div>
+          </div>
+        </div>
+
+        <!-- AUDIT LOG ADMIN -->
+        <div class="content-section" id="section-audit-log">
+          <div class="academy-page-head"><div><h2>Audit Log</h2><p>Riwayat perubahan penting untuk membantu admin menelusuri aktivitas sistem.</p></div><div class="audit-head-actions"><button type="button" class="btn btn-export" onclick="loadAdminAuditLog()">↻ Refresh</button><button type="button" class="btn btn-danger-soft" onclick="clearAdminAuditLog()">🗑 Hapus Semua</button></div></div>
+          <div class="widget-box">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Cari Aktivitas</label><input type="search" id="adminAuditSearch" placeholder="Aksi, pengguna, siswa, jadwal..." oninput="renderAdminAuditLog()"></div>
+              <div class="form-group" style="margin:0;"><label>Kategori</label><select id="adminAuditCategory" onchange="renderAdminAuditLog()"><option value="">Semua Kategori</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Pengguna</label><select id="adminAuditActor" onchange="renderAdminAuditLog()"><option value="">Semua Pengguna</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Periode</label><select id="adminAuditRange" onchange="renderAdminAuditLog()"><option value="7">7 Hari</option><option value="30" selected>30 Hari</option><option value="90">90 Hari</option><option value="all">Semua</option></select></div>
+            </div>
+            <div class="admin-page-meta"><span id="adminAuditCount">0 aktivitas</span><small>Audit log hanya dapat dilihat Admin.</small></div>
+            <div id="adminAuditLogList" class="admin-audit-list"><div class="admin-control-empty">Memuat audit log...</div></div>
+          </div>
+        </div>
+
+        <!-- DATA QUALITY ADMIN -->
+        <div class="content-section" id="section-data-quality">
+          <div class="academy-page-head"><div><h2>Data Quality Check</h2><p>Temukan data kelas, siswa, jadwal, dan progress yang perlu dirapikan.</p></div><div><button type="button" class="btn btn-primary" onclick="loadAdminDataQuality()">Periksa Ulang</button></div></div>
+          <div class="admin-quality-stats">
+            <div><span>Total Temuan</span><b id="adminQualityTotal">0</b></div>
+            <div class="critical"><span>Prioritas Tinggi</span><b id="adminQualityCritical">0</b></div>
+            <div class="warning"><span>Perlu Diperiksa</span><b id="adminQualityWarning">0</b></div>
+            <div><span>Informasi</span><b id="adminQualityInfo">0</b></div>
+          </div>
+          <div class="widget-box">
+            <div class="filter-grid">
+              <div class="form-group" style="margin:0;"><label>Cari Temuan</label><input type="search" id="adminQualitySearch" placeholder="Nama siswa, guru, jadwal..." oninput="renderAdminDataQuality()"></div>
+              <div class="form-group" style="margin:0;"><label>Prioritas</label><select id="adminQualitySeverity" onchange="renderAdminDataQuality()"><option value="">Semua Prioritas</option><option value="critical">Prioritas Tinggi</option><option value="warning">Perlu Diperiksa</option><option value="info">Informasi</option></select></div>
+              <div class="form-group" style="margin:0;"><label>Kategori</label><select id="adminQualityCategory" onchange="renderAdminDataQuality()"><option value="">Semua Kategori</option></select></div>
+            </div>
+            <div class="admin-page-meta"><span id="adminQualityCount">0 temuan</span><small>Pemeriksaan tidak mengubah data secara otomatis.</small></div>
+            <div id="adminQualityList" class="admin-quality-list"><div class="admin-control-empty">Memuat pemeriksaan...</div></div>
           </div>
         </div>
 
@@ -1382,6 +1460,7 @@
         <div class="form-group"><label>No HP</label><input type="text" id="editSiswaHP"></div>
         <div class="form-group"><label>Tanggal Masuk Kelas Utama</label><input type="date" id="editSiswaTanggalMasuk" required><div style="font-size:11px;color:#64748b;margin-top:4px;">Kelas tambahan dapat memiliki tanggal mulai yang berbeda.</div></div>
         <div class="form-group"><label>Tanggal Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><input type="date" id="editSiswaTanggalKeluar"></div>
+        <div class="form-group"><label>Alasan Siswa Keluar <span style="font-weight:400;color:#94a3b8;">(opsional)</span></label><textarea id="editSiswaAlasanKeluar" rows="3" placeholder="Tuliskan alasan siswa keluar"></textarea></div>
         <div class="form-group"><label>Status Siswa</label><select id="editSiswaStatus" required><option value="Aktif">Aktif</option><option value="Cuti">Cuti</option><option value="Keluar">Keluar</option></select></div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Update Data Siswa</button>
       </form>

@@ -4,12 +4,20 @@
   // V3: identical read requests share the same in-flight Promise. No response cache is kept,
   // so writes are still reflected on the next request exactly as before.
   const inflightReads = new Map();
-  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo']);
+  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance']);
+  const MUTATION_METHODS = new Set([
+    'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
+    'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
+    'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addJadwalPengganti','deleteJadwalPengganti',
+    'addPengumuman','deletePengumuman','recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire',
+    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile'
+  ]);
 
   async function rawRpc(method, args) {
     const response = await fetch('/api/rpc', {
       method: 'POST',
       credentials: 'same-origin',
+      cache: 'no-store',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ method, args })
     });
@@ -24,7 +32,11 @@
       if (response.status === 401) window.dispatchEvent(new CustomEvent('legacy:session-expired'));
       throw error;
     }
-    return payload.data;
+    const data = payload.data;
+    if (MUTATION_METHODS.has(method) && data && data.success === true) {
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method } })));
+    }
+    return data;
   }
 
   function rpc(method, args) {
@@ -281,7 +293,15 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let sigCanvases = {};
     let dashboardRequestNumber = 0;
     let notificationTimer = null;
+    let liveAnnouncementTimer = null;
+    let liveAnnouncementRequestInFlight = false;
     let adminAttendanceSyncTimer = null;
+    let globalLiveSyncTimer = null;
+    let globalLiveSyncRunning = false;
+    let globalLiveSyncVersions = {};
+    let dashboardLoadInFlight = false;
+    let dashboardRefreshQueued = false;
+    let dashboardLastLoadedAt = 0;
     const AUTH_STORAGE_KEY = 'legacyMusicCenterAuth';
     const AUTH_COOKIE_KEY = 'legacyMusicCenterAuthPersistent';
     const THEME_STORAGE_KEY = 'legacyThemePreference';
@@ -418,8 +438,29 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function initApp() {
       initializeThemeSettings();
       const savedSession = getSavedLoginSession();
-      if (savedSession) { currentUser = savedSession; saveLoginSession(currentUser); showApp(); } 
-      else showLogin();
+      if (savedSession) {
+        currentUser = savedSession;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3500);
+        fetch('/api/session', { credentials:'same-origin', cache:'no-store', signal:controller.signal })
+          .then(async response => {
+            clearTimeout(timer);
+            if (response.status === 401) {
+              try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+              currentUser = { userType:'', userID:'', userName:'' };
+              showLogin();
+              const msg=document.getElementById('loginError'); if(msg){msg.textContent='Sesi login perlu diperbarui. Silakan login kembali.';msg.style.display='block';}
+              return;
+            }
+            const payload = await response.json().catch(()=>null);
+            if (response.ok && payload?.ok && payload.data) {
+              currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
+              saveLoginSession(currentUser); showApp(); return;
+            }
+            showApp();
+          })
+          .catch(() => { clearTimeout(timer); showApp(); });
+      } else showLogin();
       
       const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
       const now = new Date();
@@ -644,6 +685,89 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
 
+(function () {
+  'use strict';
+
+  const ACTIVE_INTERVAL = 3000;
+  const FOCUS_REFRESH_MIN_AGE = 1500;
+  let lastPollAt = 0;
+  let refreshTimer = null;
+
+  function versionsChanged(next) {
+    const current = globalLiveSyncVersions || {};
+    const keys = new Set([...Object.keys(current), ...Object.keys(next || {})]);
+    for (const key of keys) {
+      if (String(current[key] || '0') !== String((next || {})[key] || '0')) return true;
+    }
+    return false;
+  }
+
+  function requestFastDashboardRefresh(reason, delay = 180) {
+    if (!currentUser || !currentUser.userType) return;
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'live-sync' });
+    }, delay);
+  }
+
+  async function pollLiveSync(force = false) {
+    if (globalLiveSyncRunning || !currentUser || !currentUser.userType) return;
+    if (document.visibilityState === 'hidden' && !force) return;
+    const now = Date.now();
+    if (!force && now - lastPollAt < 1200) return;
+    lastPollAt = now;
+    globalLiveSyncRunning = true;
+    try {
+      const res = await LegacyAPI.rpc('getLiveSyncState', []);
+      if (!res || res.success === false || !res.versions) return;
+      const next = res.versions || {};
+      const hadBaseline = Object.keys(globalLiveSyncVersions || {}).length > 0;
+      const changed = hadBaseline && versionsChanged(next);
+      globalLiveSyncVersions = next;
+      if (changed) requestFastDashboardRefresh('remote-change', 120);
+    } catch (error) {
+      // Live sync is an enhancement. Never block the app if the sync table is unavailable.
+      console.debug('[Legacy Live Sync] poll skipped:', error && error.message ? error.message : error);
+    } finally {
+      globalLiveSyncRunning = false;
+    }
+  }
+
+  function configureGlobalLiveSync() {
+    if (!currentUser || !currentUser.userType) return;
+    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
+    pollLiveSync(true);
+    globalLiveSyncTimer = setInterval(() => pollLiveSync(false), ACTIVE_INTERVAL);
+  }
+
+  function stopGlobalLiveSync() {
+    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
+    globalLiveSyncTimer = null;
+    globalLiveSyncVersions = {};
+    globalLiveSyncRunning = false;
+  }
+
+  window.addEventListener('legacy:data-mutated', event => {
+    // Local writes already returned success; refresh in background, coalescing multiple writes.
+    requestFastDashboardRefresh(event?.detail?.method || 'local-write', 120);
+    setTimeout(() => pollLiveSync(true), 350);
+  });
+
+  window.addEventListener('focus', () => {
+    if (!currentUser || !currentUser.userType) return;
+    if (Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentUser && currentUser.userType) pollLiveSync(true);
+  });
+
+  window.configureGlobalLiveSync = configureGlobalLiveSync;
+  window.stopGlobalLiveSync = stopGlobalLiveSync;
+  window.requestFastDashboardRefresh = requestFastDashboardRefresh;
+})();
+
     function setLoginType(type) {
       loginType = type;
       document.getElementById('tabSiswa').classList.toggle('active', type === 'siswa');
@@ -680,6 +804,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function logout() {
       try { fetch('/api/logout', { method:'POST', credentials:'same-origin' }); } catch (ignore) {}
       if (notificationTimer) { clearInterval(notificationTimer); notificationTimer = null; }
+      if (liveAnnouncementTimer) { clearInterval(liveAnnouncementTimer); liveAnnouncementTimer = null; }
+      if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
       document.getElementById('notificationPanel')?.classList.remove('open');
       try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (ignore) {}
       try {
@@ -716,6 +842,17 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
 
+
+    window.addEventListener('legacy:session-expired', () => {
+      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+      try { sessionStorage.removeItem('userType'); sessionStorage.removeItem('userID'); sessionStorage.removeItem('userName'); } catch (_) {}
+      if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
+      currentUser = { userType:'', userID:'', userName:'' };
+      showLogin();
+      const msg = document.getElementById('loginError');
+      if (msg) { msg.textContent = 'Sesi login berakhir. Silakan login kembali.'; msg.style.display = 'block'; }
+    });
+
     function buildNavigation() {
       const icons = {
         beranda: `<svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`,
@@ -729,6 +866,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
         tugas: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
         laporan: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>`,
         sertifikat: `<svg viewBox="0 0 24 24"><path d="M12 2l3 2 3-.5.5 3L21 9l-2 3 .5 3-3 .5L14 19l-2 3-2-3-2.5-3.5-3-.5.5-3-2-3 2.5-2.5.5-3 3 .5z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
+        audit: `<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>`,
+        quality: `<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>`,
+        monitoring: `<svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 16l4-5 4 3 5-7"></path></svg>`,
+        operasional: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"></rect><line x1="8" y1="2" x2="8" y2="6"></line><line x1="16" y1="2" x2="16" y2="6"></line><line x1="3" y1="9" x2="21" y2="9"></line><path d="M8 13h3v3H8z"></path></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -748,21 +889,35 @@ let currentUser = { userType: '', userID: '', userName: '' };
           { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas } 
         ];
       } else if(currentUser.userType === 'admin') {
-        menus = [ 
-          { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Ujian & Sertifikat', icon: icons.sertifikat },
-          { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
-          { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
-          { id: 'section-ruang', label: 'Ruang', icon: icons.ruang },
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Riwayat Progress', icon: icons.progress },
-          { id: 'section-daftar-guru', label: 'Daftar Guru', icon: icons.siswa },
-          { id: 'section-absensi-guru', label: 'Absensi Guru', icon: icons.jadwal },
-          { id: 'fitur-guru', label: 'Manajemen Kelas', icon: icons.manajemen } 
+        menus = [
+          { id:'dashboard-guru', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Pembelajaran', key:'learning', icon:icons.progress, items:[
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
+            { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
+            { id:'section-annual-exam', label:'Ujian & Sertifikat', icon:icons.sertifikat },
+            { id:'section-progress', label:'Materi & Progress', icon:icons.progress },
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan }
+          ]},
+          { group:'Siswa & Kelas', key:'students', icon:icons.siswa, items:[
+            { id:'section-siswa', label:'Daftar Siswa', icon:icons.siswa },
+            { id:'section-jadwal', label:'Jadwal Pelajaran', icon:icons.jadwal },
+            { id:'section-pengganti', label:'Jadwal Pergantian', icon:icons.pengganti },
+            { id:'fitur-guru', label:'Manajemen Kelas', icon:icons.manajemen }
+          ]},
+          { group:'Guru', key:'teachers', icon:icons.siswa, items:[
+            { id:'section-daftar-guru', label:'Daftar Guru', icon:icons.siswa },
+            { id:'section-absensi-guru', label:'Absensi Guru', icon:icons.jadwal },
+            { id:'section-monitoring-guru', label:'Monitoring Guru', icon:icons.monitoring }
+          ]},
+          { group:'Operasional', key:'operations', icon:icons.operasional, items:[
+            { id:'section-kalender-operasional', label:'Kalender Operasional', icon:icons.operasional },
+            { id:'section-ruang', label:'Ruang', icon:icons.ruang },
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman }
+          ]},
+          { group:'Kontrol Admin', key:'control', icon:icons.audit, items:[
+            { id:'section-audit-log', label:'Audit Log', icon:icons.audit },
+            { id:'section-data-quality', label:'Data Quality Check', icon:icons.quality }
+          ]}
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
       } else {
@@ -783,14 +938,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'flex');
       }
       
-      menus.forEach((item, index) => {
-        const li = document.createElement('li'); const a = document.createElement('a');
-        a.className = 'nav-link' + (index === 0 ? ' active' : ''); 
-        a.id = 'nav-' + item.id;
-        a.innerHTML = `${item.icon} <span>${item.label}</span>`;
-        a.onclick = () => switchTab(item.id);
-        li.appendChild(a); navMenu.appendChild(li);
-      });
+      if (currentUser.userType === 'admin') {
+        renderAdminGroupedNavigation(navMenu, menus);
+      } else {
+        menus.forEach((item, index) => {
+          const li = document.createElement('li'); const a = document.createElement('a');
+          a.className = 'nav-link' + (index === 0 ? ' active' : '');
+          a.id = 'nav-' + item.id;
+          a.innerHTML = `${item.icon} <span>${item.label}</span>`;
+          a.onclick = () => switchTab(item.id);
+          li.appendChild(a); navMenu.appendChild(li);
+        });
+      }
       document.querySelectorAll('.admin-only-quick-action').forEach(el => el.style.display = currentUser.userType === 'admin' ? 'flex' : 'none');
       const teacherManagementBox = document.getElementById('adminTeacherManagementBox');
       if (teacherManagementBox) teacherManagementBox.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
@@ -816,7 +975,66 @@ let currentUser = { userType: '', userID: '', userName: '' };
       }
     }
 
+    function renderAdminGroupedNavigation(navMenu, menus) {
+      const stored = (() => { try { return JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}'); } catch (_) { return {}; } })();
+      menus.forEach((item, index) => {
+        if (item.standalone) {
+          const li = document.createElement('li');
+          const a = document.createElement('a');
+          a.className = 'nav-link admin-nav-standalone' + (index === 0 ? ' active' : '');
+          a.id = 'nav-' + item.id;
+          a.innerHTML = `${item.icon} <span>${item.label}</span>`;
+          a.onclick = () => switchTab(item.id);
+          li.appendChild(a); navMenu.appendChild(li);
+          return;
+        }
+        const li = document.createElement('li');
+        li.className = 'admin-nav-group';
+        li.dataset.group = item.key;
+        const expanded = stored[item.key] !== false;
+        li.classList.toggle('expanded', expanded);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'admin-nav-group-button';
+        button.innerHTML = `<span class="admin-nav-group-main">${item.icon}<span>${item.group}</span></span><span class="admin-nav-chevron">⌄</span>`;
+        button.onclick = () => toggleAdminNavGroup(item.key);
+        li.appendChild(button);
+        const ul = document.createElement('ul');
+        ul.className = 'admin-nav-submenu';
+        item.items.forEach(child => {
+          const cli = document.createElement('li');
+          const a = document.createElement('a');
+          a.className = 'nav-link admin-nav-child';
+          a.id = 'nav-' + child.id;
+          a.innerHTML = `${child.icon}<span>${child.label}</span>`;
+          a.onclick = () => switchTab(child.id);
+          cli.appendChild(a); ul.appendChild(cli);
+        });
+        li.appendChild(ul); navMenu.appendChild(li);
+      });
+    }
+
+    function toggleAdminNavGroup(key, forceOpen = null) {
+      const group = document.querySelector(`.admin-nav-group[data-group="${key}"]`);
+      if (!group) return;
+      const next = forceOpen === null ? !group.classList.contains('expanded') : Boolean(forceOpen);
+      group.classList.toggle('expanded', next);
+      try {
+        const stored = JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}');
+        stored[key] = next;
+        localStorage.setItem('legacyAdminNavGroups', JSON.stringify(stored));
+      } catch (_) {}
+    }
+
+    function revealAdminNavSection(sectionId) {
+      if (currentUser.userType !== 'admin') return;
+      const link = document.getElementById('nav-' + sectionId);
+      const group = link ? link.closest('.admin-nav-group') : null;
+      if (group && !group.classList.contains('expanded')) toggleAdminNavGroup(group.dataset.group, true);
+    }
+
     function switchTab(sectionId) {
+      revealAdminNavSection(sectionId);
       document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
       const activeLink = document.getElementById('nav-' + sectionId) || (sectionId === 'section-profil' ? document.getElementById('navProfilLink') : null);
       if(activeLink) activeLink.classList.add('active');
@@ -857,18 +1075,31 @@ let currentUser = { userType: '', userID: '', userName: '' };
         setTimeout(() => { initSignaturePads(); resizeSignaturePad('canvasTtdAbsensiGuru'); }, 80);
       }
 
+      if (sectionId === 'section-audit-log' && currentUser.userType === 'admin') {
+        setTimeout(() => loadAdminAuditLog(), 0);
+      }
+
+      if (sectionId === 'section-data-quality' && currentUser.userType === 'admin') {
+        setTimeout(() => loadAdminDataQuality(), 0);
+      }
+
       if (sectionId === 'section-progress' && currentUser.userType === 'guru') {
         setTimeout(() => {
           Object.keys(sigCanvases).forEach(id => {
             const canvas = sigCanvases[id].canvas;
             if (canvas) {
               const rect = canvas.parentElement.getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0) {
-                resizeSignaturePad(id);
-              }
+              if (rect.width > 0 && rect.height > 0) resizeSignaturePad(id);
             }
           });
         }, 200);
+      }
+
+      if (sectionId === 'section-monitoring-guru' && currentUser.userType === 'admin') {
+        setTimeout(renderTeacherMonitoring, 0);
+      }
+      if (sectionId === 'section-kalender-operasional' && currentUser.userType === 'admin') {
+        setTimeout(initAdminOperationalCalendar, 0);
       }
 
       closeSidebar();
@@ -964,17 +1195,35 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
 
-    function fetchDashboardData() {
+    function fetchDashboardData(options = {}) {
+      const opts = options && typeof options === 'object' ? options : {};
+      const retryCount = Number(opts.retryCount || 0);
+      const now = Date.now();
+      if (dashboardLoadInFlight) {
+        dashboardRefreshQueued = true;
+        return;
+      }
+      if (!opts.force && dashboardLastLoadedAt && now - dashboardLastLoadedAt < 700) return;
+      dashboardLoadInFlight = true;
       const requestNumber = ++dashboardRequestNumber;
+      const finishDashboardLoad = function() {
+        dashboardLoadInFlight = false;
+        if (dashboardRefreshQueued) {
+          dashboardRefreshQueued = false;
+          setTimeout(() => fetchDashboardData({ silent:true, reason:'queued-refresh' }), 120);
+        }
+      };
       google.script.run.withSuccessHandler(function(rawData) {
-        if (requestNumber !== dashboardRequestNumber) return;
+        if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
         let data = rawData;
         if (typeof rawData === 'string') {
           try { data = JSON.parse(rawData); }
-          catch (error) { showAlert('alertDanger', 'Data dashboard tidak valid. Silakan refresh sekali lagi.'); return; }
+          catch (error) { if (!opts.silent) showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); finishDashboardLoad(); return; }
         }
         if (!data || data.error || data.success === false) {
-          showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data dashboard kosong. Silakan coba lagi.');
+          if (retryCount < 2) { finishDashboardLoad(); setTimeout(() => fetchDashboardData({ ...opts, force:true, silent:true, retryCount:retryCount+1 }), 350 * (retryCount + 1)); return; }
+          if (!opts.silent) showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
+          finishDashboardLoad();
           return;
         }
 
@@ -996,37 +1245,81 @@ let currentUser = { userType: '', userID: '', userName: '' };
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 
-        google.script.run.withSuccessHandler(gList => {
-          globalGuruList = gList || [];
-          if (data.userType === 'siswa') renderSiswa(data);
-          if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
-          if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
-          renderLearningProgressViews();
-          if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
+        // Do not make a second blocking request for Guru List after dashboard load.
+        // Admin already receives guruList from the same Supabase dashboard response;
+        // Guru only needs their own identity for role-specific screens; siswa does not
+        // need the entire teacher directory during initial render.
+        if (Array.isArray(data.guruList)) globalGuruList = data.guruList;
+        else if (data.userType === 'guru' && data.guruInfo) {
+          globalGuruList = [{
+            id:data.guruInfo.userID || '',
+            nama:data.guruInfo.nama || '',
+            email:data.guruInfo.email || '',
+            noHp:data.guruInfo.noHp || '',
+            instrumen:data.guruInfo.instrumen || 'Gitar',
+            foto:data.guruInfo.foto || ''
+          }];
+        } else globalGuruList = [];
 
-          setupFilterDropdown();
-          renderTabelJadwal();
-          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-          renderTabelRiwayat();
-          renderTabelTugas();
-          renderTabelJadwalPengganti();
-          renderPengumumanList();
-          renderDashboardAcademyUpdates();
-          setupMakeupFilters();
-          setupRoomFilters();
-          renderRoomAvailability();
-          renderNotificationCenter();
-          if (notificationTimer) clearInterval(notificationTimer);
-          notificationTimer = setInterval(renderNotificationCenter, 60000);
-          if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
-        }).withFailureHandler(error => {
-          if (requestNumber === dashboardRequestNumber) showAlert('alertDanger', 'Daftar guru gagal dimuat: ' + (error.message || error));
-        }).getGuruList();
+        if (data.userType === 'siswa') renderSiswa(data);
+        if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
+        if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
+        renderLearningProgressViews();
+        if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
+        setupFilterDropdown();
+        renderTabelJadwal();
+        if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+        renderTabelRiwayat();
+        renderTabelTugas();
+        renderTabelJadwalPengganti();
+        renderPengumumanList();
+        renderDashboardAcademyUpdates();
+        setupMakeupFilters();
+        setupRoomFilters();
+        renderRoomAvailability();
+        renderNotificationCenter();
+        if (notificationTimer) clearInterval(notificationTimer);
+        notificationTimer = setInterval(renderNotificationCenter, 60000);
+        if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
+        if (typeof configureLiveAnnouncementSync === 'function') configureLiveAnnouncementSync();
+
+        // Small diagnostic marker for troubleshooting. It is intentionally not shown
+        // as a normal UI element, but can be checked in DevTools if ever needed.
+        document.documentElement.dataset.dashboardSource = data.dataSource || 'unknown';
+        dashboardLastLoadedAt = Date.now();
+        if (typeof configureGlobalLiveSync === 'function') configureGlobalLiveSync();
+        finishDashboardLoad();
       }).withFailureHandler(error => {
-        if (requestNumber !== dashboardRequestNumber) return;
-        showAlert('alertDanger', 'Data dashboard gagal dimuat: ' + (error.message || error));
+        if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
+        if (retryCount < 2) { finishDashboardLoad(); setTimeout(() => fetchDashboardData({ ...opts, force:true, silent:true, retryCount:retryCount+1 }), 350 * (retryCount + 1)); return; }
+        if (!opts.silent) showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
+        finishDashboardLoad();
       }).getDashboardData(currentUser.userID, currentUser.userType);
+    }
+
+    function legacyDisplayImageUrl(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) return raw;
+      let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+      if (!match) match = raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if (match && match[1]) return `https://lh3.googleusercontent.com/d/${match[1]}`;
+      return raw;
+    }
+
+    function legacyImageFallback(img) {
+      if (!img) return;
+      const original = String(img.dataset.originalSrc || '').trim();
+      if (!original || img.dataset.fallbackUsed === '1') {
+        img.style.display = 'none';
+        const fallback = img.nextElementSibling;
+        if (fallback && fallback.classList.contains('coach-avatar-initial-circle')) fallback.style.display = 'flex';
+        return;
+      }
+      img.dataset.fallbackUsed = '1';
+      img.src = original;
     }
 
     function timeToMinutes(timeStr) {
@@ -1093,10 +1386,11 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const coachFoto = coachObj ? coachObj.foto : '';
 
         let coachAvatarHtml = '';
+        const init = coachNama ? coachNama.charAt(0).toUpperCase() : 'C';
         if (coachFoto && coachFoto.length > 5) {
-          coachAvatarHtml = `<img src="${coachFoto}" class="coach-avatar-circle">`;
+          const displayFoto = legacyDisplayImageUrl(coachFoto);
+          coachAvatarHtml = `<img src="${escapeTaskHtml(displayFoto)}" data-original-src="${escapeTaskHtml(coachFoto)}" class="coach-avatar-circle" onerror="legacyImageFallback(this)"><div class="coach-avatar-initial-circle" style="display:none">${escapeTaskHtml(init)}</div>`;
         } else {
-          const init = coachNama ? coachNama.charAt(0).toUpperCase() : 'C';
           coachAvatarHtml = `<div class="coach-avatar-initial-circle">${init}</div>`;
         }
 
@@ -1166,6 +1460,9 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
         document.getElementById('guruNextClassWidgetBox').style.display = 'none';
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'block';
+        const controlBox = document.getElementById('adminControlCenterBox');
+        if (controlBox) controlBox.style.display = 'block';
+        setTimeout(() => loadAdminControlCenter(true), 0);
 
         document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'block';
@@ -1209,6 +1506,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
         document.getElementById('guruNextClassWidgetBox').style.display = 'block';
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'none';
+        const controlBox = document.getElementById('adminControlCenterBox');
+        if (controlBox) controlBox.style.display = 'none';
 
         document.getElementById('statTotalSiswaAll').textContent = data.stats.totalSiswa;
         document.getElementById('statSiswaAktif').textContent = (data.siswaList || []).filter(s => String(s.status).toLowerCase() === 'aktif').length;
@@ -2227,6 +2526,46 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       }
     }
 
+    function announcementListFingerprint(items) {
+      return (Array.isArray(items) ? items : []).map(item => [
+        item.pengumumanID || '', item.judul || '', item.isi || '', item.status || '', item.tanggalKirim || '', item.target || '', item.targetDetail || ''
+      ].join('|')).join('||');
+    }
+
+    function refreshAnnouncementsLive(forceRender) {
+      if (!currentUser || !currentUser.userType || document.getElementById('appView')?.style.display === 'none') return;
+      if (liveAnnouncementRequestInFlight) return;
+      liveAnnouncementRequestInFlight = true;
+      google.script.run.withSuccessHandler(res => {
+        liveAnnouncementRequestInFlight = false;
+        if (!res || res.success === false || !Array.isArray(res.items)) return;
+        const before = announcementListFingerprint(globalPengumumanList);
+        const after = announcementListFingerprint(res.items);
+        if (forceRender || before !== after) {
+          globalPengumumanList = res.items;
+          renderPengumumanList();
+          if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+          if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+        }
+      }).withFailureHandler(() => {
+        liveAnnouncementRequestInFlight = false;
+      }).getLiveAnnouncements();
+    }
+
+    function configureLiveAnnouncementSync() {
+      if (liveAnnouncementTimer) clearInterval(liveAnnouncementTimer);
+      liveAnnouncementTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') refreshAnnouncementsLive(false);
+      }, 4000);
+      if (!window.__legacyAnnouncementFocusBound) {
+        window.__legacyAnnouncementFocusBound = true;
+        window.addEventListener('focus', () => refreshAnnouncementsLive(false));
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') refreshAnnouncementsLive(false);
+        });
+      }
+    }
+
     function handleAddPengumuman(e) {
       e.preventDefault();
       const btn = document.getElementById('btnSubmitPengumuman');
@@ -2266,7 +2605,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         if (res.success) {
           document.getElementById('formAddPengumuman').reset();
           togglePengumumanTargetDetail('');
-          fetchDashboardData();
+          if (res.announcement && res.announcement.pengumumanID) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(res.announcement.pengumumanID || ''));
+            globalPengumumanList.unshift(res.announcement);
+            renderPengumumanList();
+            if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+            if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+          }
+          refreshAnnouncementsLive(true);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
@@ -2297,7 +2643,13 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus pengumuman ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id || ''));
+            renderPengumumanList();
+            if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+            if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+            refreshAnnouncementsLive(true);
+          }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus pengumuman: ' + (error.message || error))).deletePengumuman(id, currentUser.userType);
       }
     }
@@ -2913,6 +3265,410 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       win.focus();
     }
 
+    let globalAdminAuditLog = [];
+    let globalAdminQualityFindings = [];
+    let globalAdminControlSummary = null;
+
+    function loadAdminControlCenter(force = false) {
+      if (currentUser.userType !== 'admin') return;
+      const box = document.getElementById('adminControlCenterWidget');
+      if (!box) return;
+      if (!force && globalAdminControlSummary) {
+        renderAdminControlCenter(globalAdminControlSummary);
+        return;
+      }
+      box.classList.add('admin-control-loading');
+      google.script.run.withSuccessHandler(result => {
+        box.classList.remove('admin-control-loading');
+        if (!result || result.success === false) {
+          renderAdminControlCenter({ success:false, message:(result && result.message) || 'Dashboard kontrol gagal dimuat.' });
+          return;
+        }
+        globalAdminControlSummary = result;
+        renderAdminControlCenter(result);
+      }).withFailureHandler(error => {
+        box.classList.remove('admin-control-loading');
+        renderAdminControlCenter({ success:false, message:error.message || String(error) });
+      }).getAdminControlCenter();
+    }
+
+    function renderAdminControlCenter(data) {
+      const box = document.getElementById('adminControlCenterWidget');
+      if (!box) return;
+      if (!data || data.success === false) {
+        box.innerHTML = `<div class="admin-control-empty">${escapeTaskHtml(data?.message || 'Dashboard kontrol belum tersedia.')}</div>`;
+        return;
+      }
+      const s = data.summary || {};
+      const actions = Array.isArray(data.actions) ? data.actions : [];
+      box.innerHTML = `
+        <div class="admin-control-head">
+          <div><div class="widget-title">🎛️ Dashboard Kontrol Admin</div><p>Ringkasan operasional yang perlu perhatian hari ini.</p></div>
+          <button type="button" class="admin-control-refresh" onclick="loadAdminControlCenter(true)">↻ Refresh</button>
+        </div>
+        <div class="admin-control-stats">
+          <button type="button" class="admin-control-stat" onclick="switchTab('section-jadwal')"><span>Kelas Hari Ini</span><b>${Number(s.classesToday || 0)}</b><small>${Number(s.activeTeachersToday || 0)} guru terjadwal</small></button>
+          <button type="button" class="admin-control-stat warning" onclick="switchTab('section-pengganti')"><span>Make-up Belum Ditentukan</span><b>${Number(s.pendingMakeup || 0)}</b><small>Jadwal pergantian aktif</small></button>
+          <button type="button" class="admin-control-stat ${Number(s.missingTeacherAttendance || 0) ? 'danger' : ''}" onclick="switchTab('section-absensi-guru')"><span>Guru Belum Absensi</span><b>${Number(s.missingTeacherAttendance || 0)}</b><small>Dari guru yang mengajar hari ini</small></button>
+          <button type="button" class="admin-control-stat ${Number(s.qualityIssues || 0) ? 'warning' : ''}" onclick="switchTab('section-data-quality')"><span>Temuan Data</span><b>${Number(s.qualityIssues || 0)}</b><small>${Number(s.criticalQualityIssues || 0)} prioritas tinggi</small></button>
+        </div>
+        <div class="admin-control-actions-head"><strong>Perlu Tindakan</strong><div><button type="button" onclick="switchTab('section-audit-log')">Audit Log</button><button type="button" onclick="switchTab('section-data-quality')">Data Quality</button></div></div>
+        <div class="admin-control-action-list">
+          ${actions.length ? actions.map(item => `<button type="button" class="admin-control-action ${escapeTaskHtml(item.severity || 'info')}" onclick="switchTab('${escapeTaskHtml(item.section || 'dashboard-guru')}')"><span class="admin-control-action-icon">${adminControlSeverityIcon(item.severity)}</span><span><b>${escapeTaskHtml(item.title || '-')}</b><small>${escapeTaskHtml(item.detail || '')}</small></span><em>${Number(item.count || 0)}</em></button>`).join('') : '<div class="admin-control-empty good">✓ Tidak ada tindak lanjut mendesak saat ini.</div>'}
+        </div>`;
+    }
+
+    function adminControlSeverityIcon(severity) {
+      const s = String(severity || '').toLowerCase();
+      if (s === 'critical') return '●';
+      if (s === 'warning') return '▲';
+      return '●';
+    }
+
+    function loadAdminAuditLog() {
+      if (currentUser.userType !== 'admin') return;
+      const container = document.getElementById('adminAuditLogList');
+      if (container) container.innerHTML = '<div class="admin-control-empty">Memuat audit log...</div>';
+      google.script.run.withSuccessHandler(result => {
+        if (!result || result.success === false) {
+          if (container) container.innerHTML = `<div class="admin-control-empty">${escapeTaskHtml(result?.message || 'Audit log gagal dimuat.')}</div>`;
+          return;
+        }
+        globalAdminAuditLog = Array.isArray(result.items) ? result.items : [];
+        populateAdminAuditFilters();
+        renderAdminAuditLog();
+      }).withFailureHandler(error => {
+        if (container) container.innerHTML = `<div class="admin-control-empty">${escapeTaskHtml(error.message || String(error))}</div>`;
+      }).getAdminAuditLogs();
+    }
+
+    function populateAdminAuditFilters() {
+      const actor = document.getElementById('adminAuditActor');
+      const category = document.getElementById('adminAuditCategory');
+      if (actor) {
+        const keep = actor.value;
+        const actors = [...new Set(globalAdminAuditLog.map(x => x.actorName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+        actor.innerHTML = '<option value="">Semua Pengguna</option>' + actors.map(v=>`<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+        actor.value = actors.includes(keep) ? keep : '';
+      }
+      if (category) {
+        const keep = category.value;
+        const values = [...new Set(globalAdminAuditLog.map(x => x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+        category.innerHTML = '<option value="">Semua Kategori</option>' + values.map(v=>`<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+        category.value = values.includes(keep) ? keep : '';
+      }
+    }
+
+    function renderAdminAuditLog() {
+      const container = document.getElementById('adminAuditLogList');
+      if (!container) return;
+      const search = String(document.getElementById('adminAuditSearch')?.value || '').trim().toLowerCase();
+      const actor = String(document.getElementById('adminAuditActor')?.value || '').trim().toLowerCase();
+      const category = String(document.getElementById('adminAuditCategory')?.value || '').trim().toLowerCase();
+      const range = String(document.getElementById('adminAuditRange')?.value || '30');
+      const cutoff = range === 'all' ? null : new Date(Date.now() - Number(range || 30) * 86400000);
+      const items = globalAdminAuditLog.filter(item => {
+        if (actor && String(item.actorName || '').toLowerCase() !== actor) return false;
+        if (category && String(item.category || '').toLowerCase() !== category) return false;
+        if (cutoff && item.createdAt && new Date(item.createdAt) < cutoff) return false;
+        if (search && ![item.actionLabel,item.actorName,item.entityName,item.summary,item.category].some(v => String(v || '').toLowerCase().includes(search))) return false;
+        return true;
+      });
+      const count = document.getElementById('adminAuditCount');
+      if (count) count.textContent = `${items.length} aktivitas`;
+      container.innerHTML = items.length ? items.map(item => `
+        <article class="admin-audit-row">
+          <div class="admin-audit-dot ${escapeTaskHtml(String(item.actorRole || '').toLowerCase())}"></div>
+          <div class="admin-audit-copy"><div><strong>${escapeTaskHtml(item.actionLabel || item.action || '-')}</strong><span class="admin-audit-category">${escapeTaskHtml(item.category || 'Sistem')}</span></div><p>${escapeTaskHtml(item.summary || item.entityName || '-')}</p><small>${escapeTaskHtml(item.actorName || '-')} • ${escapeTaskHtml(item.actorRole || '-')} • ${escapeTaskHtml(formatAdminControlDateTime(item.createdAt))}</small></div><button type="button" class="admin-audit-delete" onclick="deleteAdminAuditLog('${encodeURIComponent(String(item.auditID || ''))}')" aria-label="Hapus audit">×</button>
+        </article>`).join('') : '<div class="admin-control-empty">Tidak ada aktivitas sesuai filter.</div>';
+    }
+
+
+    function deleteAdminAuditLog(encodedId) {
+      if (currentUser.userType !== 'admin') return;
+      const auditID = decodeURIComponent(String(encodedId || ''));
+      if (!auditID || !confirm('Hapus aktivitas audit ini?')) return;
+      google.script.run.withSuccessHandler(res => {
+        if (res?.success) { globalAdminAuditLog = globalAdminAuditLog.filter(x => String(x.auditID || '') !== auditID); renderAdminAuditLog(); showAlert('alertSuccess', res.message || 'Audit log dihapus.'); }
+        else showAlert('alertDanger', res?.message || 'Audit log gagal dihapus.');
+      }).withFailureHandler(err => showAlert('alertDanger','Gagal menghapus audit log: '+(err?.message||err))).deleteAdminAuditLog(auditID);
+    }
+
+    function clearAdminAuditLog() {
+      if (currentUser.userType !== 'admin') return;
+      if (!confirm('Hapus SEMUA Audit Log? Tindakan ini tidak dapat dibatalkan.')) return;
+      google.script.run.withSuccessHandler(res => {
+        if (res?.success) { globalAdminAuditLog = []; renderAdminAuditLog(); showAlert('alertSuccess', res.message || 'Semua audit log dihapus.'); }
+        else showAlert('alertDanger', res?.message || 'Audit log gagal dihapus.');
+      }).withFailureHandler(err => showAlert('alertDanger','Gagal menghapus audit log: '+(err?.message||err))).clearAdminAuditLogs();
+    }
+    function formatAdminControlDateTime(value) {
+      if (!value) return '-';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return d.toLocaleString('id-ID', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    }
+
+    function loadAdminDataQuality() {
+      if (currentUser.userType !== 'admin') return;
+      const list = document.getElementById('adminQualityList');
+      if (list) list.innerHTML = '<div class="admin-control-empty">Memeriksa kualitas data...</div>';
+      google.script.run.withSuccessHandler(result => {
+        if (!result || result.success === false) {
+          if (list) list.innerHTML = `<div class="admin-control-empty">${escapeTaskHtml(result?.message || 'Pemeriksaan gagal.')}</div>`;
+          return;
+        }
+        globalAdminQualityFindings = Array.isArray(result.findings) ? result.findings : [];
+        renderAdminQualitySummary(result.summary || {});
+        populateAdminQualityFilters();
+        renderAdminDataQuality();
+        globalAdminControlSummary = null;
+      }).withFailureHandler(error => {
+        if (list) list.innerHTML = `<div class="admin-control-empty">${escapeTaskHtml(error.message || String(error))}</div>`;
+      }).getAdminDataQuality();
+    }
+
+    function renderAdminQualitySummary(summary) {
+      const map = {
+        adminQualityTotal: summary.total,
+        adminQualityCritical: summary.critical,
+        adminQualityWarning: summary.warning,
+        adminQualityInfo: summary.info
+      };
+      Object.entries(map).forEach(([id,value]) => { const el=document.getElementById(id); if(el) el.textContent=String(Number(value || 0)); });
+    }
+
+    function populateAdminQualityFilters() {
+      const category = document.getElementById('adminQualityCategory');
+      if (!category) return;
+      const keep = category.value;
+      const values = [...new Set(globalAdminQualityFindings.map(x => x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+      category.innerHTML = '<option value="">Semua Kategori</option>' + values.map(v=>`<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+      category.value = values.includes(keep) ? keep : '';
+    }
+
+    function renderAdminDataQuality() {
+      const list = document.getElementById('adminQualityList');
+      if (!list) return;
+      const search = String(document.getElementById('adminQualitySearch')?.value || '').trim().toLowerCase();
+      const severity = String(document.getElementById('adminQualitySeverity')?.value || '').trim().toLowerCase();
+      const category = String(document.getElementById('adminQualityCategory')?.value || '').trim().toLowerCase();
+      const items = globalAdminQualityFindings.filter(item => {
+        if (severity && String(item.severity || '').toLowerCase() !== severity) return false;
+        if (category && String(item.category || '').toLowerCase() !== category) return false;
+        if (search && ![item.title,item.detail,item.entityName,item.category].some(v=>String(v||'').toLowerCase().includes(search))) return false;
+        return true;
+      });
+      const count = document.getElementById('adminQualityCount');
+      if (count) count.textContent = `${items.length} temuan`;
+      list.innerHTML = items.length ? items.map(item => `
+        <article class="admin-quality-card ${escapeTaskHtml(item.severity || 'info')}">
+          <div class="admin-quality-icon">${item.severity === 'critical' ? '!' : item.severity === 'warning' ? '▲' : 'i'}</div>
+          <div class="admin-quality-copy"><div><strong>${escapeTaskHtml(item.title || '-')}</strong><span>${escapeTaskHtml(item.category || 'Data')}</span></div><p>${escapeTaskHtml(item.detail || '')}</p><small>${escapeTaskHtml(item.entityName || '')}</small></div>
+          <button type="button" onclick="switchTab('${escapeTaskHtml(item.section || 'section-siswa')}')">Buka</button>
+        </article>`).join('') : '<div class="admin-control-empty good">✓ Tidak ada masalah sesuai filter.</div>';
+    }
+
+    let adminOperationalCalendarInstance = null;
+    let adminOperationalExamRecords = [];
+
+    function adminControlParseDate(value) {
+      const text = String(value || '').trim();
+      if (!text) return null;
+      let m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+      m = text.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+      if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), 12, 0, 0);
+      const d = new Date(text);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function teacherMonitorStudentIds(teacher) {
+      const teacherId = String(teacher?.id || '').trim();
+      const teacherName = String(teacher?.nama || '').trim().toLowerCase();
+      const ids = new Set();
+      (globalSiswaList || []).forEach(student => {
+        const classes = Array.isArray(student.kelasList) ? student.kelasList : [];
+        const match = classes.some(cls =>
+          (teacherId && String(cls.guruID || '').trim() === teacherId) ||
+          (teacherName && String(cls.guru || '').trim().toLowerCase() === teacherName)
+        ) || (teacherName && String(student.guru || '').toLowerCase().split(',').map(v=>v.trim()).includes(teacherName));
+        if (match) ids.add(String(student.siswaID || '').trim());
+      });
+      return ids;
+    }
+
+    function populateTeacherMonitoringFilters() {
+      const select = document.getElementById('teacherMonitorInstrument');
+      if (!select) return;
+      const keep = select.value;
+      const instruments = [...new Set((globalGuruList || []).flatMap(g => String(g.instrumen || '').split(',')).map(v => v.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+      select.innerHTML = '<option value="">Semua Instrumen</option>' + instruments.map(v => `<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+      if (instruments.includes(keep)) select.value = keep;
+    }
+
+    function renderTeacherMonitoring() {
+      if (currentUser.userType !== 'admin') return;
+      populateTeacherMonitoringFilters();
+      const list = document.getElementById('teacherMonitoringList');
+      if (!list) return;
+      const search = String(document.getElementById('teacherMonitorSearch')?.value || '').trim().toLowerCase();
+      const instrument = String(document.getElementById('teacherMonitorInstrument')?.value || '').trim().toLowerCase();
+      const days = Math.max(1, Number(document.getElementById('teacherMonitorPeriod')?.value || 30));
+      const cutoff = new Date(Date.now() - days * 86400000);
+      cutoff.setHours(0,0,0,0);
+
+      const teachers = (globalGuruList || []).filter(g => {
+        const hay = `${g.nama || ''} ${g.instrumen || ''}`.toLowerCase();
+        if (search && !hay.includes(search)) return false;
+        if (instrument && !String(g.instrumen || '').toLowerCase().split(',').map(v=>v.trim()).includes(instrument)) return false;
+        return true;
+      });
+
+      const summaries = teachers.map(teacher => {
+        const teacherName = String(teacher.nama || '').trim();
+        const teacherId = String(teacher.id || '').trim();
+        const studentIds = teacherMonitorStudentIds(teacher);
+        const schedules = (globalJadwalList || []).filter(j =>
+          (teacherId && String(j.guruID || '').trim() === teacherId) || String(j.guru || '').trim().toLowerCase() === teacherName.toLowerCase()
+        );
+        const studentAttendance = (globalAbsensiList || []).filter(row => {
+          const d = adminControlParseDate(row.tanggal);
+          return d && d >= cutoff && String(row.guruCatat || '').trim().toLowerCase() === teacherName.toLowerCase();
+        });
+        const teacherAttendance = (globalTeacherAttendanceList || []).filter(row => {
+          const d = adminControlParseDate(row.tanggal);
+          return d && d >= cutoff && (String(row.guruID || '').trim() === teacherId || String(row.namaGuru || '').trim().toLowerCase() === teacherName.toLowerCase());
+        });
+        const progress = (globalLearningProgressList || []).filter(row => {
+          const owner = String(row.guruID || '').trim() === teacherId || String(row.guru || '').trim().toLowerCase() === teacherName.toLowerCase();
+          if (!owner) return false;
+          const d = adminControlParseDate(row.lastUpdated);
+          return !d || d >= cutoff;
+        });
+        const overrides = (globalScheduleOverrides || []).filter(row =>
+          String(row.guruAsli || '').trim().toLowerCase() === teacherName.toLowerCase() ||
+          String(row.guruMakeup || '').trim().toLowerCase() === teacherName.toLowerCase()
+        );
+        const pendingMakeup = overrides.filter(row => String(row.status || 'Aktif').toLowerCase() === 'aktif' && !row.tanggalMakeup).length;
+        return {teacher, studentIds, schedules, studentAttendance, teacherAttendance, progress, overrides, pendingMakeup};
+      });
+
+      const summary = document.getElementById('teacherMonitorSummary');
+      if (summary) {
+        const totalStudents = new Set(summaries.flatMap(x => [...x.studentIds])).size;
+        const pending = summaries.reduce((sum,x)=>sum+x.pendingMakeup,0);
+        summary.innerHTML = `<div><span>Guru Ditampilkan</span><b>${summaries.length}</b></div><div><span>Siswa Terkait</span><b>${totalStudents}</b></div><div><span>Jadwal Rutin / Minggu</span><b>${summaries.reduce((sum,x)=>sum+x.schedules.length,0)}</b></div><div class="warning"><span>Make-up Belum Dijadwalkan</span><b>${pending}</b></div>`;
+      }
+
+      list.innerHTML = summaries.length ? summaries.map(x => {
+        const g=x.teacher;
+        const avatar = g.foto ? `<img src="${escapeTaskHtml(g.foto)}" alt="">` : `<span>${escapeTaskHtml(String(g.nama || 'G').charAt(0).toUpperCase())}</span>`;
+        const latestTeacherAttendance = x.teacherAttendance[0];
+        return `<article class="teacher-monitor-card">
+          <div class="teacher-monitor-head"><div class="teacher-monitor-avatar">${avatar}</div><div><h3>${escapeTaskHtml(g.nama || '-')}</h3><p>${escapeTaskHtml(g.instrumen || 'Musik')}</p></div><span class="repertoire-badge ${String(g.status||'Aktif').toLowerCase()==='aktif'?'ready':'learning'}">${escapeTaskHtml(g.status || 'Aktif')}</span></div>
+          <div class="teacher-monitor-metrics">
+            <div><span>Siswa Aktif</span><b>${x.studentIds.size}</b></div>
+            <div><span>Jadwal Mingguan</span><b>${x.schedules.length}</b></div>
+            <div><span>Absensi Siswa ${days}h</span><b>${x.studentAttendance.length}</b></div>
+            <div><span>Update Progress ${days}h</span><b>${x.progress.length}</b></div>
+          </div>
+          <div class="teacher-monitor-notes"><span>Absensi Guru terakhir</span><b>${latestTeacherAttendance ? `${escapeTaskHtml(latestTeacherAttendance.status || '-')} • ${escapeTaskHtml(formatAcademyDate(latestTeacherAttendance.tanggal || ''))}` : 'Belum ada pada periode ini'}</b></div>
+          ${x.pendingMakeup ? `<div class="teacher-monitor-alert">${x.pendingMakeup} make-up terkait guru ini belum dijadwalkan.</div>` : ''}
+          <div class="teacher-monitor-actions"><button type="button" onclick="switchTab('section-jadwal')">Jadwal</button><button type="button" onclick="switchTab('section-absensi-guru')">Absensi Guru</button><button type="button" onclick="switchTab('section-learning-progress')">Progress</button></div>
+        </article>`;
+      }).join('') : '<div class="admin-control-empty">Tidak ada guru sesuai filter.</div>';
+    }
+
+    function populateAdminOperationalFilters() {
+      const teacher = document.getElementById('operationalCalendarTeacher');
+      const instrument = document.getElementById('operationalCalendarInstrument');
+      if (teacher) {
+        const keep=teacher.value;
+        teacher.innerHTML='<option value="">Semua Guru</option>'+(globalGuruList||[]).map(g=>`<option value="${escapeTaskHtml(g.nama||'')}">${escapeTaskHtml(g.nama||'-')}</option>`).join('');
+        if ([...teacher.options].some(o=>o.value===keep)) teacher.value=keep;
+      }
+      if (instrument) {
+        const keep=instrument.value;
+        const values=[...new Set((globalJadwalList||[]).map(j=>String(j.instrumen||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+        instrument.innerHTML='<option value="">Semua Instrumen</option>'+values.map(v=>`<option value="${escapeTaskHtml(v)}">${escapeTaskHtml(v)}</option>`).join('');
+        if (values.includes(keep)) instrument.value=keep;
+      }
+    }
+
+    function initAdminOperationalCalendar() {
+      if (currentUser.userType !== 'admin') return;
+      populateAdminOperationalFilters();
+      LegacyVendors.loadFullCalendar().then(() => {
+        const el = document.getElementById('adminOperationalCalendar');
+        if (!el || !window.FullCalendar) return;
+        if (!adminOperationalCalendarInstance) {
+          const compact = window.innerWidth <= 768;
+          adminOperationalCalendarInstance = new FullCalendar.Calendar(el, {
+            initialView: compact ? 'listWeek' : 'dayGridMonth', locale:'id', height:'auto', contentHeight:'auto', expandRows:true,
+            headerToolbar:{left:'prev,next today',center:'title',right:compact?'listWeek,dayGridMonth':'dayGridMonth,timeGridWeek,listWeek'},
+            buttonText:{today:'Hari Ini',month:'Bulan',week:'Minggu',list:'Agenda'}, dayMaxEvents:compact?3:5,
+            eventClick(info){
+              const p=info.event.extendedProps||{};
+              alert(`${p.kindLabel || 'Agenda'}\n${info.event.title}\n${p.detail || ''}`);
+            },
+            eventDidMount(info){
+              const p=info.event.extendedProps||{};
+              if (p.kind !== 'routine' || !p.scheduleId || !info.event.start) return;
+              const d=info.event.start;
+              const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+              const hidden=(globalScheduleOverrides||[]).some(x=>String(x.jadwalID||'')===String(p.scheduleId)&&String(x.tanggalAsli||'')===key&&String(x.status||'Aktif').toLowerCase()==='aktif');
+              if(hidden && info.el) info.el.style.display='none';
+            }
+          });
+          adminOperationalCalendarInstance.render();
+        }
+        refreshAdminOperationalCalendar();
+        google.script.run.withSuccessHandler(res=>{
+          if(res?.success){ adminOperationalExamRecords=Array.isArray(res.exams)?res.exams:[]; refreshAdminOperationalCalendar(); }
+        }).listAnnualExams();
+      }).catch(error => showAlert('alertDanger','Kalender operasional gagal dimuat: '+(error.message||error)));
+    }
+
+    function refreshAdminOperationalCalendar() {
+      if (!adminOperationalCalendarInstance) { initAdminOperationalCalendar(); return; }
+      populateAdminOperationalFilters();
+      const teacher=String(document.getElementById('operationalCalendarTeacher')?.value||'').trim().toLowerCase();
+      const instrument=String(document.getElementById('operationalCalendarInstrument')?.value||'').trim().toLowerCase();
+      const type=String(document.getElementById('operationalCalendarType')?.value||'').trim();
+      const events=[];
+      const dayMap={minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
+      const includeKind=k=>!type || type===k || (type==='override' && ['override','makeup'].includes(k));
+      (globalJadwalList||[]).forEach(j=>{
+        if(!includeKind('routine')) return;
+        if(teacher && String(j.guru||'').trim().toLowerCase()!==teacher) return;
+        if(instrument && String(j.instrumen||'').trim().toLowerCase()!==instrument) return;
+        const day=dayMap[String(j.hari||'').toLowerCase()]; if(day===undefined) return;
+        events.push({id:`op-r-${j.jadwalID}`,title:`${j.namaSiswa||'-'} • ${j.instrumen||'Musik'}`,daysOfWeek:[day],startTime:`${j.jamMulai||'00:00'}:00`,endTime:`${j.jamSelesai||'00:00'}:00`,backgroundColor:'#F15A24',borderColor:'#ea580c',extendedProps:{kind:'routine',kindLabel:'Kelas Rutin',scheduleId:j.jadwalID,detail:`${j.jamMulai||'-'}–${j.jamSelesai||'-'} • ${j.guru||'-'} • ${j.ruangan||'-'}`}});
+      });
+      (globalScheduleOverrides||[]).forEach(x=>{
+        if(String(x.status||'Aktif').toLowerCase()!=='aktif') return;
+        const schedule=(globalJadwalList||[]).find(j=>String(j.jadwalID||'')===String(x.jadwalID||''))||{};
+        const inst=String(x.instrumenAsli||schedule.instrumen||'Musik');
+        const guruAsli=String(x.guruAsli||schedule.guru||'');
+        if(instrument && inst.toLowerCase()!==instrument) return;
+        if(x.siswaPengganti && x.tanggalAsli && includeKind('override') && (!teacher || guruAsli.toLowerCase()===teacher)) events.push({id:`op-o-${x.overrideID}`,title:`${x.siswaPengganti} • ${inst}`,start:`${x.tanggalAsli}T${schedule.jamMulai||x.jamMulaiAsli||'00:00'}:00`,end:`${x.tanggalAsli}T${schedule.jamSelesai||x.jamSelesaiAsli||'00:00'}:00`,backgroundColor:'#f59e0b',borderColor:'#d97706',extendedProps:{kind:'override',kindLabel:'Pergantian Slot',detail:`Menggantikan ${x.siswaAsli||'-'} • ${guruAsli||'-'}`}});
+        if(x.tanggalMakeup&&x.jamMulaiMakeup&&x.jamSelesaiMakeup&&includeKind('makeup')){
+          const g=String(x.guruMakeup||guruAsli||''); if(teacher&&g.toLowerCase()!==teacher) return;
+          events.push({id:`op-m-${x.overrideID}`,title:`${x.siswaAsli||'-'} • ${inst}`,start:`${x.tanggalMakeup}T${x.jamMulaiMakeup}:00`,end:`${x.tanggalMakeup}T${x.jamSelesaiMakeup}:00`,backgroundColor:'#2563eb',borderColor:'#1d4ed8',extendedProps:{kind:'makeup',kindLabel:'Make-up Class',detail:`${g||'-'} • ${x.ruanganMakeup||'-'} • pengganti ${formatAcademyDate(x.tanggalAsli||'')}`}});
+        }
+      });
+      (adminOperationalExamRecords||[]).forEach(exam=>{
+        if(!includeKind('exam')||!exam.examDate) return;
+        if(teacher&&String(exam.teacherName||'').trim().toLowerCase()!==teacher) return;
+        if(instrument&&String(exam.instrument||'').trim().toLowerCase()!==instrument) return;
+        events.push({id:`op-e-${exam.examID}`,title:`Ujian • ${exam.studentName||'-'} • ${exam.instrument||'Musik'}`,start:exam.examDate,allDay:true,backgroundColor:'#7c3aed',borderColor:'#6d28d9',extendedProps:{kind:'exam',kindLabel:'Ujian Tahunan',detail:`${exam.gradeExam||'-'} • Pengajar: ${exam.teacherName||'-'}`}});
+      });
+      adminOperationalCalendarInstance.removeAllEvents();
+      adminOperationalCalendarInstance.addEventSource(events);
+      adminOperationalCalendarInstance.render();
+    }
+
     function filterAdminByGuru() {
       renderDashboardViews();
       renderTabelJadwal();
@@ -3199,10 +3955,14 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     }
 
 
+    const student360ReportCache = new Map();
+
     function openStudent360Report(identifier) {
       if (!['siswa', 'guru', 'admin'].includes(currentUser.userType)) return;
       if (currentUser.userType !== 'siswa' && !identifier) return;
 
+      const cacheKey = `${currentUser.userType}:${String(identifier || currentUser.userID || '')}`;
+      const cached = student360ReportCache.get(cacheKey);
       const reportWindow = window.open('', '_blank', 'width=1180,height=820');
 
       if (!reportWindow) {
@@ -3210,6 +3970,12 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
           'alertDanger',
           'Popup diblokir. Izinkan popup untuk membuka laporan lengkap.'
         );
+        return;
+      }
+
+      if (cached && Date.now() - cached.at < 60000) {
+        const localLogoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+        buildStudent360ReportWindow(cached.data, reportWindow, localLogoUrl);
         return;
       }
 
@@ -3252,6 +4018,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
             `;
             return;
           }
+          student360ReportCache.set(cacheKey, { at:Date.now(), data });
           const localLogoUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
           buildStudent360ReportWindow(data, reportWindow, localLogoUrl);
         })
@@ -4650,7 +5417,17 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       box.innerHTML=existingUrl?annualExamImageHtml(existingUrl,'Tanda tangan',''): '<span>Belum ada tanda tangan</span>';
     }
 
+    let annualExamTeacherDirectoryLoaded = false;
     function openAnnualExamForm(examId=''){
+      if (!annualExamTeacherDirectoryLoaded && (!Array.isArray(globalGuruList) || globalGuruList.length <= 1)) {
+        annualExamTeacherDirectoryLoaded = true;
+        google.script.run.withSuccessHandler(list => {
+          if (Array.isArray(list) && list.length) globalGuruList = list;
+          else if (list?.success === false) annualExamTeacherDirectoryLoaded = false;
+          openAnnualExamForm(examId);
+        }).withFailureHandler(() => { annualExamTeacherDirectoryLoaded = false; openAnnualExamForm(examId); }).getGuruList();
+        return;
+      }
       if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
@@ -6092,6 +6869,7 @@ function normalizeTaskStatus(task) {
       document.getElementById('editSiswaHP').value = siswa.noHp || '';
       document.getElementById('editSiswaTanggalMasuk').value = primaryClass.tglMulai || siswa.tglDaftar || '';
       document.getElementById('editSiswaTanggalKeluar').value = siswa.tglKeluar || '';
+      const exitReasonEl = document.getElementById('editSiswaAlasanKeluar'); if (exitReasonEl) exitReasonEl.value = siswa.alasanKeluar || '';
       document.getElementById('editSiswaStatus').value = siswa.status;
       if (document.getElementById('editSiswaGuruSelect')) {
         document.getElementById('editSiswaGuruSelect').value = primaryClass.guru || siswa.guru || '';
@@ -6131,6 +6909,7 @@ function normalizeTaskStatus(task) {
         noHp: document.getElementById('editSiswaHP').value,
         tglDaftar: document.getElementById('editSiswaTanggalMasuk').value,
         tglKeluar: document.getElementById('editSiswaTanggalKeluar').value,
+        alasanKeluar: document.getElementById('editSiswaAlasanKeluar')?.value.trim() || '',
         status: status,
         guru: primaryClass.guru,
         guruID: primaryClass.guruID,
@@ -6507,7 +7286,7 @@ function normalizeTaskStatus(task) {
     }
 
     function deleteExitedStudentRecord(identifier, nama) {
-      const message = `Hapus data siswa keluar "${nama}"? Akun, kelas, jadwal, dan data pada laporan siswa keluar akan dihapus. Riwayat akademik tetap disimpan.`;
+      const message = `Hapus permanen siswa keluar "${nama}" beserta SEMUA data terkait (kelas, jadwal, absensi, tugas, progress, repertoire, ujian, laporan, notifikasi)? Tindakan ini tidak dapat dibatalkan.`;
       if (!confirm(message)) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus data siswa keluar.');
@@ -6603,6 +7382,7 @@ function normalizeTaskStatus(task) {
         noHp: document.getElementById('addSiswaHP').value,
         tglDaftar: document.getElementById('addSiswaTanggalMasuk').value,
         tglKeluar: document.getElementById('addSiswaTanggalKeluar').value,
+        alasanKeluar: document.getElementById('addSiswaAlasanKeluar')?.value.trim() || '',
         status: document.getElementById('addSiswaStatus').value,
         hari: document.getElementById('addJadwalHari').value,
         jamMulai: document.getElementById('addJadwalMulai').value,

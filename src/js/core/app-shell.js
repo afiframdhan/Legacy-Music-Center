@@ -1,8 +1,29 @@
     function initApp() {
       initializeThemeSettings();
       const savedSession = getSavedLoginSession();
-      if (savedSession) { currentUser = savedSession; saveLoginSession(currentUser); showApp(); } 
-      else showLogin();
+      if (savedSession) {
+        currentUser = savedSession;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3500);
+        fetch('/api/session', { credentials:'same-origin', cache:'no-store', signal:controller.signal })
+          .then(async response => {
+            clearTimeout(timer);
+            if (response.status === 401) {
+              try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+              currentUser = { userType:'', userID:'', userName:'' };
+              showLogin();
+              const msg=document.getElementById('loginError'); if(msg){msg.textContent='Sesi login perlu diperbarui. Silakan login kembali.';msg.style.display='block';}
+              return;
+            }
+            const payload = await response.json().catch(()=>null);
+            if (response.ok && payload?.ok && payload.data) {
+              currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
+              saveLoginSession(currentUser); showApp(); return;
+            }
+            showApp();
+          })
+          .catch(() => { clearTimeout(timer); showApp(); });
+      } else showLogin();
       
       const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
       const now = new Date();
