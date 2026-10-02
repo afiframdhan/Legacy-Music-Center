@@ -232,29 +232,32 @@ async function handleRpc(request, env, ctx) {
     }
   }
 
-  // PHASE 2: guru list is now read from Supabase.
+  // Core identity/dashboard reads are SUPABASE-ONLY.
+  // Never silently fall back to the legacy Spreadsheet here: a single optional-table
+  // error used to make the UI show stale Apps Script data without telling the user.
   if (method === 'getGuruList') {
     try {
       const result = await getGuruListSupabase(env);
-      if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
       return json({ ok:true, data:result });
     } catch (error) {
-      console.error('Supabase getGuruList error, falling back to Apps Script:', error);
-      const fallback = await gasRpc(env, method, args);
-      return json({ ok:true, data:fallback });
+      console.error('Supabase getGuruList error:', error);
+      return json({ ok:true, data:{ success:false, message:'Data guru Supabase gagal dimuat: ' + String(error && error.message ? error.message : error) } });
     }
   }
 
-  // PHASE 9: dashboard reads from Supabase.
-  // TEST safety: if assembly fails, keep the existing Apps Script dashboard.
   if (method === 'getDashboardData') {
     try {
       const result = await getDashboardDataSupabase(env, session);
+      result.dataSource = 'supabase';
+      result.loadedAt = new Date().toISOString();
       return json({ ok:true, data:JSON.stringify(result) });
     } catch (error) {
-      console.error('Supabase dashboard error, falling back to Apps Script:', error);
-      const fallback = await gasRpc(env, method, [session.userID, session.userType]);
-      return json({ ok:true, data:fallback });
+      console.error('Supabase dashboard error:', error);
+      return json({ ok:true, data:JSON.stringify({
+        success:false,
+        dataSource:'supabase',
+        message:'Dashboard Supabase gagal dimuat: ' + String(error && error.message ? error.message : error)
+      }) });
     }
   }
 
@@ -2016,6 +2019,15 @@ async function sbRows(env, table, params = {}) {
   return Array.isArray(result) ? result : [];
 }
 
+async function sbRowsSafe(env, table, params = {}) {
+  try {
+    return await sbRows(env, table, params);
+  } catch (error) {
+    console.error(`Optional Supabase table ${table} failed:`, error);
+    return [];
+  }
+}
+
 
 function auditActionMeta(method) {
   const map = {
@@ -3063,15 +3075,15 @@ async function buildStudentDashboardSupabase(env, session) {
       sbRows(env, 'student_attendance', { student_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc' }),
       sbRows(env, 'assignments', { student_id:`eq.${id}`, order:'created_at.desc' }),
       sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'replacement_schedules', { student_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      getScheduleOverrideRowsForSession(env, session)
+      sbRowsSafe(env, 'replacement_schedules', { student_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
+      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
+      getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })
     ]);
 
   const student = students[0];
   if (!student) throw new Error('Data siswa tidak ditemukan di Supabase.');
 
-  const publications = await sbRows(env, 'student_report_publications', {
+  const publications = await sbRowsSafe(env, 'student_report_publications', {
     student_public_id:`eq.${id}`,
     active:'eq.true',
     order:'sent_at.desc'
@@ -3119,6 +3131,7 @@ async function buildStudentDashboardSupabase(env, session) {
 
   return {
     success:true,
+    dataSource:'supabase',
     userType:'siswa',
     siswaInfo:{
       userID:student.student_id,
@@ -3158,10 +3171,10 @@ async function buildTeacherDashboardSupabase(env, session) {
       sbRows(env, 'student_attendance', { teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc' }),
       sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc' }),
       sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' }),
-      getScheduleOverrideRowsForSession(env, session)
+      sbRowsSafe(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
+      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
+      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' }),
+      getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })
     ]);
 
   const teacher = teachers[0];
@@ -3253,6 +3266,7 @@ async function buildTeacherDashboardSupabase(env, session) {
 
   return {
     success:true,
+    dataSource:'supabase',
     userType:'guru',
     guruInfo:{
       userID:teacher.teacher_id,
@@ -3287,12 +3301,12 @@ async function buildAdminDashboardSupabase(env, session) {
       sbRows(env, 'schedules', { order:'created_at.asc' }),
       sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc' }),
       sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc' }),
-      sbRows(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc' }),
+      sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' }),
+      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
+      sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc' }),
+      sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc' }),
       getScheduleOverrideRowsForSession(env, session),
-      sbRows(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' })
+      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' })
     ]);
 
   const admin = admins[0] || null;
@@ -3364,6 +3378,7 @@ async function buildAdminDashboardSupabase(env, session) {
 
   return {
     success:true,
+    dataSource:'supabase',
     userType:'admin',
     adminInfo:admin ? {
       userID:admin.admin_id,

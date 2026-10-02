@@ -1065,10 +1065,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
         let data = rawData;
         if (typeof rawData === 'string') {
           try { data = JSON.parse(rawData); }
-          catch (error) { showAlert('alertDanger', 'Data dashboard tidak valid. Silakan refresh sekali lagi.'); return; }
+          catch (error) { showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); return; }
         }
         if (!data || data.error || data.success === false) {
-          showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data dashboard kosong. Silakan coba lagi.');
+          showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
           return;
         }
 
@@ -1090,36 +1090,50 @@ let currentUser = { userType: '', userID: '', userName: '' };
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 
-        google.script.run.withSuccessHandler(gList => {
-          globalGuruList = gList || [];
-          if (data.userType === 'siswa') renderSiswa(data);
-          if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
-          if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
-          renderLearningProgressViews();
-          if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
+        // Do not make a second blocking request for Guru List after dashboard load.
+        // Admin already receives guruList from the same Supabase dashboard response;
+        // Guru only needs their own identity for role-specific screens; siswa does not
+        // need the entire teacher directory during initial render.
+        if (Array.isArray(data.guruList)) globalGuruList = data.guruList;
+        else if (data.userType === 'guru' && data.guruInfo) {
+          globalGuruList = [{
+            id:data.guruInfo.userID || '',
+            nama:data.guruInfo.nama || '',
+            email:data.guruInfo.email || '',
+            noHp:data.guruInfo.noHp || '',
+            instrumen:data.guruInfo.instrumen || 'Gitar',
+            foto:data.guruInfo.foto || ''
+          }];
+        } else globalGuruList = [];
 
-          setupFilterDropdown();
-          renderTabelJadwal();
-          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-          renderTabelRiwayat();
-          renderTabelTugas();
-          renderTabelJadwalPengganti();
-          renderPengumumanList();
-          renderDashboardAcademyUpdates();
-          setupMakeupFilters();
-          setupRoomFilters();
-          renderRoomAvailability();
-          renderNotificationCenter();
-          if (notificationTimer) clearInterval(notificationTimer);
-          notificationTimer = setInterval(renderNotificationCenter, 60000);
-          if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
-        }).withFailureHandler(error => {
-          if (requestNumber === dashboardRequestNumber) showAlert('alertDanger', 'Daftar guru gagal dimuat: ' + (error.message || error));
-        }).getGuruList();
+        if (data.userType === 'siswa') renderSiswa(data);
+        if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
+        if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
+        renderLearningProgressViews();
+        if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
+        setupFilterDropdown();
+        renderTabelJadwal();
+        if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+        renderTabelRiwayat();
+        renderTabelTugas();
+        renderTabelJadwalPengganti();
+        renderPengumumanList();
+        renderDashboardAcademyUpdates();
+        setupMakeupFilters();
+        setupRoomFilters();
+        renderRoomAvailability();
+        renderNotificationCenter();
+        if (notificationTimer) clearInterval(notificationTimer);
+        notificationTimer = setInterval(renderNotificationCenter, 60000);
+        if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
+
+        // Small diagnostic marker for troubleshooting. It is intentionally not shown
+        // as a normal UI element, but can be checked in DevTools if ever needed.
+        document.documentElement.dataset.dashboardSource = data.dataSource || 'unknown';
       }).withFailureHandler(error => {
         if (requestNumber !== dashboardRequestNumber) return;
-        showAlert('alertDanger', 'Data dashboard gagal dimuat: ' + (error.message || error));
+        showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
       }).getDashboardData(currentUser.userID, currentUser.userType);
     }
 
