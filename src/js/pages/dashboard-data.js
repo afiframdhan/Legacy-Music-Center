@@ -1,14 +1,30 @@
-    function fetchDashboardData() {
+    function fetchDashboardData(options = {}) {
+      const opts = options && typeof options === 'object' ? options : {};
+      const now = Date.now();
+      if (dashboardLoadInFlight) {
+        dashboardRefreshQueued = true;
+        return;
+      }
+      if (!opts.force && dashboardLastLoadedAt && now - dashboardLastLoadedAt < 700) return;
+      dashboardLoadInFlight = true;
       const requestNumber = ++dashboardRequestNumber;
+      const finishDashboardLoad = function() {
+        dashboardLoadInFlight = false;
+        if (dashboardRefreshQueued) {
+          dashboardRefreshQueued = false;
+          setTimeout(() => fetchDashboardData({ silent:true, reason:'queued-refresh' }), 120);
+        }
+      };
       google.script.run.withSuccessHandler(function(rawData) {
-        if (requestNumber !== dashboardRequestNumber) return;
+        if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
         let data = rawData;
         if (typeof rawData === 'string') {
           try { data = JSON.parse(rawData); }
-          catch (error) { showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); return; }
+          catch (error) { if (!opts.silent) showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); finishDashboardLoad(); return; }
         }
         if (!data || data.error || data.success === false) {
-          showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
+          if (!opts.silent) showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
+          finishDashboardLoad();
           return;
         }
 
@@ -67,14 +83,43 @@
         if (notificationTimer) clearInterval(notificationTimer);
         notificationTimer = setInterval(renderNotificationCenter, 60000);
         if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
+        if (typeof configureLiveAnnouncementSync === 'function') configureLiveAnnouncementSync();
 
         // Small diagnostic marker for troubleshooting. It is intentionally not shown
         // as a normal UI element, but can be checked in DevTools if ever needed.
         document.documentElement.dataset.dashboardSource = data.dataSource || 'unknown';
+        dashboardLastLoadedAt = Date.now();
+        if (typeof configureGlobalLiveSync === 'function') configureGlobalLiveSync();
+        finishDashboardLoad();
       }).withFailureHandler(error => {
-        if (requestNumber !== dashboardRequestNumber) return;
-        showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
+        if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
+        if (!opts.silent) showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
+        finishDashboardLoad();
       }).getDashboardData(currentUser.userID, currentUser.userType);
+    }
+
+    function legacyDisplayImageUrl(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) return raw;
+      let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+      if (!match) match = raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if (match && match[1]) return `https://lh3.googleusercontent.com/d/${match[1]}`;
+      return raw;
+    }
+
+    function legacyImageFallback(img) {
+      if (!img) return;
+      const original = String(img.dataset.originalSrc || '').trim();
+      if (!original || img.dataset.fallbackUsed === '1') {
+        img.style.display = 'none';
+        const fallback = img.nextElementSibling;
+        if (fallback && fallback.classList.contains('coach-avatar-initial-circle')) fallback.style.display = 'flex';
+        return;
+      }
+      img.dataset.fallbackUsed = '1';
+      img.src = original;
     }
 
     function timeToMinutes(timeStr) {
@@ -141,10 +186,11 @@
         const coachFoto = coachObj ? coachObj.foto : '';
 
         let coachAvatarHtml = '';
+        const init = coachNama ? coachNama.charAt(0).toUpperCase() : 'C';
         if (coachFoto && coachFoto.length > 5) {
-          coachAvatarHtml = `<img src="${coachFoto}" class="coach-avatar-circle">`;
+          const displayFoto = legacyDisplayImageUrl(coachFoto);
+          coachAvatarHtml = `<img src="${escapeTaskHtml(displayFoto)}" data-original-src="${escapeTaskHtml(coachFoto)}" class="coach-avatar-circle" onerror="legacyImageFallback(this)"><div class="coach-avatar-initial-circle" style="display:none">${escapeTaskHtml(init)}</div>`;
         } else {
-          const init = coachNama ? coachNama.charAt(0).toUpperCase() : 'C';
           coachAvatarHtml = `<div class="coach-avatar-initial-circle">${init}</div>`;
         }
 

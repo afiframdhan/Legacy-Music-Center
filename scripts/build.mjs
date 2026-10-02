@@ -8,6 +8,7 @@ const jsSources = [
   'src/js/core/vendor-loader.js',
   'src/js/core/theme-session.js',
   'src/js/core/app-shell.js',
+  'src/js/core/live-sync.js',
   'src/js/auth.js',
   'src/js/router.js',
   'src/js/pages/dashboard-data.js',

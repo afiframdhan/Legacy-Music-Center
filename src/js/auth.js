@@ -34,6 +34,8 @@
     function logout() {
       try { fetch('/api/logout', { method:'POST', credentials:'same-origin' }); } catch (ignore) {}
       if (notificationTimer) { clearInterval(notificationTimer); notificationTimer = null; }
+      if (liveAnnouncementTimer) { clearInterval(liveAnnouncementTimer); liveAnnouncementTimer = null; }
+      if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
       document.getElementById('notificationPanel')?.classList.remove('open');
       try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (ignore) {}
       try {

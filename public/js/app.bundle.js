@@ -4,12 +4,20 @@
   // V3: identical read requests share the same in-flight Promise. No response cache is kept,
   // so writes are still reflected on the next request exactly as before.
   const inflightReads = new Map();
-  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo']);
+  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance']);
+  const MUTATION_METHODS = new Set([
+    'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
+    'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
+    'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addJadwalPengganti','deleteJadwalPengganti',
+    'addPengumuman','deletePengumuman','recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire',
+    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile'
+  ]);
 
   async function rawRpc(method, args) {
     const response = await fetch('/api/rpc', {
       method: 'POST',
       credentials: 'same-origin',
+      cache: 'no-store',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ method, args })
     });
@@ -24,7 +32,11 @@
       if (response.status === 401) window.dispatchEvent(new CustomEvent('legacy:session-expired'));
       throw error;
     }
-    return payload.data;
+    const data = payload.data;
+    if (MUTATION_METHODS.has(method) && data && data.success === true) {
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method } })));
+    }
+    return data;
   }
 
   function rpc(method, args) {
@@ -281,7 +293,15 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let sigCanvases = {};
     let dashboardRequestNumber = 0;
     let notificationTimer = null;
+    let liveAnnouncementTimer = null;
+    let liveAnnouncementRequestInFlight = false;
     let adminAttendanceSyncTimer = null;
+    let globalLiveSyncTimer = null;
+    let globalLiveSyncRunning = false;
+    let globalLiveSyncVersions = {};
+    let dashboardLoadInFlight = false;
+    let dashboardRefreshQueued = false;
+    let dashboardLastLoadedAt = 0;
     const AUTH_STORAGE_KEY = 'legacyMusicCenterAuth';
     const AUTH_COOKIE_KEY = 'legacyMusicCenterAuthPersistent';
     const THEME_STORAGE_KEY = 'legacyThemePreference';
@@ -644,6 +664,89 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
 
+(function () {
+  'use strict';
+
+  const ACTIVE_INTERVAL = 3000;
+  const FOCUS_REFRESH_MIN_AGE = 1500;
+  let lastPollAt = 0;
+  let refreshTimer = null;
+
+  function versionsChanged(next) {
+    const current = globalLiveSyncVersions || {};
+    const keys = new Set([...Object.keys(current), ...Object.keys(next || {})]);
+    for (const key of keys) {
+      if (String(current[key] || '0') !== String((next || {})[key] || '0')) return true;
+    }
+    return false;
+  }
+
+  function requestFastDashboardRefresh(reason, delay = 180) {
+    if (!currentUser || !currentUser.userType) return;
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'live-sync' });
+    }, delay);
+  }
+
+  async function pollLiveSync(force = false) {
+    if (globalLiveSyncRunning || !currentUser || !currentUser.userType) return;
+    if (document.visibilityState === 'hidden' && !force) return;
+    const now = Date.now();
+    if (!force && now - lastPollAt < 1200) return;
+    lastPollAt = now;
+    globalLiveSyncRunning = true;
+    try {
+      const res = await LegacyAPI.rpc('getLiveSyncState', []);
+      if (!res || res.success === false || !res.versions) return;
+      const next = res.versions || {};
+      const hadBaseline = Object.keys(globalLiveSyncVersions || {}).length > 0;
+      const changed = hadBaseline && versionsChanged(next);
+      globalLiveSyncVersions = next;
+      if (changed) requestFastDashboardRefresh('remote-change', 120);
+    } catch (error) {
+      // Live sync is an enhancement. Never block the app if the sync table is unavailable.
+      console.debug('[Legacy Live Sync] poll skipped:', error && error.message ? error.message : error);
+    } finally {
+      globalLiveSyncRunning = false;
+    }
+  }
+
+  function configureGlobalLiveSync() {
+    if (!currentUser || !currentUser.userType) return;
+    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
+    pollLiveSync(true);
+    globalLiveSyncTimer = setInterval(() => pollLiveSync(false), ACTIVE_INTERVAL);
+  }
+
+  function stopGlobalLiveSync() {
+    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
+    globalLiveSyncTimer = null;
+    globalLiveSyncVersions = {};
+    globalLiveSyncRunning = false;
+  }
+
+  window.addEventListener('legacy:data-mutated', event => {
+    // Local writes already returned success; refresh in background, coalescing multiple writes.
+    requestFastDashboardRefresh(event?.detail?.method || 'local-write', 120);
+    setTimeout(() => pollLiveSync(true), 350);
+  });
+
+  window.addEventListener('focus', () => {
+    if (!currentUser || !currentUser.userType) return;
+    if (Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentUser && currentUser.userType) pollLiveSync(true);
+  });
+
+  window.configureGlobalLiveSync = configureGlobalLiveSync;
+  window.stopGlobalLiveSync = stopGlobalLiveSync;
+  window.requestFastDashboardRefresh = requestFastDashboardRefresh;
+})();
+
     function setLoginType(type) {
       loginType = type;
       document.getElementById('tabSiswa').classList.toggle('active', type === 'siswa');
@@ -680,6 +783,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function logout() {
       try { fetch('/api/logout', { method:'POST', credentials:'same-origin' }); } catch (ignore) {}
       if (notificationTimer) { clearInterval(notificationTimer); notificationTimer = null; }
+      if (liveAnnouncementTimer) { clearInterval(liveAnnouncementTimer); liveAnnouncementTimer = null; }
+      if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
       document.getElementById('notificationPanel')?.classList.remove('open');
       try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (ignore) {}
       try {
@@ -1058,17 +1163,33 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
 
-    function fetchDashboardData() {
+    function fetchDashboardData(options = {}) {
+      const opts = options && typeof options === 'object' ? options : {};
+      const now = Date.now();
+      if (dashboardLoadInFlight) {
+        dashboardRefreshQueued = true;
+        return;
+      }
+      if (!opts.force && dashboardLastLoadedAt && now - dashboardLastLoadedAt < 700) return;
+      dashboardLoadInFlight = true;
       const requestNumber = ++dashboardRequestNumber;
+      const finishDashboardLoad = function() {
+        dashboardLoadInFlight = false;
+        if (dashboardRefreshQueued) {
+          dashboardRefreshQueued = false;
+          setTimeout(() => fetchDashboardData({ silent:true, reason:'queued-refresh' }), 120);
+        }
+      };
       google.script.run.withSuccessHandler(function(rawData) {
-        if (requestNumber !== dashboardRequestNumber) return;
+        if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
         let data = rawData;
         if (typeof rawData === 'string') {
           try { data = JSON.parse(rawData); }
-          catch (error) { showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); return; }
+          catch (error) { if (!opts.silent) showAlert('alertDanger', 'Data dashboard Supabase tidak valid. Silakan coba lagi.'); finishDashboardLoad(); return; }
         }
         if (!data || data.error || data.success === false) {
-          showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
+          if (!opts.silent) showAlert('alertDanger', data && (data.error || data.message) ? (data.error || data.message) : 'Data Supabase kosong. Silakan coba lagi.');
+          finishDashboardLoad();
           return;
         }
 
@@ -1127,14 +1248,43 @@ let currentUser = { userType: '', userID: '', userName: '' };
         if (notificationTimer) clearInterval(notificationTimer);
         notificationTimer = setInterval(renderNotificationCenter, 60000);
         if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
+        if (typeof configureLiveAnnouncementSync === 'function') configureLiveAnnouncementSync();
 
         // Small diagnostic marker for troubleshooting. It is intentionally not shown
         // as a normal UI element, but can be checked in DevTools if ever needed.
         document.documentElement.dataset.dashboardSource = data.dataSource || 'unknown';
+        dashboardLastLoadedAt = Date.now();
+        if (typeof configureGlobalLiveSync === 'function') configureGlobalLiveSync();
+        finishDashboardLoad();
       }).withFailureHandler(error => {
-        if (requestNumber !== dashboardRequestNumber) return;
-        showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
+        if (requestNumber !== dashboardRequestNumber) { finishDashboardLoad(); return; }
+        if (!opts.silent) showAlert('alertDanger', 'Data Supabase gagal dimuat: ' + (error.message || error));
+        finishDashboardLoad();
       }).getDashboardData(currentUser.userID, currentUser.userType);
+    }
+
+    function legacyDisplayImageUrl(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) return raw;
+      let match = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if (!match) match = raw.match(/[?&]id=([^&#]+)/i);
+      if (!match) match = raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if (match && match[1]) return `https://lh3.googleusercontent.com/d/${match[1]}`;
+      return raw;
+    }
+
+    function legacyImageFallback(img) {
+      if (!img) return;
+      const original = String(img.dataset.originalSrc || '').trim();
+      if (!original || img.dataset.fallbackUsed === '1') {
+        img.style.display = 'none';
+        const fallback = img.nextElementSibling;
+        if (fallback && fallback.classList.contains('coach-avatar-initial-circle')) fallback.style.display = 'flex';
+        return;
+      }
+      img.dataset.fallbackUsed = '1';
+      img.src = original;
     }
 
     function timeToMinutes(timeStr) {
@@ -1201,10 +1351,11 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const coachFoto = coachObj ? coachObj.foto : '';
 
         let coachAvatarHtml = '';
+        const init = coachNama ? coachNama.charAt(0).toUpperCase() : 'C';
         if (coachFoto && coachFoto.length > 5) {
-          coachAvatarHtml = `<img src="${coachFoto}" class="coach-avatar-circle">`;
+          const displayFoto = legacyDisplayImageUrl(coachFoto);
+          coachAvatarHtml = `<img src="${escapeTaskHtml(displayFoto)}" data-original-src="${escapeTaskHtml(coachFoto)}" class="coach-avatar-circle" onerror="legacyImageFallback(this)"><div class="coach-avatar-initial-circle" style="display:none">${escapeTaskHtml(init)}</div>`;
         } else {
-          const init = coachNama ? coachNama.charAt(0).toUpperCase() : 'C';
           coachAvatarHtml = `<div class="coach-avatar-initial-circle">${init}</div>`;
         }
 
@@ -2340,6 +2491,46 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       }
     }
 
+    function announcementListFingerprint(items) {
+      return (Array.isArray(items) ? items : []).map(item => [
+        item.pengumumanID || '', item.judul || '', item.isi || '', item.status || '', item.tanggalKirim || '', item.target || '', item.targetDetail || ''
+      ].join('|')).join('||');
+    }
+
+    function refreshAnnouncementsLive(forceRender) {
+      if (!currentUser || !currentUser.userType || document.getElementById('appView')?.style.display === 'none') return;
+      if (liveAnnouncementRequestInFlight) return;
+      liveAnnouncementRequestInFlight = true;
+      google.script.run.withSuccessHandler(res => {
+        liveAnnouncementRequestInFlight = false;
+        if (!res || res.success === false || !Array.isArray(res.items)) return;
+        const before = announcementListFingerprint(globalPengumumanList);
+        const after = announcementListFingerprint(res.items);
+        if (forceRender || before !== after) {
+          globalPengumumanList = res.items;
+          renderPengumumanList();
+          if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+          if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+        }
+      }).withFailureHandler(() => {
+        liveAnnouncementRequestInFlight = false;
+      }).getLiveAnnouncements();
+    }
+
+    function configureLiveAnnouncementSync() {
+      if (liveAnnouncementTimer) clearInterval(liveAnnouncementTimer);
+      liveAnnouncementTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') refreshAnnouncementsLive(false);
+      }, 4000);
+      if (!window.__legacyAnnouncementFocusBound) {
+        window.__legacyAnnouncementFocusBound = true;
+        window.addEventListener('focus', () => refreshAnnouncementsLive(false));
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') refreshAnnouncementsLive(false);
+        });
+      }
+    }
+
     function handleAddPengumuman(e) {
       e.preventDefault();
       const btn = document.getElementById('btnSubmitPengumuman');
@@ -2379,7 +2570,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         if (res.success) {
           document.getElementById('formAddPengumuman').reset();
           togglePengumumanTargetDetail('');
-          fetchDashboardData();
+          if (res.announcement && res.announcement.pengumumanID) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(res.announcement.pengumumanID || ''));
+            globalPengumumanList.unshift(res.announcement);
+            renderPengumumanList();
+            if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+            if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+          }
+          refreshAnnouncementsLive(true);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
@@ -2410,7 +2608,13 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus pengumuman ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id || ''));
+            renderPengumumanList();
+            if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+            if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+            refreshAnnouncementsLive(true);
+          }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus pengumuman: ' + (error.message || error))).deletePengumuman(id, currentUser.userType);
       }
     }

@@ -2,7 +2,7 @@ const COOKIE_NAME = 'legacy_api_session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 const COMMON = new Set([
-  'getDashboardData', 'getGuruList', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
+  'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
   'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
   'getRepertoireData'
 ]);
@@ -250,7 +250,7 @@ async function handleRpc(request, env, ctx) {
       const result = await getDashboardDataSupabase(env, session);
       result.dataSource = 'supabase';
       result.loadedAt = new Date().toISOString();
-      return json({ ok:true, data:JSON.stringify(result) });
+      return json({ ok:true, data:result });
     } catch (error) {
       console.error('Supabase dashboard error:', error);
       return json({ ok:true, data:JSON.stringify({
@@ -258,6 +258,28 @@ async function handleRpc(request, env, ctx) {
         dataSource:'supabase',
         message:'Dashboard Supabase gagal dimuat: ' + String(error && error.message ? error.message : error)
       }) });
+    }
+  }
+
+  if (method === 'getLiveSyncState') {
+    try {
+      const rows = await sbRows(env, 'app_sync_versions', { select:'module_key,version,updated_at', order:'module_key.asc' });
+      const versions = {};
+      for (const row of rows) versions[String(row.module_key || '')] = Number(row.version || 0);
+      return json({ ok:true, data:{ success:true, versions, serverTime:new Date().toISOString() } });
+    } catch (error) {
+      console.error('Live sync state error:', error);
+      return json({ ok:true, data:{ success:false, versions:{}, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'getLiveAnnouncements') {
+    try {
+      const result = await getLiveAnnouncementsSupabase(env, session);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Live announcements sync error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), items:[] } });
     }
   }
 
@@ -1032,12 +1054,16 @@ async function handleRpc(request, env, ctx) {
           })
         );
       } else if (result.announcement) {
+        const rawAnnouncement = result.announcement;
         ctx.waitUntil(
-          gasRpc(env, 'phase10UpsertAnnouncementShadow', [result.announcement]).catch(error => {
+          gasRpc(env, 'phase10UpsertAnnouncementShadow', [rawAnnouncement]).catch(error => {
             console.error('Apps Script announcement shadow failed:', error);
           })
         );
-        ctx.waitUntil(pushAnnouncementAudience(env,result.announcement).catch(error=>console.error('Announcement push failed:',error)));
+        ctx.waitUntil(pushAnnouncementAudience(env,rawAnnouncement).catch(error=>console.error('Announcement push failed:',error)));
+        // Return the same lightweight shape used by dashboard/live sync so Admin can
+        // render the new announcement immediately without reloading the whole dashboard.
+        result.announcement = mapAnnouncement(rawAnnouncement);
       }
     }
 
@@ -1998,6 +2024,42 @@ function normalizeLegacyDate(value) {
 // =========================================================
 // PHASE 9 — SUPABASE DASHBOARD
 // =========================================================
+
+async function getLiveAnnouncementsSupabase(env, session) {
+  const announcements = await sbRowsSafe(env, 'announcements', {
+    order:'sent_at.desc.nullslast,created_at.desc',
+    limit:'100'
+  });
+
+  if (session.userType === 'admin') {
+    return { success:true, items:activeAnnouncementsForRole(announcements, 'admin', null, new Set(), new Set()), syncedAt:new Date().toISOString() };
+  }
+
+  if (session.userType === 'siswa') {
+    const students = await sbRows(env, 'students', { student_id:`eq.${session.userID}`, limit:'1' });
+    const student = students[0] || null;
+    return { success:true, items:activeAnnouncementsForRole(announcements, 'siswa', student, new Set(), new Set()), syncedAt:new Date().toISOString() };
+  }
+
+  if (session.userType === 'guru') {
+    const [teachers, classes] = await Promise.all([
+      sbRows(env, 'teachers', { teacher_id:`eq.${session.userID}`, limit:'1' }),
+      sbRows(env, 'student_classes', { teacher_id:`eq.${session.userID}`, status:'eq.Aktif', select:'student_id' })
+    ]);
+    const teacher = teachers[0] || null;
+    const ids = [...new Set(classes.map(row => String(row.student_id || '').trim()).filter(Boolean))];
+    const idSet = new Set(ids.map(v => v.toLowerCase()));
+    const nameSet = new Set();
+    if (ids.length) {
+      // Only needed for legacy announcements that stored a student name instead of target_student_id.
+      const students = await sbRowsSafe(env, 'students', { student_id:`in.(${ids.map(v => `\"${String(v).replace(/\"/g,'')}\"`).join(',')})`, select:'student_id,name' });
+      students.forEach(row => nameSet.add(String(row.name || '').trim().toLowerCase()));
+    }
+    return { success:true, items:activeAnnouncementsForRole(announcements, 'guru', null, idSet, nameSet, teacher), syncedAt:new Date().toISOString() };
+  }
+
+  return { success:true, items:[], syncedAt:new Date().toISOString() };
+}
 
 async function getDashboardDataSupabase(env, session) {
   if (session.userType === 'siswa') return buildStudentDashboardSupabase(env, session);
@@ -3067,7 +3129,7 @@ async function deleteScheduleOverrideSupabase(env, session, overrideId) {
 
 async function buildStudentDashboardSupabase(env, session) {
   const id = session.userID;
-  const [students, classes, schedules, attendance, assignments, progress, replacements, announcements, scheduleOverrides] =
+  const [students, classes, schedules, attendance, assignments, progress, replacements, announcements, scheduleOverrides, teachers] =
     await Promise.all([
       sbRows(env, 'students', { student_id:`eq.${id}`, limit:'1' }),
       sbRows(env, 'student_classes', { student_id:`eq.${id}`, order:'created_at.asc' }),
@@ -3077,7 +3139,8 @@ async function buildStudentDashboardSupabase(env, session) {
       sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
       sbRowsSafe(env, 'replacement_schedules', { student_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
       sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })
+      getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; }),
+      sbRowsSafe(env, 'teachers', { select:'teacher_id,name,instrument,photo_url,status', order:'name.asc' })
     ]);
 
   const student = students[0];
@@ -3133,6 +3196,19 @@ async function buildStudentDashboardSupabase(env, session) {
     success:true,
     dataSource:'supabase',
     userType:'siswa',
+    guruList:teachers
+      .filter(row => {
+        const teacherIds = new Set(classes.map(c => String(c.teacher_id || '')).filter(Boolean));
+        const teacherNames = new Set(classes.map(c => String(c.teacher_name_snapshot || '').trim().toLowerCase()).filter(Boolean));
+        return teacherIds.has(String(row.teacher_id || '')) || teacherNames.has(String(row.name || '').trim().toLowerCase());
+      })
+      .map(row => ({
+        id:row.teacher_id || '',
+        nama:row.name || '',
+        instrumen:row.instrument || 'Musik',
+        foto:row.photo_url || '',
+        status:row.status || 'Aktif'
+      })),
     siswaInfo:{
       userID:student.student_id,
       nama:student.name || '',
