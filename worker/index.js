@@ -330,6 +330,18 @@ async function handleRpc(request, env, ctx) {
     }
   }
 
+  if (method === 'getAdminExportBackup') {
+    try {
+      if (session.userType !== 'admin') return json({ ok:false, error:'Akses hanya untuk admin.' }, 403);
+      const request = args[0] && typeof args[0] === 'object' ? args[0] : {};
+      const result = await getAdminExportBackupSupabase(env, request.dataset);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Admin export backup error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), rows:[] } });
+    }
+  }
+
   if (method === 'getAdminDataQuality') {
     try {
       return json({ ok:true, data:await getAdminDataQualitySupabase(env, session) });
@@ -2152,6 +2164,36 @@ async function sbRowsSafe(env, table, params = {}) {
   }
 }
 
+
+async function sbAllRows(env, table, select = '*') {
+  const pageSize = 1000;
+  const all = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const rows = await sbRows(env, table, { select, limit:String(pageSize), offset:String(offset) });
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    if (offset > 100000) throw new Error(`Backup ${table} terlalu besar untuk export sekali jalan.`);
+  }
+  return all;
+}
+
+async function getAdminExportBackupSupabase(env, dataset) {
+  const configs = {
+    students:{ table:'students' },
+    teachers:{ table:'teachers' },
+    schedules:{ table:'schedules' },
+    attendance:{ table:'student_attendance' },
+    progress:{ table:'learning_progress' },
+    repertoire:{ table:'student_repertoire' },
+    exams:{ table:'annual_exam_assessments' },
+    overrides:{ table:'schedule_overrides' }
+  };
+  const key = String(dataset || '').trim();
+  const config = configs[key];
+  if (!config) throw new Error('Kategori export tidak valid.');
+  const rows = await sbAllRows(env, config.table, '*');
+  return { success:true, dataset:key, table:config.table, count:rows.length, exportedAt:new Date().toISOString(), rows };
+}
 
 function auditActionMeta(method) {
   const map = {
