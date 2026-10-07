@@ -485,10 +485,26 @@
       return value;
     }
 
+    const EXCEL_CELL_TEXT_LIMIT = 32000;
+
+    function splitExcelCellValue(value) {
+      const normalized = normalizeExportValue(value);
+      if (typeof normalized !== 'string' || normalized.length <= EXCEL_CELL_TEXT_LIMIT) return [normalized];
+      const parts = [];
+      for (let i = 0; i < normalized.length; i += EXCEL_CELL_TEXT_LIMIT) {
+        parts.push(normalized.slice(i, i + EXCEL_CELL_TEXT_LIMIT));
+      }
+      return parts;
+    }
+
     function rowsForSpreadsheet(rows) {
       return (rows || []).map(row => {
         const clean = {};
-        Object.entries(row || {}).forEach(([key, value]) => { clean[key] = normalizeExportValue(value); });
+        Object.entries(row || {}).forEach(([key, value]) => {
+          const parts = splitExcelCellValue(value);
+          clean[key] = parts[0] ?? '';
+          for (let i = 1; i < parts.length; i++) clean[`${key}__part${i + 1}`] = parts[i];
+        });
         return clean;
       });
     }
