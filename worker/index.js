@@ -24,7 +24,7 @@ const ADMIN = new Set([
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance',
   'deleteExitedStudentRecord',
-  'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality'
+  'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
 ]);
 
 const AUDIT_METHODS = new Set([
