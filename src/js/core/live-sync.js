@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 3500;
+  const ACTIVE_INTERVAL = 1800;
   const FOCUS_REFRESH_MIN_AGE = 1800;
   let lastPollAt = 0;
   let refreshTimer = null;
@@ -32,7 +32,21 @@
       if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
     }
     if (set.has('attendance') && Array.isArray(data.attendance)) {
-      globalAbsensiList = data.attendance;
+      // Live attendance payload is optimized: old signatures are preserved locally,
+      // while newly-created/recent rows still arrive with their signature data.
+      // Replacing by the server ID list also makes cross-device deletes disappear
+      // immediately instead of being merged forever into stale local rows.
+      const currentById = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
+      globalAbsensiList = data.attendance.map(item => {
+        const previous = currentById.get(String(item.absensiID || '')) || {};
+        return {
+          ...previous,
+          ...item,
+          tandaTangan: item.tandaTangan || previous.tandaTangan || '',
+          ttdSiswa: item.ttdSiswa || previous.ttdSiswa || ''
+        };
+      });
+      if (typeof setupFilterDropdown === 'function') setupFilterDropdown();
       if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat();
       if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
     }

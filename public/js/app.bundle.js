@@ -699,7 +699,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 3500;
+  const ACTIVE_INTERVAL = 1800;
   const FOCUS_REFRESH_MIN_AGE = 1800;
   let lastPollAt = 0;
   let refreshTimer = null;
@@ -730,7 +730,21 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
     }
     if (set.has('attendance') && Array.isArray(data.attendance)) {
-      globalAbsensiList = data.attendance;
+      // Live attendance payload is optimized: old signatures are preserved locally,
+      // while newly-created/recent rows still arrive with their signature data.
+      // Replacing by the server ID list also makes cross-device deletes disappear
+      // immediately instead of being merged forever into stale local rows.
+      const currentById = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
+      globalAbsensiList = data.attendance.map(item => {
+        const previous = currentById.get(String(item.absensiID || '')) || {};
+        return {
+          ...previous,
+          ...item,
+          tandaTangan: item.tandaTangan || previous.tandaTangan || '',
+          ttdSiswa: item.ttdSiswa || previous.ttdSiswa || ''
+        };
+      });
+      if (typeof setupFilterDropdown === 'function') setupFilterDropdown();
       if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat();
       if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
     }
@@ -3813,10 +3827,26 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       return value;
     }
 
+    const EXCEL_CELL_TEXT_LIMIT = 32000;
+
+    function splitExcelCellValue(value) {
+      const normalized = normalizeExportValue(value);
+      if (typeof normalized !== 'string' || normalized.length <= EXCEL_CELL_TEXT_LIMIT) return [normalized];
+      const parts = [];
+      for (let i = 0; i < normalized.length; i += EXCEL_CELL_TEXT_LIMIT) {
+        parts.push(normalized.slice(i, i + EXCEL_CELL_TEXT_LIMIT));
+      }
+      return parts;
+    }
+
     function rowsForSpreadsheet(rows) {
       return (rows || []).map(row => {
         const clean = {};
-        Object.entries(row || {}).forEach(([key, value]) => { clean[key] = normalizeExportValue(value); });
+        Object.entries(row || {}).forEach(([key, value]) => {
+          const parts = splitExcelCellValue(value);
+          clean[key] = parts[0] ?? '';
+          for (let i = 1; i < parts.length; i++) clean[`${key}__part${i + 1}`] = parts[i];
+        });
         return clean;
       });
     }
@@ -6187,37 +6217,21 @@ Guru: ${props.guru}`);
 
 
     function configureAdminAttendanceLiveSync() {
+      // The old implementation downloaded 250 complete attendance records (including
+      // base64 signatures) every 3 seconds. That made Admin progressively slower and
+      // could never detect deletions because it only merged records. Attendance now
+      // follows the lightweight global sync-version mechanism instead.
       if (adminAttendanceSyncTimer) {
         clearInterval(adminAttendanceSyncTimer);
         adminAttendanceSyncTimer = null;
       }
       if (currentUser.userType !== 'admin') return;
-      refreshAdminAttendanceLive();
-      adminAttendanceSyncTimer = setInterval(() => {
-        if (document.visibilityState === 'visible' && currentUser.userType === 'admin') refreshAdminAttendanceLive();
-      }, 3000);
+      if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
     }
 
     function refreshAdminAttendanceLive() {
       if (currentUser.userType !== 'admin') return;
-      google.script.run.withSuccessHandler(result => {
-        if (!result || result.success === false || !Array.isArray(result.items)) return;
-        const byId = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
-        let changed = false;
-        result.items.forEach(item => {
-          const key = String(item.absensiID || '');
-          if (!key) return;
-          const previous = byId.get(key);
-          if (!previous || JSON.stringify(previous) !== JSON.stringify(item)) {
-            byId.set(key, item);
-            changed = true;
-          }
-        });
-        if (!changed) return;
-        globalAbsensiList = Array.from(byId.values());
-        setupFilterDropdown();
-        renderTabelRiwayat();
-      }).withFailureHandler(() => {}).getRecentAttendance();
+      if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
     }
 
     function setupFilterDropdown() {
@@ -6527,7 +6541,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
       google.script.run.withSuccessHandler(res => {
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-        if(res.success) { closeEditAbsensiModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']); }
+        if(res.success) {
+          const localItem = typeof mapAttendanceMutationForUi === 'function'
+            ? mapAttendanceMutationForUi(res.attendance || res.item || null, payload)
+            : null;
+          if (localItem && typeof upsertAttendanceLocally === 'function') upsertAttendanceLocally(localItem);
+          closeEditAbsensiModal();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+        }
       }).updateAbsensi(payload);
     }
 
@@ -6535,7 +6556,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus absensi ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+          if(res.success) {
+            const key = String(id || '');
+            globalAbsensiList = (globalAbsensiList || []).filter(item => String(item.absensiID || '') !== key);
+            setupFilterDropdown();
+            renderTabelRiwayat();
+            if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+          }
         }).deleteAbsensi(id);
       }
     }
@@ -7726,8 +7754,9 @@ function normalizeTaskStatus(task) {
             clearSignature('canvasTtdGuru');
             clearSignature('canvasTtdSiswa');
           }
-          // Rekonsiliasi penuh tetap berjalan setelah UI lokal sudah diperbarui.
-          setTimeout(fetchDashboardData, 150);
+          // Do not reload the whole dashboard after one attendance mutation.
+          // The local row is already visible; only the attendance module is reconciled.
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
         }
       }).recordAbsensi(payload);
     }

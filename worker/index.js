@@ -2176,14 +2176,29 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       return;
     }
     if (module === 'attendance') {
-      const params = { order:'attendance_date.desc,created_at.desc' };
-      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      const baseParams = { order:'attendance_date.desc,created_at.desc' };
+      if (session.userType === 'siswa') baseParams.student_id = `eq.${session.userID}`;
       if (session.userType === 'guru') {
         const ids = await getTeacherStudentIds();
         if (!ids.length) { out.attendance = []; return; }
-        params.student_id = inFilter(ids);
+        baseParams.student_id = inFilter(ids);
       }
-      out.attendance = (await sbRows(env, 'student_attendance', params)).map(mapAttendance);
+
+      // Keep cross-device attendance sync small. Most rows contain large base64
+      // signatures; sending all of them after every mutation made Admin/Guru lag.
+      // The lightweight snapshot supplies every current ID (so deletes are detected),
+      // while only the newest rows carry signature payloads. Existing signatures are
+      // preserved by the client during reconciliation.
+      const lightweightSelect = [
+        'attendance_id','student_id','student_name_snapshot','teacher_id','teacher_name_snapshot',
+        'attendance_date','meeting_number','status','material','song','notes','created_at'
+      ].join(',');
+      const [snapshotRows, recentFullRows] = await Promise.all([
+        sbPagedRows(env, 'student_attendance', { ...baseParams, select:lightweightSelect }),
+        sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit:'40' })
+      ]);
+      const recentById = new Map(recentFullRows.map(row => [String(row.attendance_id || ''), row]));
+      out.attendance = snapshotRows.map(row => mapAttendance(recentById.get(String(row.attendance_id || '')) || row));
       return;
     }
     if (module === 'assignments') {
@@ -2262,6 +2277,17 @@ async function sbRowsSafe(env, table, params = {}) {
     console.error(`Optional Supabase table ${table} failed:`, error);
     return [];
   }
+}
+
+async function sbPagedRows(env, table, params = {}, maxRows = 10000) {
+  const pageSize = 1000;
+  const all = [];
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const rows = await sbRows(env, table, { ...params, limit:String(pageSize), offset:String(offset) });
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
 }
 
 
