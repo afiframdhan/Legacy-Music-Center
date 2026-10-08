@@ -687,7 +687,7 @@ html[data-theme="dark"] .attendance-multiline-input::placeholder{color:#718096!i
 .ph-picker-all{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#fff3ec;color:#f15a24;font-weight:900;flex:0 0 auto}
 .ph-student-avatar{display:inline-grid;place-items:center;overflow:hidden;border-radius:50%;background:#fff3ec;color:#f15a24;font-weight:900;flex:0 0 auto}
 .ph-student-avatar.sm{width:38px;height:38px}.ph-student-avatar.md{width:54px;height:54px}
-.ph-student-avatar img,.ph-student-avatar>span{width:100%;height:100%;object-fit:cover;place-items:center}
+.ph-student-avatar img,.ph-student-avatar>span{width:100%;height:100%;object-fit:cover}.ph-student-avatar>span{display:grid;place-items:center;text-align:center;line-height:1;margin:0;padding:0}
 .media-aspect-editor-wrap{margin:16px 0}
 .media-aspect-editor{display:grid;gap:9px}
 .media-aspect-editor-row{display:grid;grid-template-columns:minmax(180px,1.35fr) minmax(180px,1fr) 72px 105px;gap:10px;align-items:center;padding:11px 12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}
