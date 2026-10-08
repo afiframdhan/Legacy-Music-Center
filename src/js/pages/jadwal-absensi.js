@@ -212,7 +212,6 @@ Guru: ${props.guru}`);
     function refreshAbsensiStudentOptions() {
       const select = document.getElementById('absensiSiswa');
       if (!select || currentUser.userType === 'siswa') return;
-      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
       const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
       const day = formDay;
       const currentValue = select.value;
@@ -232,7 +231,6 @@ Guru: ${props.guru}`);
       const students = (globalSiswaList || []).filter(student => {
         const name = String(student.nama || '').trim();
         if (!name) return false;
-        if (search && !name.toLowerCase().includes(search)) return false;
         if (day && !scheduleNames.has(name.toLowerCase())) return false;
         return true;
       }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));

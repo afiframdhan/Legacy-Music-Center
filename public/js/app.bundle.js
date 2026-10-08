@@ -709,10 +709,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
       adminSelectGuruFilter:'teacher',
       lpPageTeacher:'teacher', lpPageStudent:'student',
       repertoireTeacherFilter:'teacher', repertoireStudentFilter:'student',
-      practiceStudentFilter:'student', studentReportGuru:'teacher',
+      studentReportGuru:'teacher',
       filterSiswaGuru:'teacher', filterJadwalGuru:'teacher',
       makeupFilterTeacher:'teacher', operationalCalendarTeacher:'teacher',
-      filterProgressGuru:'teacher', filterProgressSiswa:'student', filterRiwayatSelect:'student',
+      filterProgressGuru:'teacher', filterProgressSiswa:'student', absensiSiswa:'student',
       taskStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
     };
 
@@ -3783,6 +3783,8 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       document.getElementById('practiceTabEvaluations')?.classList.toggle('active', practiceActiveTab === 'evaluations');
       const addMaterial = document.getElementById('practiceAddMaterialBtn');
       const addEvaluation = document.getElementById('practiceAddEvaluationBtn');
+      const generalFilter = document.querySelector('.practice-filter-box');
+      if (generalFilter) generalFilter.style.display = practiceActiveTab === 'materials' ? '' : 'none';
       if (currentUser.userType === 'guru') {
         if (addMaterial) addMaterial.style.display = practiceActiveTab === 'materials' ? 'inline-flex' : 'none';
         if (addEvaluation) addEvaluation.style.display = practiceActiveTab === 'evaluations' ? 'inline-flex' : 'none';
@@ -6839,7 +6841,6 @@ Guru: ${props.guru}`);
     function refreshAbsensiStudentOptions() {
       const select = document.getElementById('absensiSiswa');
       if (!select || currentUser.userType === 'siswa') return;
-      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
       const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
       const day = formDay;
       const currentValue = select.value;
@@ -6859,7 +6860,6 @@ Guru: ${props.guru}`);
       const students = (globalSiswaList || []).filter(student => {
         const name = String(student.nama || '').trim();
         if (!name) return false;
-        if (search && !name.toLowerCase().includes(search)) return false;
         if (day && !scheduleNames.has(name.toLowerCase())) return false;
         return true;
       }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));

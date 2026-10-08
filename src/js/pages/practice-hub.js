@@ -167,6 +167,8 @@
       document.getElementById('practiceTabEvaluations')?.classList.toggle('active', practiceActiveTab === 'evaluations');
       const addMaterial = document.getElementById('practiceAddMaterialBtn');
       const addEvaluation = document.getElementById('practiceAddEvaluationBtn');
+      const generalFilter = document.querySelector('.practice-filter-box');
+      if (generalFilter) generalFilter.style.display = practiceActiveTab === 'materials' ? '' : 'none';
       if (currentUser.userType === 'guru') {
         if (addMaterial) addMaterial.style.display = practiceActiveTab === 'materials' ? 'inline-flex' : 'none';
         if (addEvaluation) addEvaluation.style.display = practiceActiveTab === 'evaluations' ? 'inline-flex' : 'none';

@@ -260,10 +260,10 @@
       adminSelectGuruFilter:'teacher',
       lpPageTeacher:'teacher', lpPageStudent:'student',
       repertoireTeacherFilter:'teacher', repertoireStudentFilter:'student',
-      practiceStudentFilter:'student', studentReportGuru:'teacher',
+      studentReportGuru:'teacher',
       filterSiswaGuru:'teacher', filterJadwalGuru:'teacher',
       makeupFilterTeacher:'teacher', operationalCalendarTeacher:'teacher',
-      filterProgressGuru:'teacher', filterProgressSiswa:'student', filterRiwayatSelect:'student',
+      filterProgressGuru:'teacher', filterProgressSiswa:'student', absensiSiswa:'student',
       taskStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
     };
 

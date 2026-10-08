@@ -713,3 +713,16 @@ html[data-theme="dark"] .attendance-multiline-input::placeholder{color:#718096!i
 /* Materi Latihan: keep YouTube embeds compact on desktop while remaining fluid on mobile. */
 .practice-resource-card .practice-video{width:min(100%,760px);max-width:760px}
 @media(max-width:900px){.practice-resource-card .practice-video{width:100%;max-width:none}}
+
+/* Materi & Absensi precision layout */
+.attendance-form-grid{grid-template-columns:repeat(4,minmax(0,1fr));align-items:start;}
+.attendance-form-grid .attendance-field{min-width:0;width:100%;}
+.attendance-form-grid .attendance-field>label{min-height:18px;display:flex;align-items:center;}
+.attendance-form-grid .attendance-field :where(input,select,.lmc-person-filter-trigger){width:100%;height:44px;min-height:44px;box-sizing:border-box;}
+.attendance-form-grid .attendance-note-field textarea{width:100%;min-height:118px;height:118px;resize:vertical;box-sizing:border-box;}
+.attendance-form-grid .attendance-note-field select{height:44px;min-height:44px;}
+.attendance-filter-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));align-items:end;}
+.attendance-filter-panel .form-group{min-width:0;width:100%;}
+.attendance-filter-panel :where(input,select,.lmc-person-filter-trigger){width:100%;height:44px;min-height:44px;box-sizing:border-box;}
+@media(max-width:1100px){.attendance-form-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:620px){.attendance-form-grid{grid-template-columns:1fr}.attendance-form-grid .attendance-span-2,.attendance-form-grid .attendance-span-all{grid-column:auto}.attendance-filter-panel{grid-template-columns:1fr}}
