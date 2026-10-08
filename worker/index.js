@@ -1464,17 +1464,74 @@ async function verifyImportedPbkdf2Password(password, saltB64, expectedB64, iter
 
 
 async function getGuruListSupabase(env) {
-  const rows = await supabaseRest(env, '/rest/v1/teachers?select=teacher_id,name,email,phone,instrument,status,photo_url&order=name.asc');
+  const [teacherRows, classRows] = await Promise.all([
+    supabaseRest(env, '/rest/v1/teachers?select=teacher_id,name,email,phone,instrument,status,photo_url&order=name.asc'),
+    supabaseRest(env, '/rest/v1/student_classes?select=teacher_id,teacher_name_snapshot,instrument,status').catch(error => {
+      console.warn('Teacher directory class fallback unavailable:', error);
+      return [];
+    })
+  ]);
 
-  return (Array.isArray(rows) ? rows : []).map(row => ({
-    id: String(row.teacher_id || ''),
-    nama: String(row.name || ''),
-    email: String(row.email || ''),
-    noHp: String(row.phone || ''),
-    instrumen: String(row.instrument || 'Gitar'),
-    status: String(row.status || 'Aktif'),
-    foto: String(row.photo_url || '')
-  }));
+  // Build one complete teacher directory from the canonical teachers table plus
+  // teacher snapshots already attached to active/legacy student classes.  This
+  // keeps exam examiner selection complete even if a teacher row has not yet
+  // been migrated into `teachers` but is already used by class records.
+  const byKey = new Map();
+  const upsert = (item) => {
+    const id = String(item.id || '').trim();
+    const name = String(item.nama || '').trim();
+    if (!name) return;
+    const key = id ? `id:${id}` : `name:${name.toLowerCase()}`;
+    const existingByName = [...byKey.values()].find(x => String(x.nama || '').trim().toLowerCase() === name.toLowerCase());
+    const existing = byKey.get(key) || existingByName || null;
+    const instruments = new Set(
+      String(existing?.instrumen || item.instrumen || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(Boolean)
+    );
+    if (item.instrumen) instruments.add(String(item.instrumen).trim());
+    const next = {
+      id: existing?.id || id,
+      nama: existing?.nama || name,
+      email: existing?.email || String(item.email || ''),
+      noHp: existing?.noHp || String(item.noHp || ''),
+      instrumen: [...instruments].filter(Boolean).join(', ') || 'Musik',
+      status: existing?.status || String(item.status || 'Aktif'),
+      foto: existing?.foto || String(item.foto || '')
+    };
+    if (existingByName && !byKey.has(key)) {
+      for (const [existingKey, value] of byKey.entries()) {
+        if (value === existingByName) byKey.delete(existingKey);
+      }
+    }
+    byKey.set(next.id ? `id:${next.id}` : `name:${next.nama.toLowerCase()}`, next);
+  };
+
+  for (const row of (Array.isArray(teacherRows) ? teacherRows : [])) {
+    upsert({
+      id: row.teacher_id,
+      nama: row.name,
+      email: row.email,
+      noHp: row.phone,
+      instrumen: row.instrument,
+      status: row.status,
+      foto: row.photo_url
+    });
+  }
+
+  for (const row of (Array.isArray(classRows) ? classRows : [])) {
+    const status = String(row.status || '').trim().toLowerCase();
+    if (status && ['nonaktif','keluar','selesai','inactive'].includes(status)) continue;
+    upsert({
+      id: row.teacher_id,
+      nama: row.teacher_name_snapshot,
+      instrumen: row.instrument,
+      status: 'Aktif'
+    });
+  }
+
+  return [...byKey.values()].sort((a,b) => String(a.nama).localeCompare(String(b.nama), 'id'));
 }
 
 async function mirrorTeacherMutationToSupabase(env, method, args, gasResult) {
