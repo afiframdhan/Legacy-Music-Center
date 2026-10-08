@@ -189,7 +189,7 @@
             if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           }
           resetScheduleOverrideForm();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => {
         if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
@@ -256,7 +256,7 @@
           globalScheduleOverrides = (globalScheduleOverrides || []).filter(item => String(item.overrideID || '') !== String(id || ''));
           renderTabelJadwalPengganti();
           if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => showAlert('alertDanger','Gagal menghapus pergantian: ' + (error.message || error))).deleteScheduleOverride(id);
     }
@@ -287,7 +287,7 @@
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if (res.success) {
           document.getElementById('formAddJadwalPengganti').reset();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Simpan Jadwal Pergantian';
@@ -368,7 +368,13 @@
       if(confirm('Apakah Anda yakin ingin menghapus jadwal pergantian ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
+            renderPengumumanList();
+            renderDashboardAcademyUpdates();
+            renderNotificationCenter();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
+          }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus jadwal: ' + (error.message || error))).deleteJadwalPengganti(id, currentUser.userType);
       }
     }
@@ -428,7 +434,14 @@
         if (res.success) {
           document.getElementById('formAddPengumuman').reset();
           togglePengumumanTargetDetail('');
-          fetchDashboardData();
+          if (res.announcement) {
+            const id = String(res.announcement.pengumumanID || '');
+            globalPengumumanList = (globalPengumumanList || []).filter(x => String(x.pengumumanID || '') !== id);
+            globalPengumumanList.unshift(res.announcement);
+            renderPengumumanList();
+            renderDashboardAcademyUpdates();
+            renderNotificationCenter();
+          } else if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
@@ -459,7 +472,11 @@
       if(confirm('Apakah Anda yakin ingin menghapus pengumuman ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
+            renderPengumumanList(); renderDashboardAcademyUpdates(); renderNotificationCenter();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
+          }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus pengumuman: ' + (error.message || error))).deletePengumuman(id, currentUser.userType);
       }
     }

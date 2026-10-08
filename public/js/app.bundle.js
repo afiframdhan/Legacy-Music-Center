@@ -4,7 +4,7 @@
   // V3: identical read requests share the same in-flight Promise. No response cache is kept,
   // so writes are still reflected on the next request exactly as before.
   const inflightReads = new Map();
-  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance']);
+  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance', 'getLiveModuleData']);
   const MUTATION_METHODS = new Set([
     'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
     'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
@@ -34,7 +34,7 @@
     }
     const data = payload.data;
     if (MUTATION_METHODS.has(method) && data && data.success === true) {
-      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method } })));
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method, data } })));
     }
     return data;
   }
@@ -447,9 +447,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
       initializeThemeSettings();
       const savedSession = getSavedLoginSession();
       if (savedSession) {
+        // Fast boot: show the cached identity immediately. Session validation runs in
+        // parallel and never blocks the welcome screen or the first dashboard request.
         currentUser = savedSession;
+        showApp();
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 3500);
+        const timer = setTimeout(() => controller.abort(), 1800);
         fetch('/api/session', { credentials:'same-origin', cache:'no-store', signal:controller.signal })
           .then(async response => {
             clearTimeout(timer);
@@ -463,11 +466,11 @@ let currentUser = { userType: '', userID: '', userName: '' };
             const payload = await response.json().catch(()=>null);
             if (response.ok && payload?.ok && payload.data) {
               currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
-              saveLoginSession(currentUser); showApp(); return;
+              saveLoginSession(currentUser);
+              if (typeof hydrateFastIdentityShell === 'function') hydrateFastIdentityShell();
             }
-            showApp();
           })
-          .catch(() => { clearTimeout(timer); showApp(); });
+          .catch(() => { clearTimeout(timer); /* cached session remains usable; API calls will validate it */ });
       } else showLogin();
       
       const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
@@ -696,27 +699,98 @@ let currentUser = { userType: '', userID: '', userName: '' };
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 3000;
-  const FOCUS_REFRESH_MIN_AGE = 1500;
+  const ACTIVE_INTERVAL = 3500;
+  const FOCUS_REFRESH_MIN_AGE = 1800;
   let lastPollAt = 0;
   let refreshTimer = null;
+  let deltaTimer = null;
+  const moduleQueue = new Set();
 
-  function versionsChanged(next) {
+  function changedModules(next) {
     const current = globalLiveSyncVersions || {};
     const keys = new Set([...Object.keys(current), ...Object.keys(next || {})]);
-    for (const key of keys) {
-      if (String(current[key] || '0') !== String((next || {})[key] || '0')) return true;
-    }
-    return false;
+    return [...keys].filter(key => String(current[key] || '0') !== String((next || {})[key] || '0'));
   }
 
-  function requestFastDashboardRefresh(reason, delay = 180) {
+  function requestFastDashboardRefresh(reason, delay = 900) {
     if (!currentUser || !currentUser.userType) return;
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
-      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'live-sync' });
+      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'background-reconcile' });
     }, delay);
+  }
+
+  function renderChangedModules(modules, data) {
+    const set = new Set(modules || []);
+    if (set.has('announcements') && Array.isArray(data.announcements)) {
+      globalPengumumanList = data.announcements;
+      if (typeof renderPengumumanList === 'function') renderPengumumanList();
+      if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+      if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+    }
+    if (set.has('attendance') && Array.isArray(data.attendance)) {
+      globalAbsensiList = data.attendance;
+      if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat();
+      if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+    }
+    if (set.has('assignments') && Array.isArray(data.assignments)) {
+      globalTugasList = data.assignments;
+      if (typeof renderTabelTugas === 'function') renderTabelTugas();
+    }
+    if (set.has('progress') && Array.isArray(data.progress)) {
+      globalLearningProgressList = data.progress;
+      if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+    }
+    if (set.has('schedules')) {
+      if (Array.isArray(data.schedules)) globalJadwalList = data.schedules;
+      if (Array.isArray(data.replacements)) globalJadwalPenggantiList = data.replacements;
+      if (Array.isArray(data.scheduleOverrides)) globalScheduleOverrides = data.scheduleOverrides;
+      if (typeof renderTabelJadwal === 'function') renderTabelJadwal();
+      if (typeof renderTabelJadwalPengganti === 'function') renderTabelJadwalPengganti();
+      if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+      if (typeof setupMakeupFilters === 'function') setupMakeupFilters();
+      if (typeof renderRoomAvailability === 'function') renderRoomAvailability();
+    }
+    if (set.has('teacher_attendance') && Array.isArray(data.teacherAttendance)) {
+      globalTeacherAttendanceList = data.teacherAttendance;
+      if (typeof renderAdminTeacherManagement === 'function') renderAdminTeacherManagement();
+      if (typeof renderTeacherMonitoring === 'function') renderTeacherMonitoring();
+    }
+    if (set.has('repertoire') && Array.isArray(data.repertoire)) {
+      globalRepertoireList = data.repertoire;
+      if (typeof renderRepertoirePage === 'function') renderRepertoirePage();
+    }
+    if (set.has('exams') && Array.isArray(data.exams)) {
+      window.globalAnnualExamList = data.exams;
+      if (typeof renderAnnualExamList === 'function') renderAnnualExamList();
+    }
+  }
+
+  async function flushModuleQueue() {
+    deltaTimer = null;
+    if (!currentUser || !currentUser.userType || !moduleQueue.size) return;
+    const modules = [...moduleQueue]; moduleQueue.clear();
+    const lightweight = modules.filter(x => ['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams'].includes(x));
+    const heavy = modules.filter(x => !lightweight.includes(x));
+    try {
+      if (lightweight.length) {
+        const res = await LegacyAPI.rpc('getLiveModuleData', [{ modules:lightweight }]);
+        if (res && res.success !== false) renderChangedModules(lightweight, res);
+      }
+    } catch (error) {
+      console.debug('[Legacy Live Sync] delta sync skipped:', error?.message || error);
+      requestFastDashboardRefresh('delta-fallback', 700);
+    }
+    // Changes to people/admin control can affect many cross-linked selectors. Reconcile
+    // those in the background, but never block the current screen.
+    if (heavy.length) requestFastDashboardRefresh('cross-module-change', 800);
+  }
+
+  function queueModuleSync(modules) {
+    (modules || []).forEach(m => moduleQueue.add(m));
+    if (deltaTimer) clearTimeout(deltaTimer);
+    deltaTimer = setTimeout(flushModuleQueue, 90);
   }
 
   async function pollLiveSync(force = false) {
@@ -731,15 +805,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!res || res.success === false || !res.versions) return;
       const next = res.versions || {};
       const hadBaseline = Object.keys(globalLiveSyncVersions || {}).length > 0;
-      const changed = hadBaseline && versionsChanged(next);
+      const changed = hadBaseline ? changedModules(next) : [];
       globalLiveSyncVersions = next;
-      if (changed) requestFastDashboardRefresh('remote-change', 120);
+      if (changed.length) queueModuleSync(changed);
     } catch (error) {
-      // Live sync is an enhancement. Never block the app if the sync table is unavailable.
-      console.debug('[Legacy Live Sync] poll skipped:', error && error.message ? error.message : error);
-    } finally {
-      globalLiveSyncRunning = false;
-    }
+      console.debug('[Legacy Live Sync] poll skipped:', error?.message || error);
+    } finally { globalLiveSyncRunning = false; }
   }
 
   function configureGlobalLiveSync() {
@@ -751,29 +822,32 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
   function stopGlobalLiveSync() {
     if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
-    globalLiveSyncTimer = null;
-    globalLiveSyncVersions = {};
-    globalLiveSyncRunning = false;
+    globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    moduleQueue.clear();
+    if (deltaTimer) clearTimeout(deltaTimer); deltaTimer = null;
   }
 
+  const mutationToModule = {
+    addPengumuman:'announcements',deletePengumuman:'announcements',recordAbsensi:'attendance',updateAbsensi:'attendance',deleteAbsensi:'attendance',
+    addTugasCombined:'assignments',submitTugasJawaban:'assignments',deleteTugas:'assignments',saveLearningProgress:'progress',deleteLearningProgress:'progress',
+    updateJadwal:'schedules',deleteJadwal:'schedules',saveScheduleOverride:'schedules',deleteScheduleOverride:'schedules',addJadwalPengganti:'schedules',deleteJadwalPengganti:'schedules',
+    recordTeacherAttendance:'teacher_attendance',deleteTeacherAttendance:'teacher_attendance',saveStudentRepertoire:'repertoire',deleteStudentRepertoire:'repertoire',
+    saveAnnualExam:'exams',publishAnnualExam:'exams',deleteAnnualExam:'exams',addGuru:'people',updateGuru:'people',deleteGuru:'people',addSiswaCombined:'people',updateSiswa:'people',deleteSiswa:'people',deleteExitedStudentRecord:'people'
+  };
+
   window.addEventListener('legacy:data-mutated', event => {
-    // Local writes already returned success; refresh in background, coalescing multiple writes.
-    requestFastDashboardRefresh(event?.detail?.method || 'local-write', 120);
-    setTimeout(() => pollLiveSync(true), 350);
+    const method = event?.detail?.method || '';
+    const module = mutationToModule[method];
+    if (module) queueModuleSync([module]);
+    setTimeout(() => pollLiveSync(true), 260);
   });
-
-  window.addEventListener('focus', () => {
-    if (!currentUser || !currentUser.userType) return;
-    if (Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && currentUser && currentUser.userType) pollLiveSync(true);
-  });
+  window.addEventListener('focus', () => { if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && currentUser?.userType) pollLiveSync(true); });
 
   window.configureGlobalLiveSync = configureGlobalLiveSync;
   window.stopGlobalLiveSync = stopGlobalLiveSync;
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
+  window.queueLiveModuleSync = queueModuleSync;
 })();
 
     function setLoginType(type) {
@@ -827,10 +901,19 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
     function showLogin() { document.getElementById('appView').style.display = 'none'; document.getElementById('loginView').style.display = 'flex'; }
     
+
+    function hydrateFastIdentityShell() {
+      const name = String(currentUser?.userName || '').trim();
+      if (!name) return;
+      const top = document.getElementById('userName'); if (top) top.textContent = name;
+      const profile = document.getElementById('myProfileDisplayName'); if (profile) profile.textContent = name;
+      const guru = document.getElementById('dashGuruNama'); if (guru) guru.textContent = name;
+      const siswa = document.getElementById('dashSiswaNama'); if (siswa) siswa.textContent = name;
+    }
+
     function showApp() {
       document.getElementById('loginView').style.display = 'none'; document.getElementById('appView').style.display = 'block';
-      document.getElementById('userName').textContent = currentUser.userName;
-      document.getElementById('myProfileDisplayName').textContent = currentUser.userName;
+      hydrateFastIdentityShell();
       document.getElementById('selfProfileNama').value = currentUser.userName;
       
       let roleLabel = 'Siswa';
@@ -2016,7 +2099,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           button.disabled = false;
           button.textContent = 'Simpan Progress';
           showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); fetchDashboardData(); }
+          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
         }).withFailureHandler(error => {
           button.disabled = false;
           button.textContent = 'Simpan Progress';
@@ -2110,7 +2193,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!confirm(`Hapus Progress Belajar ${progress.namaSiswa} untuk ${formatLearningProgressPeriod(progress.periode)}?`)) return;
       google.script.run.withSuccessHandler(response => {
         showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-        if (response.success) { closeLearningProgressDetailModal(); fetchDashboardData(); }
+        if (response.success) { closeLearningProgressDetailModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
       }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus progress: ' + error.message))
         .deleteLearningProgress(progress.progressID, currentUser.userName, currentUser.userType);
     }
@@ -2340,7 +2423,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
             if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           }
           resetScheduleOverrideForm();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => {
         if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
@@ -2407,7 +2490,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
           globalScheduleOverrides = (globalScheduleOverrides || []).filter(item => String(item.overrideID || '') !== String(id || ''));
           renderTabelJadwalPengganti();
           if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => showAlert('alertDanger','Gagal menghapus pergantian: ' + (error.message || error))).deleteScheduleOverride(id);
     }
@@ -2438,7 +2521,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if (res.success) {
           document.getElementById('formAddJadwalPengganti').reset();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Simpan Jadwal Pergantian';
@@ -2519,7 +2602,13 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus jadwal pergantian ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
+            renderPengumumanList();
+            renderDashboardAcademyUpdates();
+            renderNotificationCenter();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
+          }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus jadwal: ' + (error.message || error))).deleteJadwalPengganti(id, currentUser.userType);
       }
     }
@@ -2579,7 +2668,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         if (res.success) {
           document.getElementById('formAddPengumuman').reset();
           togglePengumumanTargetDetail('');
-          fetchDashboardData();
+          if (res.announcement) {
+            const id = String(res.announcement.pengumumanID || '');
+            globalPengumumanList = (globalPengumumanList || []).filter(x => String(x.pengumumanID || '') !== id);
+            globalPengumumanList.unshift(res.announcement);
+            renderPengumumanList();
+            renderDashboardAcademyUpdates();
+            renderNotificationCenter();
+          } else if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
@@ -2610,7 +2706,11 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus pengumuman ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
+            renderPengumumanList(); renderDashboardAcademyUpdates(); renderNotificationCenter();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
+          }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus pengumuman: ' + (error.message || error))).deletePengumuman(id, currentUser.userType);
       }
     }
@@ -3713,26 +3813,10 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       return value;
     }
 
-    const EXCEL_CELL_TEXT_LIMIT = 32000;
-
-    function splitExcelCellValue(value) {
-      const normalized = normalizeExportValue(value);
-      if (typeof normalized !== 'string' || normalized.length <= EXCEL_CELL_TEXT_LIMIT) return [normalized];
-      const parts = [];
-      for (let i = 0; i < normalized.length; i += EXCEL_CELL_TEXT_LIMIT) {
-        parts.push(normalized.slice(i, i + EXCEL_CELL_TEXT_LIMIT));
-      }
-      return parts;
-    }
-
     function rowsForSpreadsheet(rows) {
       return (rows || []).map(row => {
         const clean = {};
-        Object.entries(row || {}).forEach(([key, value]) => {
-          const parts = splitExcelCellValue(value);
-          clean[key] = parts[0] ?? '';
-          for (let i = 1; i < parts.length; i++) clean[`${key}__part${i + 1}`] = parts[i];
-        });
+        Object.entries(row || {}).forEach(([key, value]) => { clean[key] = normalizeExportValue(value); });
         return clean;
       });
     }
@@ -6443,7 +6527,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
       google.script.run.withSuccessHandler(res => {
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-        if(res.success) { closeEditAbsensiModal(); fetchDashboardData(); }
+        if(res.success) { closeEditAbsensiModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']); }
       }).updateAbsensi(payload);
     }
 
@@ -6451,7 +6535,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus absensi ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
         }).deleteAbsensi(id);
       }
     }
@@ -6892,7 +6976,7 @@ function normalizeTaskStatus(task) {
           document.getElementById('taskMaterialSelection').innerHTML = '';
           document.getElementById('tugasYoutubePreview').innerHTML = '';
           toggleCreateTaskForm(false);
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Kirim Tugas ke Siswa';
@@ -6939,7 +7023,7 @@ function normalizeTaskStatus(task) {
         google.script.run.withSuccessHandler(res => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if (res.success) { closeKerjakanModal(); fetchDashboardData(); }
+          if (res.success) { closeKerjakanModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']); }
         }).withFailureHandler(error => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert('alertDanger', 'Gagal mengunggah jawaban: ' + error.message);
@@ -6954,7 +7038,7 @@ function normalizeTaskStatus(task) {
       if(confirm('Apakah Anda yakin ingin menghapus tugas ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
         }).deleteTugas(id);
       }
     }

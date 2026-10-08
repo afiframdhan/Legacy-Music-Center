@@ -4,7 +4,7 @@
   // V3: identical read requests share the same in-flight Promise. No response cache is kept,
   // so writes are still reflected on the next request exactly as before.
   const inflightReads = new Map();
-  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance']);
+  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance', 'getLiveModuleData']);
   const MUTATION_METHODS = new Set([
     'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
     'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
@@ -34,7 +34,7 @@
     }
     const data = payload.data;
     if (MUTATION_METHODS.has(method) && data && data.success === true) {
-      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method } })));
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method, data } })));
     }
     return data;
   }

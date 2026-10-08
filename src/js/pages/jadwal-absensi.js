@@ -627,7 +627,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
       google.script.run.withSuccessHandler(res => {
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-        if(res.success) { closeEditAbsensiModal(); fetchDashboardData(); }
+        if(res.success) { closeEditAbsensiModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']); }
       }).updateAbsensi(payload);
     }
 
@@ -635,7 +635,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus absensi ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
         }).deleteAbsensi(id);
       }
     }

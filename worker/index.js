@@ -2,7 +2,7 @@ const COOKIE_NAME = 'legacy_api_session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 const COMMON = new Set([
-  'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
+  'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'getLiveModuleData', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
   'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
   'getRepertoireData'
 ]);
@@ -287,6 +287,17 @@ async function handleRpc(request, env, ctx) {
     } catch (error) {
       console.error('Live announcements sync error:', error);
       return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), items:[] } });
+    }
+  }
+
+
+  if (method === 'getLiveModuleData') {
+    try {
+      const request = args[0] && typeof args[0] === 'object' ? args[0] : {};
+      return json({ ok:true, data:await getLiveModuleDataSupabase(env, session, request.modules) });
+    } catch (error) {
+      console.error('Live module data error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
 
@@ -2133,6 +2144,95 @@ async function getLiveAnnouncementsSupabase(env, session) {
   }
 
   return { success:true, items:[], syncedAt:new Date().toISOString() };
+}
+
+
+async function getLiveModuleDataSupabase(env, session, requestedModules) {
+  const allowed = new Set(['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams']);
+  const modules = [...new Set((Array.isArray(requestedModules) ? requestedModules : []).map(x => String(x || '').trim()).filter(x => allowed.has(x)))];
+  const out = { success:true, syncedAt:new Date().toISOString() };
+  if (!modules.length) return out;
+
+  let teacherStudentIds = null;
+  async function getTeacherStudentIds() {
+    if (teacherStudentIds) return teacherStudentIds;
+    if (session.userType !== 'guru') return [];
+    const [classes, schedules] = await Promise.all([
+      sbRowsSafe(env, 'student_classes', { select:'student_id', teacher_id:`eq.${session.userID}` }),
+      sbRowsSafe(env, 'schedules', { select:'student_id', teacher_id:`eq.${session.userID}` })
+    ]);
+    teacherStudentIds = [...new Set([...classes,...schedules].map(x => String(x.student_id || '').trim()).filter(Boolean))];
+    return teacherStudentIds;
+  }
+  function inFilter(ids) {
+    const clean = (ids || []).map(x => String(x).replace(/[(),"]/g,'')).filter(Boolean);
+    return clean.length ? `in.(${clean.join(',')})` : '';
+  }
+
+  await Promise.all(modules.map(async module => {
+    if (module === 'announcements') {
+      const result = await getLiveAnnouncementsSupabase(env, session);
+      out.announcements = result.items || [];
+      return;
+    }
+    if (module === 'attendance') {
+      const params = { order:'attendance_date.desc,created_at.desc' };
+      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') {
+        const ids = await getTeacherStudentIds();
+        if (!ids.length) { out.attendance = []; return; }
+        params.student_id = inFilter(ids);
+      }
+      out.attendance = (await sbRows(env, 'student_attendance', params)).map(mapAttendance);
+      return;
+    }
+    if (module === 'assignments') {
+      const params = { order:'created_at.desc' };
+      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      out.assignments = (await sbRows(env, 'assignments', params)).map(mapAssignment);
+      return;
+    }
+    if (module === 'progress') {
+      const params = { order:'last_updated_at.desc.nullslast,created_at.desc' };
+      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      out.progress = (await sbRows(env, 'learning_progress', params)).map(mapProgress);
+      return;
+    }
+    if (module === 'schedules') {
+      const params = { order:'created_at.asc' };
+      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      const [rows, replacements, overrides] = await Promise.all([
+        sbRows(env, 'schedules', params),
+        session.userType === 'siswa' ? sbRowsSafe(env,'replacement_schedules',{student_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
+          session.userType === 'guru' ? sbRowsSafe(env,'replacement_schedules',{teacher_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
+          sbRowsSafe(env,'replacement_schedules',{order:'scheduled_date.desc.nullslast,created_at.desc'}),
+        getScheduleOverrideRowsForSession(env, session).catch(()=>[])
+      ]);
+      out.schedules = rows.map(row => mapSchedule(row, true));
+      out.replacements = replacements.map(mapReplacement);
+      out.scheduleOverrides = overrides.map(mapScheduleOverride);
+      return;
+    }
+    if (module === 'teacher_attendance') {
+      const params = { order:'attendance_date.desc,created_at.desc' };
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      if (session.userType === 'siswa') { out.teacherAttendance = []; return; }
+      out.teacherAttendance = (await sbRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
+      return;
+    }
+    if (module === 'repertoire') {
+      const result = await getRepertoireDataSupabase(env, session);
+      out.repertoire = result.items || result.repertoire || [];
+      return;
+    }
+    if (module === 'exams') {
+      out.exams = await listAnnualExamsSupabase(env, session);
+    }
+  }));
+  return out;
 }
 
 async function getDashboardDataSupabase(env, session) {

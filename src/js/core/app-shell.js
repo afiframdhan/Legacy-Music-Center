@@ -2,9 +2,12 @@
       initializeThemeSettings();
       const savedSession = getSavedLoginSession();
       if (savedSession) {
+        // Fast boot: show the cached identity immediately. Session validation runs in
+        // parallel and never blocks the welcome screen or the first dashboard request.
         currentUser = savedSession;
+        showApp();
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 3500);
+        const timer = setTimeout(() => controller.abort(), 1800);
         fetch('/api/session', { credentials:'same-origin', cache:'no-store', signal:controller.signal })
           .then(async response => {
             clearTimeout(timer);
@@ -18,11 +21,11 @@
             const payload = await response.json().catch(()=>null);
             if (response.ok && payload?.ok && payload.data) {
               currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
-              saveLoginSession(currentUser); showApp(); return;
+              saveLoginSession(currentUser);
+              if (typeof hydrateFastIdentityShell === 'function') hydrateFastIdentityShell();
             }
-            showApp();
           })
-          .catch(() => { clearTimeout(timer); showApp(); });
+          .catch(() => { clearTimeout(timer); /* cached session remains usable; API calls will validate it */ });
       } else showLogin();
       
       const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };

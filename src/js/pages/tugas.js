@@ -433,7 +433,7 @@ function normalizeTaskStatus(task) {
           document.getElementById('taskMaterialSelection').innerHTML = '';
           document.getElementById('tugasYoutubePreview').innerHTML = '';
           toggleCreateTaskForm(false);
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Kirim Tugas ke Siswa';
@@ -480,7 +480,7 @@ function normalizeTaskStatus(task) {
         google.script.run.withSuccessHandler(res => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if (res.success) { closeKerjakanModal(); fetchDashboardData(); }
+          if (res.success) { closeKerjakanModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']); }
         }).withFailureHandler(error => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert('alertDanger', 'Gagal mengunggah jawaban: ' + error.message);
@@ -495,7 +495,7 @@ function normalizeTaskStatus(task) {
       if(confirm('Apakah Anda yakin ingin menghapus tugas ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
         }).deleteTugas(id);
       }
     }

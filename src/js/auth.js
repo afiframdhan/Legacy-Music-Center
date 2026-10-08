@@ -49,10 +49,19 @@
     }
     function showLogin() { document.getElementById('appView').style.display = 'none'; document.getElementById('loginView').style.display = 'flex'; }
     
+
+    function hydrateFastIdentityShell() {
+      const name = String(currentUser?.userName || '').trim();
+      if (!name) return;
+      const top = document.getElementById('userName'); if (top) top.textContent = name;
+      const profile = document.getElementById('myProfileDisplayName'); if (profile) profile.textContent = name;
+      const guru = document.getElementById('dashGuruNama'); if (guru) guru.textContent = name;
+      const siswa = document.getElementById('dashSiswaNama'); if (siswa) siswa.textContent = name;
+    }
+
     function showApp() {
       document.getElementById('loginView').style.display = 'none'; document.getElementById('appView').style.display = 'block';
-      document.getElementById('userName').textContent = currentUser.userName;
-      document.getElementById('myProfileDisplayName').textContent = currentUser.userName;
+      hydrateFastIdentityShell();
       document.getElementById('selfProfileNama').value = currentUser.userName;
       
       let roleLabel = 'Siswa';
