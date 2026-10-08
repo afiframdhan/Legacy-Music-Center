@@ -15,6 +15,7 @@
         quality: `<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>`,
         monitoring: `<svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 16l4-5 4 3 5-7"></path></svg>`,
         operasional: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"></rect><line x1="8" y1="2" x2="8" y2="6"></line><line x1="16" y1="2" x2="16" y2="6"></line><line x1="3" y1="9" x2="21" y2="9"></line><path d="M8 13h3v3H8z"></path></svg>`,
+        backup: `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -61,7 +62,8 @@
           ]},
           { group:'Kontrol Admin', key:'control', icon:icons.audit, items:[
             { id:'section-audit-log', label:'Audit Log', icon:icons.audit },
-            { id:'section-data-quality', label:'Data Quality Check', icon:icons.quality }
+            { id:'section-data-quality', label:'Data Quality Check', icon:icons.quality },
+            { id:'section-export-backup', label:'Export & Backup', icon:icons.backup }
           ]}
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
@@ -226,6 +228,10 @@
 
       if (sectionId === 'section-data-quality' && currentUser.userType === 'admin') {
         setTimeout(() => loadAdminDataQuality(), 0);
+      }
+
+      if (sectionId === 'section-export-backup' && currentUser.userType === 'admin') {
+        setTimeout(() => initAdminExportBackup(), 0);
       }
 
       if (sectionId === 'section-progress' && currentUser.userType === 'guru') {

@@ -1182,6 +1182,56 @@
           </div>
         </div>
 
+        <!-- EXPORT & BACKUP ADMIN -->
+        <div class="content-section" id="section-export-backup">
+          <div class="academy-page-head export-backup-head">
+            <div><h2>Export & Backup</h2><p>Arsip manual data penting Legacy Music Center langsung dari database Supabase.</p></div>
+            <div class="export-backup-live-badge">● Supabase Live</div>
+          </div>
+
+          <div class="export-backup-notice">
+            <div class="export-backup-notice-icon">💾</div>
+            <div><b>Backup tidak mengubah data aplikasi.</b><p>Data baru dibaca saat tombol export ditekan. File Excel lengkap berisi setiap kategori pada sheet terpisah.</p></div>
+          </div>
+
+          <div class="export-backup-grid" id="exportBackupDatasetGrid">
+            <label class="export-dataset-card"><input type="checkbox" value="students" checked><span class="export-dataset-icon">👥</span><span><b>Siswa</b><small>Profil dan status siswa</small></span></label>
+            <label class="export-dataset-card"><input type="checkbox" value="teachers" checked><span class="export-dataset-icon">🎓</span><span><b>Guru</b><small>Data guru dan instrumen</small></span></label>
+            <label class="export-dataset-card"><input type="checkbox" value="schedules" checked><span class="export-dataset-icon">📅</span><span><b>Jadwal</b><small>Jadwal pelajaran rutin</small></span></label>
+            <label class="export-dataset-card"><input type="checkbox" value="attendance" checked><span class="export-dataset-icon">✅</span><span><b>Absensi</b><small>Riwayat absensi siswa</small></span></label>
+            <label class="export-dataset-card"><input type="checkbox" value="progress" checked><span class="export-dataset-icon">📈</span><span><b>Progress</b><small>Progress belajar siswa</small></span></label>
+            <label class="export-dataset-card"><input type="checkbox" value="repertoire" checked><span class="export-dataset-icon">🎵</span><span><b>Repertoire</b><small>Daftar lagu siswa</small></span></label>
+            <label class="export-dataset-card"><input type="checkbox" value="exams" checked><span class="export-dataset-icon">🏅</span><span><b>Ujian</b><small>Penilaian ujian tahunan</small></span></label>
+            <label class="export-dataset-card"><input type="checkbox" value="overrides" checked><span class="export-dataset-icon">🔄</span><span><b>Jadwal Pergantian</b><small>Pergantian slot dan make-up</small></span></label>
+          </div>
+
+          <div class="widget-box export-backup-actions-box">
+            <div class="export-backup-action-copy"><h3>Backup Lengkap Excel</h3><p>Menggabungkan kategori yang dicentang menjadi satu file <b>.xlsx</b>, masing-masing pada sheet terpisah.</p></div>
+            <div class="export-backup-actions">
+              <button type="button" class="btn btn-export" onclick="toggleAllExportDatasets(true)">Pilih Semua</button>
+              <button type="button" class="btn btn-secondary" onclick="toggleAllExportDatasets(false)">Kosongkan</button>
+              <button type="button" id="btnExportBackupExcel" class="btn btn-primary" onclick="exportAdminBackupExcel()">⬇ Export Excel (.xlsx)</button>
+            </div>
+          </div>
+
+          <div class="widget-box export-csv-box">
+            <div class="export-backup-action-copy"><h3>Export CSV per Data</h3><p>Pilih satu kategori untuk kebutuhan arsip cepat atau pengolahan data sederhana.</p></div>
+            <div class="export-csv-controls">
+              <select id="exportCsvDataset" aria-label="Pilih data CSV">
+                <option value="students">Siswa</option><option value="teachers">Guru</option><option value="schedules">Jadwal</option><option value="attendance">Absensi</option><option value="progress">Progress</option><option value="repertoire">Repertoire</option><option value="exams">Ujian</option><option value="overrides">Jadwal Pergantian</option>
+              </select>
+              <button type="button" id="btnExportBackupCsv" class="btn btn-primary" onclick="exportAdminBackupCsv()">⬇ Export CSV</button>
+            </div>
+          </div>
+
+          <div id="exportBackupProgress" class="export-backup-progress" style="display:none;">
+            <div class="export-backup-progress-top"><b id="exportBackupProgressTitle">Menyiapkan backup...</b><span id="exportBackupProgressPercent">0%</span></div>
+            <div class="export-backup-progress-track"><span id="exportBackupProgressBar" style="width:0%"></span></div>
+            <small id="exportBackupProgressDetail">Menghubungkan ke Supabase...</small>
+          </div>
+          <div id="exportBackupResult" class="export-backup-result" style="display:none;"></div>
+        </div>
+
         <!-- PROFIL KUSTOMISASI -->
         <div class="content-section" id="section-profil">
           <h2 style="margin-bottom:15px;">Kustomisasi Profil Saya</h2>

@@ -433,7 +433,7 @@
           button.disabled = false;
           button.textContent = 'Simpan Progress';
           showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); fetchDashboardData(); }
+          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
         }).withFailureHandler(error => {
           button.disabled = false;
           button.textContent = 'Simpan Progress';
@@ -527,7 +527,7 @@
       if (!confirm(`Hapus Progress Belajar ${progress.namaSiswa} untuk ${formatLearningProgressPeriod(progress.periode)}?`)) return;
       google.script.run.withSuccessHandler(response => {
         showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-        if (response.success) { closeLearningProgressDetailModal(); fetchDashboardData(); }
+        if (response.success) { closeLearningProgressDetailModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
       }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus progress: ' + error.message))
         .deleteLearningProgress(progress.progressID, currentUser.userName, currentUser.userType);
     }

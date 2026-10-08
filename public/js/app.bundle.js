@@ -4,7 +4,7 @@
   // V3: identical read requests share the same in-flight Promise. No response cache is kept,
   // so writes are still reflected on the next request exactly as before.
   const inflightReads = new Map();
-  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance']);
+  const DEDUPE_METHODS = new Set(['getDashboardData', 'getGuruList', 'getLearningProgressPrintLogo', 'getLiveSyncState', 'getLiveAnnouncements', 'getRecentAttendance', 'getLiveModuleData']);
   const MUTATION_METHODS = new Set([
     'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
     'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
@@ -34,7 +34,7 @@
     }
     const data = payload.data;
     if (MUTATION_METHODS.has(method) && data && data.success === true) {
-      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method } })));
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent('legacy:data-mutated', { detail:{ method, data } })));
     }
     return data;
   }
@@ -354,6 +354,14 @@ let currentUser = { userType: '', userID: '', userName: '' };
     );
   }
 
+  function loadSheetJS() {
+    return loadScript(
+      'sheetjs',
+      'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+      () => Boolean(window.XLSX && window.XLSX.utils)
+    );
+  }
+
   function loadCropper() {
     loadStyle('cropper-css', 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css');
     return loadScript(
@@ -363,7 +371,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     );
   }
 
-  window.LegacyVendors = { loadFullCalendar, loadCropper };
+  window.LegacyVendors = { loadFullCalendar, loadCropper, loadSheetJS };
 })();
 
     function getThemePreference() {
@@ -439,9 +447,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
       initializeThemeSettings();
       const savedSession = getSavedLoginSession();
       if (savedSession) {
+        // Fast boot: show the cached identity immediately. Session validation runs in
+        // parallel and never blocks the welcome screen or the first dashboard request.
         currentUser = savedSession;
+        showApp();
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 3500);
+        const timer = setTimeout(() => controller.abort(), 1800);
         fetch('/api/session', { credentials:'same-origin', cache:'no-store', signal:controller.signal })
           .then(async response => {
             clearTimeout(timer);
@@ -455,11 +466,11 @@ let currentUser = { userType: '', userID: '', userName: '' };
             const payload = await response.json().catch(()=>null);
             if (response.ok && payload?.ok && payload.data) {
               currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
-              saveLoginSession(currentUser); showApp(); return;
+              saveLoginSession(currentUser);
+              if (typeof hydrateFastIdentityShell === 'function') hydrateFastIdentityShell();
             }
-            showApp();
           })
-          .catch(() => { clearTimeout(timer); showApp(); });
+          .catch(() => { clearTimeout(timer); /* cached session remains usable; API calls will validate it */ });
       } else showLogin();
       
       const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
@@ -688,27 +699,112 @@ let currentUser = { userType: '', userID: '', userName: '' };
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 3000;
-  const FOCUS_REFRESH_MIN_AGE = 1500;
+  const ACTIVE_INTERVAL = 1800;
+  const FOCUS_REFRESH_MIN_AGE = 1800;
   let lastPollAt = 0;
   let refreshTimer = null;
+  let deltaTimer = null;
+  const moduleQueue = new Set();
 
-  function versionsChanged(next) {
+  function changedModules(next) {
     const current = globalLiveSyncVersions || {};
     const keys = new Set([...Object.keys(current), ...Object.keys(next || {})]);
-    for (const key of keys) {
-      if (String(current[key] || '0') !== String((next || {})[key] || '0')) return true;
-    }
-    return false;
+    return [...keys].filter(key => String(current[key] || '0') !== String((next || {})[key] || '0'));
   }
 
-  function requestFastDashboardRefresh(reason, delay = 180) {
+  function requestFastDashboardRefresh(reason, delay = 900) {
     if (!currentUser || !currentUser.userType) return;
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
-      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'live-sync' });
+      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'background-reconcile' });
     }, delay);
+  }
+
+  function renderChangedModules(modules, data) {
+    const set = new Set(modules || []);
+    if (set.has('announcements') && Array.isArray(data.announcements)) {
+      globalPengumumanList = data.announcements;
+      if (typeof renderPengumumanList === 'function') renderPengumumanList();
+      if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+      if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+    }
+    if (set.has('attendance') && Array.isArray(data.attendance)) {
+      // Live attendance payload is optimized: old signatures are preserved locally,
+      // while newly-created/recent rows still arrive with their signature data.
+      // Replacing by the server ID list also makes cross-device deletes disappear
+      // immediately instead of being merged forever into stale local rows.
+      const currentById = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
+      globalAbsensiList = data.attendance.map(item => {
+        const previous = currentById.get(String(item.absensiID || '')) || {};
+        return {
+          ...previous,
+          ...item,
+          tandaTangan: item.tandaTangan || previous.tandaTangan || '',
+          ttdSiswa: item.ttdSiswa || previous.ttdSiswa || ''
+        };
+      });
+      if (typeof setupFilterDropdown === 'function') setupFilterDropdown();
+      if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat();
+      if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+    }
+    if (set.has('assignments') && Array.isArray(data.assignments)) {
+      globalTugasList = data.assignments;
+      if (typeof renderTabelTugas === 'function') renderTabelTugas();
+    }
+    if (set.has('progress') && Array.isArray(data.progress)) {
+      globalLearningProgressList = data.progress;
+      if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+    }
+    if (set.has('schedules')) {
+      if (Array.isArray(data.schedules)) globalJadwalList = data.schedules;
+      if (Array.isArray(data.replacements)) globalJadwalPenggantiList = data.replacements;
+      if (Array.isArray(data.scheduleOverrides)) globalScheduleOverrides = data.scheduleOverrides;
+      if (typeof renderTabelJadwal === 'function') renderTabelJadwal();
+      if (typeof renderTabelJadwalPengganti === 'function') renderTabelJadwalPengganti();
+      if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+      if (typeof setupMakeupFilters === 'function') setupMakeupFilters();
+      if (typeof renderRoomAvailability === 'function') renderRoomAvailability();
+    }
+    if (set.has('teacher_attendance') && Array.isArray(data.teacherAttendance)) {
+      globalTeacherAttendanceList = data.teacherAttendance;
+      if (typeof renderAdminTeacherManagement === 'function') renderAdminTeacherManagement();
+      if (typeof renderTeacherMonitoring === 'function') renderTeacherMonitoring();
+    }
+    if (set.has('repertoire') && Array.isArray(data.repertoire)) {
+      globalRepertoireList = data.repertoire;
+      if (typeof renderRepertoirePage === 'function') renderRepertoirePage();
+    }
+    if (set.has('exams') && Array.isArray(data.exams)) {
+      window.globalAnnualExamList = data.exams;
+      if (typeof renderAnnualExamList === 'function') renderAnnualExamList();
+    }
+  }
+
+  async function flushModuleQueue() {
+    deltaTimer = null;
+    if (!currentUser || !currentUser.userType || !moduleQueue.size) return;
+    const modules = [...moduleQueue]; moduleQueue.clear();
+    const lightweight = modules.filter(x => ['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams'].includes(x));
+    const heavy = modules.filter(x => !lightweight.includes(x));
+    try {
+      if (lightweight.length) {
+        const res = await LegacyAPI.rpc('getLiveModuleData', [{ modules:lightweight }]);
+        if (res && res.success !== false) renderChangedModules(lightweight, res);
+      }
+    } catch (error) {
+      console.debug('[Legacy Live Sync] delta sync skipped:', error?.message || error);
+      requestFastDashboardRefresh('delta-fallback', 700);
+    }
+    // Changes to people/admin control can affect many cross-linked selectors. Reconcile
+    // those in the background, but never block the current screen.
+    if (heavy.length) requestFastDashboardRefresh('cross-module-change', 800);
+  }
+
+  function queueModuleSync(modules) {
+    (modules || []).forEach(m => moduleQueue.add(m));
+    if (deltaTimer) clearTimeout(deltaTimer);
+    deltaTimer = setTimeout(flushModuleQueue, 90);
   }
 
   async function pollLiveSync(force = false) {
@@ -723,15 +819,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!res || res.success === false || !res.versions) return;
       const next = res.versions || {};
       const hadBaseline = Object.keys(globalLiveSyncVersions || {}).length > 0;
-      const changed = hadBaseline && versionsChanged(next);
+      const changed = hadBaseline ? changedModules(next) : [];
       globalLiveSyncVersions = next;
-      if (changed) requestFastDashboardRefresh('remote-change', 120);
+      if (changed.length) queueModuleSync(changed);
     } catch (error) {
-      // Live sync is an enhancement. Never block the app if the sync table is unavailable.
-      console.debug('[Legacy Live Sync] poll skipped:', error && error.message ? error.message : error);
-    } finally {
-      globalLiveSyncRunning = false;
-    }
+      console.debug('[Legacy Live Sync] poll skipped:', error?.message || error);
+    } finally { globalLiveSyncRunning = false; }
   }
 
   function configureGlobalLiveSync() {
@@ -743,29 +836,32 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
   function stopGlobalLiveSync() {
     if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
-    globalLiveSyncTimer = null;
-    globalLiveSyncVersions = {};
-    globalLiveSyncRunning = false;
+    globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    moduleQueue.clear();
+    if (deltaTimer) clearTimeout(deltaTimer); deltaTimer = null;
   }
 
+  const mutationToModule = {
+    addPengumuman:'announcements',deletePengumuman:'announcements',recordAbsensi:'attendance',updateAbsensi:'attendance',deleteAbsensi:'attendance',
+    addTugasCombined:'assignments',submitTugasJawaban:'assignments',deleteTugas:'assignments',saveLearningProgress:'progress',deleteLearningProgress:'progress',
+    updateJadwal:'schedules',deleteJadwal:'schedules',saveScheduleOverride:'schedules',deleteScheduleOverride:'schedules',addJadwalPengganti:'schedules',deleteJadwalPengganti:'schedules',
+    recordTeacherAttendance:'teacher_attendance',deleteTeacherAttendance:'teacher_attendance',saveStudentRepertoire:'repertoire',deleteStudentRepertoire:'repertoire',
+    saveAnnualExam:'exams',publishAnnualExam:'exams',deleteAnnualExam:'exams',addGuru:'people',updateGuru:'people',deleteGuru:'people',addSiswaCombined:'people',updateSiswa:'people',deleteSiswa:'people',deleteExitedStudentRecord:'people'
+  };
+
   window.addEventListener('legacy:data-mutated', event => {
-    // Local writes already returned success; refresh in background, coalescing multiple writes.
-    requestFastDashboardRefresh(event?.detail?.method || 'local-write', 120);
-    setTimeout(() => pollLiveSync(true), 350);
+    const method = event?.detail?.method || '';
+    const module = mutationToModule[method];
+    if (module) queueModuleSync([module]);
+    setTimeout(() => pollLiveSync(true), 260);
   });
-
-  window.addEventListener('focus', () => {
-    if (!currentUser || !currentUser.userType) return;
-    if (Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && currentUser && currentUser.userType) pollLiveSync(true);
-  });
+  window.addEventListener('focus', () => { if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && currentUser?.userType) pollLiveSync(true); });
 
   window.configureGlobalLiveSync = configureGlobalLiveSync;
   window.stopGlobalLiveSync = stopGlobalLiveSync;
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
+  window.queueLiveModuleSync = queueModuleSync;
 })();
 
     function setLoginType(type) {
@@ -819,10 +915,19 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
     function showLogin() { document.getElementById('appView').style.display = 'none'; document.getElementById('loginView').style.display = 'flex'; }
     
+
+    function hydrateFastIdentityShell() {
+      const name = String(currentUser?.userName || '').trim();
+      if (!name) return;
+      const top = document.getElementById('userName'); if (top) top.textContent = name;
+      const profile = document.getElementById('myProfileDisplayName'); if (profile) profile.textContent = name;
+      const guru = document.getElementById('dashGuruNama'); if (guru) guru.textContent = name;
+      const siswa = document.getElementById('dashSiswaNama'); if (siswa) siswa.textContent = name;
+    }
+
     function showApp() {
       document.getElementById('loginView').style.display = 'none'; document.getElementById('appView').style.display = 'block';
-      document.getElementById('userName').textContent = currentUser.userName;
-      document.getElementById('myProfileDisplayName').textContent = currentUser.userName;
+      hydrateFastIdentityShell();
       document.getElementById('selfProfileNama').value = currentUser.userName;
       
       let roleLabel = 'Siswa';
@@ -870,6 +975,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         quality: `<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>`,
         monitoring: `<svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 16l4-5 4 3 5-7"></path></svg>`,
         operasional: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"></rect><line x1="8" y1="2" x2="8" y2="6"></line><line x1="16" y1="2" x2="16" y2="6"></line><line x1="3" y1="9" x2="21" y2="9"></line><path d="M8 13h3v3H8z"></path></svg>`,
+        backup: `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -916,7 +1022,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
           ]},
           { group:'Kontrol Admin', key:'control', icon:icons.audit, items:[
             { id:'section-audit-log', label:'Audit Log', icon:icons.audit },
-            { id:'section-data-quality', label:'Data Quality Check', icon:icons.quality }
+            { id:'section-data-quality', label:'Data Quality Check', icon:icons.quality },
+            { id:'section-export-backup', label:'Export & Backup', icon:icons.backup }
           ]}
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
@@ -1081,6 +1188,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (sectionId === 'section-data-quality' && currentUser.userType === 'admin') {
         setTimeout(() => loadAdminDataQuality(), 0);
+      }
+
+      if (sectionId === 'section-export-backup' && currentUser.userType === 'admin') {
+        setTimeout(() => initAdminExportBackup(), 0);
       }
 
       if (sectionId === 'section-progress' && currentUser.userType === 'guru') {
@@ -2002,7 +2113,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           button.disabled = false;
           button.textContent = 'Simpan Progress';
           showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); fetchDashboardData(); }
+          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
         }).withFailureHandler(error => {
           button.disabled = false;
           button.textContent = 'Simpan Progress';
@@ -2096,7 +2207,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!confirm(`Hapus Progress Belajar ${progress.namaSiswa} untuk ${formatLearningProgressPeriod(progress.periode)}?`)) return;
       google.script.run.withSuccessHandler(response => {
         showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-        if (response.success) { closeLearningProgressDetailModal(); fetchDashboardData(); }
+        if (response.success) { closeLearningProgressDetailModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
       }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus progress: ' + error.message))
         .deleteLearningProgress(progress.progressID, currentUser.userName, currentUser.userType);
     }
@@ -2326,7 +2437,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
             if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           }
           resetScheduleOverrideForm();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => {
         if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
@@ -2393,7 +2504,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
           globalScheduleOverrides = (globalScheduleOverrides || []).filter(item => String(item.overrideID || '') !== String(id || ''));
           renderTabelJadwalPengganti();
           if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => showAlert('alertDanger','Gagal menghapus pergantian: ' + (error.message || error))).deleteScheduleOverride(id);
     }
@@ -2424,7 +2535,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if (res.success) {
           document.getElementById('formAddJadwalPengganti').reset();
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Simpan Jadwal Pergantian';
@@ -2505,7 +2616,13 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus jadwal pergantian ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
+            renderPengumumanList();
+            renderDashboardAcademyUpdates();
+            renderNotificationCenter();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
+          }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus jadwal: ' + (error.message || error))).deleteJadwalPengganti(id, currentUser.userType);
       }
     }
@@ -2523,46 +2640,6 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
           select.innerHTML = '<option value="">Pilih Guru...</option>' + (globalGuruList || []).map(guru => `<option value="${escapeTaskHtml(guru.nama || '')}">${escapeTaskHtml(guru.nama || '-')} (${escapeTaskHtml(guru.instrumen || 'Musik')})</option>`).join('');
           if ([...select.options].some(option => option.value === previous)) select.value = previous;
         }
-      }
-    }
-
-    function announcementListFingerprint(items) {
-      return (Array.isArray(items) ? items : []).map(item => [
-        item.pengumumanID || '', item.judul || '', item.isi || '', item.status || '', item.tanggalKirim || '', item.target || '', item.targetDetail || ''
-      ].join('|')).join('||');
-    }
-
-    function refreshAnnouncementsLive(forceRender) {
-      if (!currentUser || !currentUser.userType || document.getElementById('appView')?.style.display === 'none') return;
-      if (liveAnnouncementRequestInFlight) return;
-      liveAnnouncementRequestInFlight = true;
-      google.script.run.withSuccessHandler(res => {
-        liveAnnouncementRequestInFlight = false;
-        if (!res || res.success === false || !Array.isArray(res.items)) return;
-        const before = announcementListFingerprint(globalPengumumanList);
-        const after = announcementListFingerprint(res.items);
-        if (forceRender || before !== after) {
-          globalPengumumanList = res.items;
-          renderPengumumanList();
-          if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
-          if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
-        }
-      }).withFailureHandler(() => {
-        liveAnnouncementRequestInFlight = false;
-      }).getLiveAnnouncements();
-    }
-
-    function configureLiveAnnouncementSync() {
-      if (liveAnnouncementTimer) clearInterval(liveAnnouncementTimer);
-      liveAnnouncementTimer = setInterval(() => {
-        if (document.visibilityState === 'visible') refreshAnnouncementsLive(false);
-      }, 4000);
-      if (!window.__legacyAnnouncementFocusBound) {
-        window.__legacyAnnouncementFocusBound = true;
-        window.addEventListener('focus', () => refreshAnnouncementsLive(false));
-        document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') refreshAnnouncementsLive(false);
-        });
       }
     }
 
@@ -2605,14 +2682,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         if (res.success) {
           document.getElementById('formAddPengumuman').reset();
           togglePengumumanTargetDetail('');
-          if (res.announcement && res.announcement.pengumumanID) {
-            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(res.announcement.pengumumanID || ''));
+          if (res.announcement) {
+            const id = String(res.announcement.pengumumanID || '');
+            globalPengumumanList = (globalPengumumanList || []).filter(x => String(x.pengumumanID || '') !== id);
             globalPengumumanList.unshift(res.announcement);
             renderPengumumanList();
-            if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
-            if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
-          }
-          refreshAnnouncementsLive(true);
+            renderDashboardAcademyUpdates();
+            renderNotificationCenter();
+          } else if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
@@ -2644,11 +2721,9 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
           if(res.success) {
-            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id || ''));
-            renderPengumumanList();
-            if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
-            if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
-            refreshAnnouncementsLive(true);
+            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
+            renderPengumumanList(); renderDashboardAcademyUpdates(); renderNotificationCenter();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
           }
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus pengumuman: ' + (error.message || error))).deletePengumuman(id, currentUser.userType);
       }
@@ -3667,6 +3742,206 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       adminOperationalCalendarInstance.removeAllEvents();
       adminOperationalCalendarInstance.addEventSource(events);
       adminOperationalCalendarInstance.render();
+    }
+
+
+    // ==========================================================
+    // ADMIN EXPORT & BACKUP — read-only, Supabase source
+    // ==========================================================
+    const ADMIN_EXPORT_DATASETS = {
+      students:{ label:'Siswa', sheet:'Siswa', file:'siswa' },
+      teachers:{ label:'Guru', sheet:'Guru', file:'guru' },
+      schedules:{ label:'Jadwal', sheet:'Jadwal', file:'jadwal' },
+      attendance:{ label:'Absensi', sheet:'Absensi', file:'absensi' },
+      progress:{ label:'Progress', sheet:'Progress', file:'progress' },
+      repertoire:{ label:'Repertoire', sheet:'Repertoire', file:'repertoire' },
+      exams:{ label:'Ujian', sheet:'Ujian', file:'ujian' },
+      overrides:{ label:'Jadwal Pergantian', sheet:'Jadwal Pergantian', file:'jadwal-pergantian' }
+    };
+
+    function initAdminExportBackup() {
+      if (!currentUser || currentUser.userType !== 'admin') return;
+      const result = document.getElementById('exportBackupResult');
+      if (result && !result.dataset.ready) {
+        result.dataset.ready = '1';
+        result.innerHTML = '';
+      }
+    }
+
+    function toggleAllExportDatasets(checked) {
+      document.querySelectorAll('#exportBackupDatasetGrid input[type="checkbox"]').forEach(input => { input.checked = Boolean(checked); });
+    }
+
+    function getSelectedExportDatasets() {
+      return Array.from(document.querySelectorAll('#exportBackupDatasetGrid input[type="checkbox"]:checked'))
+        .map(input => input.value)
+        .filter(key => ADMIN_EXPORT_DATASETS[key]);
+    }
+
+    function setExportBackupBusy(busy, title = '', detail = '', percent = 0) {
+      const excelBtn = document.getElementById('btnExportBackupExcel');
+      const csvBtn = document.getElementById('btnExportBackupCsv');
+      if (excelBtn) excelBtn.disabled = Boolean(busy);
+      if (csvBtn) csvBtn.disabled = Boolean(busy);
+      const box = document.getElementById('exportBackupProgress');
+      if (!box) return;
+      box.style.display = busy ? 'block' : 'none';
+      const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+      const titleEl = document.getElementById('exportBackupProgressTitle');
+      const detailEl = document.getElementById('exportBackupProgressDetail');
+      const pctEl = document.getElementById('exportBackupProgressPercent');
+      const bar = document.getElementById('exportBackupProgressBar');
+      if (titleEl) titleEl.textContent = title || 'Menyiapkan backup...';
+      if (detailEl) detailEl.textContent = detail || 'Menghubungkan ke Supabase...';
+      if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+      if (bar) bar.style.width = `${pct}%`;
+    }
+
+    function showExportBackupResult(message, type = 'success') {
+      const box = document.getElementById('exportBackupResult');
+      if (!box) return;
+      box.style.display = 'block';
+      box.className = `export-backup-result ${type === 'error' ? 'error' : 'success'}`;
+      box.textContent = message;
+      clearTimeout(showExportBackupResult._timer);
+      showExportBackupResult._timer = setTimeout(() => { box.style.display = 'none'; }, 7000);
+    }
+
+    async function fetchAdminExportDataset(dataset) {
+      const result = await LegacyAPI.rpc('getAdminExportBackup', [{ dataset }]);
+      if (!result || result.success === false) throw new Error((result && result.message) || 'Data backup gagal dimuat.');
+      return Array.isArray(result.rows) ? result.rows : [];
+    }
+
+    function exportDateStamp() {
+      const now = new Date();
+      const two = n => String(n).padStart(2, '0');
+      return `${now.getFullYear()}-${two(now.getMonth()+1)}-${two(now.getDate())}_${two(now.getHours())}-${two(now.getMinutes())}`;
+    }
+
+    function normalizeExportValue(value) {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') {
+        try { return JSON.stringify(value); } catch (_) { return String(value); }
+      }
+      return value;
+    }
+
+    const EXCEL_CELL_TEXT_LIMIT = 32000;
+
+    function splitExcelCellValue(value) {
+      const normalized = normalizeExportValue(value);
+      if (typeof normalized !== 'string' || normalized.length <= EXCEL_CELL_TEXT_LIMIT) return [normalized];
+      const parts = [];
+      for (let i = 0; i < normalized.length; i += EXCEL_CELL_TEXT_LIMIT) {
+        parts.push(normalized.slice(i, i + EXCEL_CELL_TEXT_LIMIT));
+      }
+      return parts;
+    }
+
+    function rowsForSpreadsheet(rows) {
+      return (rows || []).map(row => {
+        const clean = {};
+        Object.entries(row || {}).forEach(([key, value]) => {
+          const parts = splitExcelCellValue(value);
+          clean[key] = parts[0] ?? '';
+          for (let i = 1; i < parts.length; i++) clean[`${key}__part${i + 1}`] = parts[i];
+        });
+        return clean;
+      });
+    }
+
+    function downloadBlobFile(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+
+    function csvEscape(value) {
+      const text = String(normalizeExportValue(value));
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    }
+
+    function rowsToCsv(rows) {
+      if (!rows.length) return '\uFEFF';
+      const columns = Array.from(rows.reduce((set, row) => { Object.keys(row || {}).forEach(key => set.add(key)); return set; }, new Set()));
+      const lines = [columns.map(csvEscape).join(',')];
+      rows.forEach(row => lines.push(columns.map(col => csvEscape(row ? row[col] : '')).join(',')));
+      return '\uFEFF' + lines.join('\r\n');
+    }
+
+    async function exportAdminBackupCsv() {
+      if (!currentUser || currentUser.userType !== 'admin') return;
+      const select = document.getElementById('exportCsvDataset');
+      const dataset = select ? select.value : 'students';
+      const meta = ADMIN_EXPORT_DATASETS[dataset];
+      if (!meta) return;
+      try {
+        setExportBackupBusy(true, `Export CSV ${meta.label}`, 'Mengambil data terbaru dari Supabase...', 25);
+        const rows = await fetchAdminExportDataset(dataset);
+        setExportBackupBusy(true, `Export CSV ${meta.label}`, `${rows.length.toLocaleString('id-ID')} baris siap dibuat.`, 75);
+        const csv = rowsToCsv(rows);
+        downloadBlobFile(new Blob([csv], { type:'text/csv;charset=utf-8;' }), `Legacy-Music-Center_${meta.file}_${exportDateStamp()}.csv`);
+        setExportBackupBusy(false);
+        showExportBackupResult(`Export ${meta.label} berhasil • ${rows.length.toLocaleString('id-ID')} baris.`);
+      } catch (error) {
+        setExportBackupBusy(false);
+        showExportBackupResult(`Export CSV gagal: ${error.message || error}`, 'error');
+      }
+    }
+
+    async function exportAdminBackupExcel() {
+      if (!currentUser || currentUser.userType !== 'admin') return;
+      const selected = getSelectedExportDatasets();
+      if (!selected.length) {
+        showExportBackupResult('Pilih minimal satu kategori data untuk dibuatkan backup Excel.', 'error');
+        return;
+      }
+      try {
+        setExportBackupBusy(true, 'Menyiapkan Excel', 'Memuat mesin export Excel...', 3);
+        await LegacyVendors.loadSheetJS();
+        const wb = XLSX.utils.book_new();
+        const summary = [
+          ['LEGACY MUSIC CENTER — BACKUP DATA'],
+          ['Dibuat pada', new Date().toLocaleString('id-ID')],
+          ['Dibuat oleh', currentUser.userName || 'Admin'],
+          ['Sumber data', 'Supabase'],
+          ['Jumlah kategori', selected.length],
+          [],
+          ['Kategori', 'Jumlah Baris']
+        ];
+        let totalRows = 0;
+        for (let i = 0; i < selected.length; i++) {
+          const key = selected[i];
+          const meta = ADMIN_EXPORT_DATASETS[key];
+          const startPct = 8 + (i / selected.length) * 82;
+          setExportBackupBusy(true, `Mengambil ${meta.label}`, `Kategori ${i+1} dari ${selected.length} • membaca Supabase...`, startPct);
+          const rows = rowsForSpreadsheet(await fetchAdminExportDataset(key));
+          totalRows += rows.length;
+          summary.push([meta.label, rows.length]);
+          let ws;
+          if (rows.length) ws = XLSX.utils.json_to_sheet(rows, { cellDates:true });
+          else ws = XLSX.utils.aoa_to_sheet([['Tidak ada data']]);
+          ws['!autofilter'] = rows.length && ws['!ref'] ? { ref: ws['!ref'] } : undefined;
+          ws['!cols'] = rows.length ? Object.keys(rows[0]).map(keyName => ({ wch: Math.min(34, Math.max(12, String(keyName).length + 3)) })) : [{wch:20}];
+          XLSX.utils.book_append_sheet(wb, ws, meta.sheet.slice(0, 31));
+        }
+        const summaryWs = XLSX.utils.aoa_to_sheet(summary);
+        summaryWs['!cols'] = [{wch:28},{wch:24}];
+        XLSX.utils.book_append_sheet(wb, summaryWs, 'Ringkasan');
+        // Keep Ringkasan as first sheet for easier archive review.
+        wb.SheetNames = ['Ringkasan', ...wb.SheetNames.filter(name => name !== 'Ringkasan')];
+        setExportBackupBusy(true, 'Membuat file Excel', `${totalRows.toLocaleString('id-ID')} total baris • menyiapkan file download...`, 95);
+        XLSX.writeFile(wb, `Legacy-Music-Center_Backup_${exportDateStamp()}.xlsx`, { compression:true });
+        setExportBackupBusy(false);
+        showExportBackupResult(`Backup Excel berhasil • ${selected.length} kategori • ${totalRows.toLocaleString('id-ID')} total baris.`);
+      } catch (error) {
+        console.error('Export backup Excel gagal', error);
+        setExportBackupBusy(false);
+        showExportBackupResult(`Backup Excel gagal: ${error.message || error}`, 'error');
+      }
     }
 
     function filterAdminByGuru() {
@@ -5942,37 +6217,21 @@ Guru: ${props.guru}`);
 
 
     function configureAdminAttendanceLiveSync() {
+      // The old implementation downloaded 250 complete attendance records (including
+      // base64 signatures) every 3 seconds. That made Admin progressively slower and
+      // could never detect deletions because it only merged records. Attendance now
+      // follows the lightweight global sync-version mechanism instead.
       if (adminAttendanceSyncTimer) {
         clearInterval(adminAttendanceSyncTimer);
         adminAttendanceSyncTimer = null;
       }
       if (currentUser.userType !== 'admin') return;
-      refreshAdminAttendanceLive();
-      adminAttendanceSyncTimer = setInterval(() => {
-        if (document.visibilityState === 'visible' && currentUser.userType === 'admin') refreshAdminAttendanceLive();
-      }, 3000);
+      if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
     }
 
     function refreshAdminAttendanceLive() {
       if (currentUser.userType !== 'admin') return;
-      google.script.run.withSuccessHandler(result => {
-        if (!result || result.success === false || !Array.isArray(result.items)) return;
-        const byId = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
-        let changed = false;
-        result.items.forEach(item => {
-          const key = String(item.absensiID || '');
-          if (!key) return;
-          const previous = byId.get(key);
-          if (!previous || JSON.stringify(previous) !== JSON.stringify(item)) {
-            byId.set(key, item);
-            changed = true;
-          }
-        });
-        if (!changed) return;
-        globalAbsensiList = Array.from(byId.values());
-        setupFilterDropdown();
-        renderTabelRiwayat();
-      }).withFailureHandler(() => {}).getRecentAttendance();
+      if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
     }
 
     function setupFilterDropdown() {
@@ -6282,7 +6541,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
       google.script.run.withSuccessHandler(res => {
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-        if(res.success) { closeEditAbsensiModal(); fetchDashboardData(); }
+        if(res.success) {
+          const localItem = typeof mapAttendanceMutationForUi === 'function'
+            ? mapAttendanceMutationForUi(res.attendance || res.item || null, payload)
+            : null;
+          if (localItem && typeof upsertAttendanceLocally === 'function') upsertAttendanceLocally(localItem);
+          closeEditAbsensiModal();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+        }
       }).updateAbsensi(payload);
     }
 
@@ -6290,7 +6556,14 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus absensi ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success) {
+            const key = String(id || '');
+            globalAbsensiList = (globalAbsensiList || []).filter(item => String(item.absensiID || '') !== key);
+            setupFilterDropdown();
+            renderTabelRiwayat();
+            if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+          }
         }).deleteAbsensi(id);
       }
     }
@@ -6731,7 +7004,7 @@ function normalizeTaskStatus(task) {
           document.getElementById('taskMaterialSelection').innerHTML = '';
           document.getElementById('tugasYoutubePreview').innerHTML = '';
           toggleCreateTaskForm(false);
-          fetchDashboardData();
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Kirim Tugas ke Siswa';
@@ -6778,7 +7051,7 @@ function normalizeTaskStatus(task) {
         google.script.run.withSuccessHandler(res => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if (res.success) { closeKerjakanModal(); fetchDashboardData(); }
+          if (res.success) { closeKerjakanModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']); }
         }).withFailureHandler(error => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert('alertDanger', 'Gagal mengunggah jawaban: ' + error.message);
@@ -6793,7 +7066,7 @@ function normalizeTaskStatus(task) {
       if(confirm('Apakah Anda yakin ingin menghapus tugas ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) fetchDashboardData();
+          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
         }).deleteTugas(id);
       }
     }
@@ -7481,8 +7754,9 @@ function normalizeTaskStatus(task) {
             clearSignature('canvasTtdGuru');
             clearSignature('canvasTtdSiswa');
           }
-          // Rekonsiliasi penuh tetap berjalan setelah UI lokal sudah diperbarui.
-          setTimeout(fetchDashboardData, 150);
+          // Do not reload the whole dashboard after one attendance mutation.
+          // The local row is already visible; only the attendance module is reconciled.
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
         }
       }).recordAbsensi(payload);
     }

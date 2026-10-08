@@ -1,27 +1,112 @@
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 3000;
-  const FOCUS_REFRESH_MIN_AGE = 1500;
+  const ACTIVE_INTERVAL = 1800;
+  const FOCUS_REFRESH_MIN_AGE = 1800;
   let lastPollAt = 0;
   let refreshTimer = null;
+  let deltaTimer = null;
+  const moduleQueue = new Set();
 
-  function versionsChanged(next) {
+  function changedModules(next) {
     const current = globalLiveSyncVersions || {};
     const keys = new Set([...Object.keys(current), ...Object.keys(next || {})]);
-    for (const key of keys) {
-      if (String(current[key] || '0') !== String((next || {})[key] || '0')) return true;
-    }
-    return false;
+    return [...keys].filter(key => String(current[key] || '0') !== String((next || {})[key] || '0'));
   }
 
-  function requestFastDashboardRefresh(reason, delay = 180) {
+  function requestFastDashboardRefresh(reason, delay = 900) {
     if (!currentUser || !currentUser.userType) return;
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
-      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'live-sync' });
+      if (typeof fetchDashboardData === 'function') fetchDashboardData({ silent:true, reason:reason || 'background-reconcile' });
     }, delay);
+  }
+
+  function renderChangedModules(modules, data) {
+    const set = new Set(modules || []);
+    if (set.has('announcements') && Array.isArray(data.announcements)) {
+      globalPengumumanList = data.announcements;
+      if (typeof renderPengumumanList === 'function') renderPengumumanList();
+      if (typeof renderDashboardAcademyUpdates === 'function') renderDashboardAcademyUpdates();
+      if (typeof renderNotificationCenter === 'function') renderNotificationCenter();
+    }
+    if (set.has('attendance') && Array.isArray(data.attendance)) {
+      // Live attendance payload is optimized: old signatures are preserved locally,
+      // while newly-created/recent rows still arrive with their signature data.
+      // Replacing by the server ID list also makes cross-device deletes disappear
+      // immediately instead of being merged forever into stale local rows.
+      const currentById = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
+      globalAbsensiList = data.attendance.map(item => {
+        const previous = currentById.get(String(item.absensiID || '')) || {};
+        return {
+          ...previous,
+          ...item,
+          tandaTangan: item.tandaTangan || previous.tandaTangan || '',
+          ttdSiswa: item.ttdSiswa || previous.ttdSiswa || ''
+        };
+      });
+      if (typeof setupFilterDropdown === 'function') setupFilterDropdown();
+      if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat();
+      if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+    }
+    if (set.has('assignments') && Array.isArray(data.assignments)) {
+      globalTugasList = data.assignments;
+      if (typeof renderTabelTugas === 'function') renderTabelTugas();
+    }
+    if (set.has('progress') && Array.isArray(data.progress)) {
+      globalLearningProgressList = data.progress;
+      if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+    }
+    if (set.has('schedules')) {
+      if (Array.isArray(data.schedules)) globalJadwalList = data.schedules;
+      if (Array.isArray(data.replacements)) globalJadwalPenggantiList = data.replacements;
+      if (Array.isArray(data.scheduleOverrides)) globalScheduleOverrides = data.scheduleOverrides;
+      if (typeof renderTabelJadwal === 'function') renderTabelJadwal();
+      if (typeof renderTabelJadwalPengganti === 'function') renderTabelJadwalPengganti();
+      if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+      if (typeof setupMakeupFilters === 'function') setupMakeupFilters();
+      if (typeof renderRoomAvailability === 'function') renderRoomAvailability();
+    }
+    if (set.has('teacher_attendance') && Array.isArray(data.teacherAttendance)) {
+      globalTeacherAttendanceList = data.teacherAttendance;
+      if (typeof renderAdminTeacherManagement === 'function') renderAdminTeacherManagement();
+      if (typeof renderTeacherMonitoring === 'function') renderTeacherMonitoring();
+    }
+    if (set.has('repertoire') && Array.isArray(data.repertoire)) {
+      globalRepertoireList = data.repertoire;
+      if (typeof renderRepertoirePage === 'function') renderRepertoirePage();
+    }
+    if (set.has('exams') && Array.isArray(data.exams)) {
+      window.globalAnnualExamList = data.exams;
+      if (typeof renderAnnualExamList === 'function') renderAnnualExamList();
+    }
+  }
+
+  async function flushModuleQueue() {
+    deltaTimer = null;
+    if (!currentUser || !currentUser.userType || !moduleQueue.size) return;
+    const modules = [...moduleQueue]; moduleQueue.clear();
+    const lightweight = modules.filter(x => ['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams'].includes(x));
+    const heavy = modules.filter(x => !lightweight.includes(x));
+    try {
+      if (lightweight.length) {
+        const res = await LegacyAPI.rpc('getLiveModuleData', [{ modules:lightweight }]);
+        if (res && res.success !== false) renderChangedModules(lightweight, res);
+      }
+    } catch (error) {
+      console.debug('[Legacy Live Sync] delta sync skipped:', error?.message || error);
+      requestFastDashboardRefresh('delta-fallback', 700);
+    }
+    // Changes to people/admin control can affect many cross-linked selectors. Reconcile
+    // those in the background, but never block the current screen.
+    if (heavy.length) requestFastDashboardRefresh('cross-module-change', 800);
+  }
+
+  function queueModuleSync(modules) {
+    (modules || []).forEach(m => moduleQueue.add(m));
+    if (deltaTimer) clearTimeout(deltaTimer);
+    deltaTimer = setTimeout(flushModuleQueue, 90);
   }
 
   async function pollLiveSync(force = false) {
@@ -36,15 +121,12 @@
       if (!res || res.success === false || !res.versions) return;
       const next = res.versions || {};
       const hadBaseline = Object.keys(globalLiveSyncVersions || {}).length > 0;
-      const changed = hadBaseline && versionsChanged(next);
+      const changed = hadBaseline ? changedModules(next) : [];
       globalLiveSyncVersions = next;
-      if (changed) requestFastDashboardRefresh('remote-change', 120);
+      if (changed.length) queueModuleSync(changed);
     } catch (error) {
-      // Live sync is an enhancement. Never block the app if the sync table is unavailable.
-      console.debug('[Legacy Live Sync] poll skipped:', error && error.message ? error.message : error);
-    } finally {
-      globalLiveSyncRunning = false;
-    }
+      console.debug('[Legacy Live Sync] poll skipped:', error?.message || error);
+    } finally { globalLiveSyncRunning = false; }
   }
 
   function configureGlobalLiveSync() {
@@ -56,27 +138,30 @@
 
   function stopGlobalLiveSync() {
     if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
-    globalLiveSyncTimer = null;
-    globalLiveSyncVersions = {};
-    globalLiveSyncRunning = false;
+    globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    moduleQueue.clear();
+    if (deltaTimer) clearTimeout(deltaTimer); deltaTimer = null;
   }
 
+  const mutationToModule = {
+    addPengumuman:'announcements',deletePengumuman:'announcements',recordAbsensi:'attendance',updateAbsensi:'attendance',deleteAbsensi:'attendance',
+    addTugasCombined:'assignments',submitTugasJawaban:'assignments',deleteTugas:'assignments',saveLearningProgress:'progress',deleteLearningProgress:'progress',
+    updateJadwal:'schedules',deleteJadwal:'schedules',saveScheduleOverride:'schedules',deleteScheduleOverride:'schedules',addJadwalPengganti:'schedules',deleteJadwalPengganti:'schedules',
+    recordTeacherAttendance:'teacher_attendance',deleteTeacherAttendance:'teacher_attendance',saveStudentRepertoire:'repertoire',deleteStudentRepertoire:'repertoire',
+    saveAnnualExam:'exams',publishAnnualExam:'exams',deleteAnnualExam:'exams',addGuru:'people',updateGuru:'people',deleteGuru:'people',addSiswaCombined:'people',updateSiswa:'people',deleteSiswa:'people',deleteExitedStudentRecord:'people'
+  };
+
   window.addEventListener('legacy:data-mutated', event => {
-    // Local writes already returned success; refresh in background, coalescing multiple writes.
-    requestFastDashboardRefresh(event?.detail?.method || 'local-write', 120);
-    setTimeout(() => pollLiveSync(true), 350);
+    const method = event?.detail?.method || '';
+    const module = mutationToModule[method];
+    if (module) queueModuleSync([module]);
+    setTimeout(() => pollLiveSync(true), 260);
   });
-
-  window.addEventListener('focus', () => {
-    if (!currentUser || !currentUser.userType) return;
-    if (Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && currentUser && currentUser.userType) pollLiveSync(true);
-  });
+  window.addEventListener('focus', () => { if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && currentUser?.userType) pollLiveSync(true); });
 
   window.configureGlobalLiveSync = configureGlobalLiveSync;
   window.stopGlobalLiveSync = stopGlobalLiveSync;
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
+  window.queueLiveModuleSync = queueModuleSync;
 })();

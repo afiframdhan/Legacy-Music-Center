@@ -453,8 +453,9 @@
             clearSignature('canvasTtdGuru');
             clearSignature('canvasTtdSiswa');
           }
-          // Rekonsiliasi penuh tetap berjalan setelah UI lokal sudah diperbarui.
-          setTimeout(fetchDashboardData, 150);
+          // Do not reload the whole dashboard after one attendance mutation.
+          // The local row is already visible; only the attendance module is reconciled.
+          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
         }
       }).recordAbsensi(payload);
     }

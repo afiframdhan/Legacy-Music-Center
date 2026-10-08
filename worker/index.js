@@ -2,7 +2,7 @@ const COOKIE_NAME = 'legacy_api_session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 const COMMON = new Set([
-  'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
+  'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'getLiveModuleData', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
   'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
   'getRepertoireData'
 ]);
@@ -24,7 +24,7 @@ const ADMIN = new Set([
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance',
   'deleteExitedStudentRecord',
-  'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality'
+  'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
 ]);
 
 const AUDIT_METHODS = new Set([
@@ -290,6 +290,17 @@ async function handleRpc(request, env, ctx) {
     }
   }
 
+
+  if (method === 'getLiveModuleData') {
+    try {
+      const request = args[0] && typeof args[0] === 'object' ? args[0] : {};
+      return json({ ok:true, data:await getLiveModuleDataSupabase(env, session, request.modules) });
+    } catch (error) {
+      console.error('Live module data error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
   if (method === 'getAdminControlCenter') {
     try {
       return json({ ok:true, data:await getAdminControlCenterSupabase(env, session) });
@@ -327,6 +338,18 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:{ success:true, message:'Semua audit log berhasil dihapus.' } });
     } catch (error) {
       return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+  if (method === 'getAdminExportBackup') {
+    try {
+      if (session.userType !== 'admin') return json({ ok:false, error:'Akses hanya untuk admin.' }, 403);
+      const request = args[0] && typeof args[0] === 'object' ? args[0] : {};
+      const result = await getAdminExportBackupSupabase(env, request.dataset);
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Admin export backup error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), rows:[] } });
     }
   }
 
@@ -1441,17 +1464,74 @@ async function verifyImportedPbkdf2Password(password, saltB64, expectedB64, iter
 
 
 async function getGuruListSupabase(env) {
-  const rows = await supabaseRest(env, '/rest/v1/teachers?select=teacher_id,name,email,phone,instrument,status,photo_url&order=name.asc');
+  const [teacherRows, classRows] = await Promise.all([
+    supabaseRest(env, '/rest/v1/teachers?select=teacher_id,name,email,phone,instrument,status,photo_url&order=name.asc'),
+    supabaseRest(env, '/rest/v1/student_classes?select=teacher_id,teacher_name_snapshot,instrument,status').catch(error => {
+      console.warn('Teacher directory class fallback unavailable:', error);
+      return [];
+    })
+  ]);
 
-  return (Array.isArray(rows) ? rows : []).map(row => ({
-    id: String(row.teacher_id || ''),
-    nama: String(row.name || ''),
-    email: String(row.email || ''),
-    noHp: String(row.phone || ''),
-    instrumen: String(row.instrument || 'Gitar'),
-    status: String(row.status || 'Aktif'),
-    foto: String(row.photo_url || '')
-  }));
+  // Build one complete teacher directory from the canonical teachers table plus
+  // teacher snapshots already attached to active/legacy student classes.  This
+  // keeps exam examiner selection complete even if a teacher row has not yet
+  // been migrated into `teachers` but is already used by class records.
+  const byKey = new Map();
+  const upsert = (item) => {
+    const id = String(item.id || '').trim();
+    const name = String(item.nama || '').trim();
+    if (!name) return;
+    const key = id ? `id:${id}` : `name:${name.toLowerCase()}`;
+    const existingByName = [...byKey.values()].find(x => String(x.nama || '').trim().toLowerCase() === name.toLowerCase());
+    const existing = byKey.get(key) || existingByName || null;
+    const instruments = new Set(
+      String(existing?.instrumen || item.instrumen || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(Boolean)
+    );
+    if (item.instrumen) instruments.add(String(item.instrumen).trim());
+    const next = {
+      id: existing?.id || id,
+      nama: existing?.nama || name,
+      email: existing?.email || String(item.email || ''),
+      noHp: existing?.noHp || String(item.noHp || ''),
+      instrumen: [...instruments].filter(Boolean).join(', ') || 'Musik',
+      status: existing?.status || String(item.status || 'Aktif'),
+      foto: existing?.foto || String(item.foto || '')
+    };
+    if (existingByName && !byKey.has(key)) {
+      for (const [existingKey, value] of byKey.entries()) {
+        if (value === existingByName) byKey.delete(existingKey);
+      }
+    }
+    byKey.set(next.id ? `id:${next.id}` : `name:${next.nama.toLowerCase()}`, next);
+  };
+
+  for (const row of (Array.isArray(teacherRows) ? teacherRows : [])) {
+    upsert({
+      id: row.teacher_id,
+      nama: row.name,
+      email: row.email,
+      noHp: row.phone,
+      instrumen: row.instrument,
+      status: row.status,
+      foto: row.photo_url
+    });
+  }
+
+  for (const row of (Array.isArray(classRows) ? classRows : [])) {
+    const status = String(row.status || '').trim().toLowerCase();
+    if (status && ['nonaktif','keluar','selesai','inactive'].includes(status)) continue;
+    upsert({
+      id: row.teacher_id,
+      nama: row.teacher_name_snapshot,
+      instrumen: row.instrument,
+      status: 'Aktif'
+    });
+  }
+
+  return [...byKey.values()].sort((a,b) => String(a.nama).localeCompare(String(b.nama), 'id'));
 }
 
 async function mirrorTeacherMutationToSupabase(env, method, args, gasResult) {
@@ -2123,6 +2203,110 @@ async function getLiveAnnouncementsSupabase(env, session) {
   return { success:true, items:[], syncedAt:new Date().toISOString() };
 }
 
+
+async function getLiveModuleDataSupabase(env, session, requestedModules) {
+  const allowed = new Set(['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams']);
+  const modules = [...new Set((Array.isArray(requestedModules) ? requestedModules : []).map(x => String(x || '').trim()).filter(x => allowed.has(x)))];
+  const out = { success:true, syncedAt:new Date().toISOString() };
+  if (!modules.length) return out;
+
+  let teacherStudentIds = null;
+  async function getTeacherStudentIds() {
+    if (teacherStudentIds) return teacherStudentIds;
+    if (session.userType !== 'guru') return [];
+    const [classes, schedules] = await Promise.all([
+      sbRowsSafe(env, 'student_classes', { select:'student_id', teacher_id:`eq.${session.userID}` }),
+      sbRowsSafe(env, 'schedules', { select:'student_id', teacher_id:`eq.${session.userID}` })
+    ]);
+    teacherStudentIds = [...new Set([...classes,...schedules].map(x => String(x.student_id || '').trim()).filter(Boolean))];
+    return teacherStudentIds;
+  }
+  function inFilter(ids) {
+    const clean = (ids || []).map(x => String(x).replace(/[(),"]/g,'')).filter(Boolean);
+    return clean.length ? `in.(${clean.join(',')})` : '';
+  }
+
+  await Promise.all(modules.map(async module => {
+    if (module === 'announcements') {
+      const result = await getLiveAnnouncementsSupabase(env, session);
+      out.announcements = result.items || [];
+      return;
+    }
+    if (module === 'attendance') {
+      const baseParams = { order:'attendance_date.desc,created_at.desc' };
+      if (session.userType === 'siswa') baseParams.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') {
+        const ids = await getTeacherStudentIds();
+        if (!ids.length) { out.attendance = []; return; }
+        baseParams.student_id = inFilter(ids);
+      }
+
+      // Keep cross-device attendance sync small. Most rows contain large base64
+      // signatures; sending all of them after every mutation made Admin/Guru lag.
+      // The lightweight snapshot supplies every current ID (so deletes are detected),
+      // while only the newest rows carry signature payloads. Existing signatures are
+      // preserved by the client during reconciliation.
+      const lightweightSelect = [
+        'attendance_id','student_id','student_name_snapshot','teacher_id','teacher_name_snapshot',
+        'attendance_date','meeting_number','status','material','song','notes','created_at'
+      ].join(',');
+      const [snapshotRows, recentFullRows] = await Promise.all([
+        sbPagedRows(env, 'student_attendance', { ...baseParams, select:lightweightSelect }),
+        sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit:'40' })
+      ]);
+      const recentById = new Map(recentFullRows.map(row => [String(row.attendance_id || ''), row]));
+      out.attendance = snapshotRows.map(row => mapAttendance(recentById.get(String(row.attendance_id || '')) || row));
+      return;
+    }
+    if (module === 'assignments') {
+      const params = { order:'created_at.desc' };
+      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      out.assignments = (await sbRows(env, 'assignments', params)).map(mapAssignment);
+      return;
+    }
+    if (module === 'progress') {
+      const params = { order:'last_updated_at.desc.nullslast,created_at.desc' };
+      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      out.progress = (await sbRows(env, 'learning_progress', params)).map(mapProgress);
+      return;
+    }
+    if (module === 'schedules') {
+      const params = { order:'created_at.asc' };
+      if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      const [rows, replacements, overrides] = await Promise.all([
+        sbRows(env, 'schedules', params),
+        session.userType === 'siswa' ? sbRowsSafe(env,'replacement_schedules',{student_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
+          session.userType === 'guru' ? sbRowsSafe(env,'replacement_schedules',{teacher_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
+          sbRowsSafe(env,'replacement_schedules',{order:'scheduled_date.desc.nullslast,created_at.desc'}),
+        getScheduleOverrideRowsForSession(env, session).catch(()=>[])
+      ]);
+      out.schedules = rows.map(row => mapSchedule(row, true));
+      out.replacements = replacements.map(mapReplacement);
+      out.scheduleOverrides = overrides.map(mapScheduleOverride);
+      return;
+    }
+    if (module === 'teacher_attendance') {
+      const params = { order:'attendance_date.desc,created_at.desc' };
+      if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
+      if (session.userType === 'siswa') { out.teacherAttendance = []; return; }
+      out.teacherAttendance = (await sbRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
+      return;
+    }
+    if (module === 'repertoire') {
+      const result = await getRepertoireDataSupabase(env, session);
+      out.repertoire = result.items || result.repertoire || [];
+      return;
+    }
+    if (module === 'exams') {
+      out.exams = await listAnnualExamsSupabase(env, session);
+    }
+  }));
+  return out;
+}
+
 async function getDashboardDataSupabase(env, session) {
   if (session.userType === 'siswa') return buildStudentDashboardSupabase(env, session);
   if (session.userType === 'guru') return buildTeacherDashboardSupabase(env, session);
@@ -2152,6 +2336,47 @@ async function sbRowsSafe(env, table, params = {}) {
   }
 }
 
+async function sbPagedRows(env, table, params = {}, maxRows = 10000) {
+  const pageSize = 1000;
+  const all = [];
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const rows = await sbRows(env, table, { ...params, limit:String(pageSize), offset:String(offset) });
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}
+
+
+async function sbAllRows(env, table, select = '*') {
+  const pageSize = 1000;
+  const all = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const rows = await sbRows(env, table, { select, limit:String(pageSize), offset:String(offset) });
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    if (offset > 100000) throw new Error(`Backup ${table} terlalu besar untuk export sekali jalan.`);
+  }
+  return all;
+}
+
+async function getAdminExportBackupSupabase(env, dataset) {
+  const configs = {
+    students:{ table:'students' },
+    teachers:{ table:'teachers' },
+    schedules:{ table:'schedules' },
+    attendance:{ table:'student_attendance' },
+    progress:{ table:'learning_progress' },
+    repertoire:{ table:'student_repertoire' },
+    exams:{ table:'annual_exam_assessments' },
+    overrides:{ table:'schedule_overrides' }
+  };
+  const key = String(dataset || '').trim();
+  const config = configs[key];
+  if (!config) throw new Error('Kategori export tidak valid.');
+  const rows = await sbAllRows(env, config.table, '*');
+  return { success:true, dataset:key, table:config.table, count:rows.length, exportedAt:new Date().toISOString(), rows };
+}
 
 function auditActionMeta(method) {
   const map = {

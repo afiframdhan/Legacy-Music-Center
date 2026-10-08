@@ -44,6 +44,14 @@
     );
   }
 
+  function loadSheetJS() {
+    return loadScript(
+      'sheetjs',
+      'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+      () => Boolean(window.XLSX && window.XLSX.utils)
+    );
+  }
+
   function loadCropper() {
     loadStyle('cropper-css', 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css');
     return loadScript(
@@ -53,5 +61,5 @@
     );
   }
 
-  window.LegacyVendors = { loadFullCalendar, loadCropper };
+  window.LegacyVendors = { loadFullCalendar, loadCropper, loadSheetJS };
 })();

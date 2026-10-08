@@ -401,3 +401,203 @@
       adminOperationalCalendarInstance.addEventSource(events);
       adminOperationalCalendarInstance.render();
     }
+
+
+    // ==========================================================
+    // ADMIN EXPORT & BACKUP — read-only, Supabase source
+    // ==========================================================
+    const ADMIN_EXPORT_DATASETS = {
+      students:{ label:'Siswa', sheet:'Siswa', file:'siswa' },
+      teachers:{ label:'Guru', sheet:'Guru', file:'guru' },
+      schedules:{ label:'Jadwal', sheet:'Jadwal', file:'jadwal' },
+      attendance:{ label:'Absensi', sheet:'Absensi', file:'absensi' },
+      progress:{ label:'Progress', sheet:'Progress', file:'progress' },
+      repertoire:{ label:'Repertoire', sheet:'Repertoire', file:'repertoire' },
+      exams:{ label:'Ujian', sheet:'Ujian', file:'ujian' },
+      overrides:{ label:'Jadwal Pergantian', sheet:'Jadwal Pergantian', file:'jadwal-pergantian' }
+    };
+
+    function initAdminExportBackup() {
+      if (!currentUser || currentUser.userType !== 'admin') return;
+      const result = document.getElementById('exportBackupResult');
+      if (result && !result.dataset.ready) {
+        result.dataset.ready = '1';
+        result.innerHTML = '';
+      }
+    }
+
+    function toggleAllExportDatasets(checked) {
+      document.querySelectorAll('#exportBackupDatasetGrid input[type="checkbox"]').forEach(input => { input.checked = Boolean(checked); });
+    }
+
+    function getSelectedExportDatasets() {
+      return Array.from(document.querySelectorAll('#exportBackupDatasetGrid input[type="checkbox"]:checked'))
+        .map(input => input.value)
+        .filter(key => ADMIN_EXPORT_DATASETS[key]);
+    }
+
+    function setExportBackupBusy(busy, title = '', detail = '', percent = 0) {
+      const excelBtn = document.getElementById('btnExportBackupExcel');
+      const csvBtn = document.getElementById('btnExportBackupCsv');
+      if (excelBtn) excelBtn.disabled = Boolean(busy);
+      if (csvBtn) csvBtn.disabled = Boolean(busy);
+      const box = document.getElementById('exportBackupProgress');
+      if (!box) return;
+      box.style.display = busy ? 'block' : 'none';
+      const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+      const titleEl = document.getElementById('exportBackupProgressTitle');
+      const detailEl = document.getElementById('exportBackupProgressDetail');
+      const pctEl = document.getElementById('exportBackupProgressPercent');
+      const bar = document.getElementById('exportBackupProgressBar');
+      if (titleEl) titleEl.textContent = title || 'Menyiapkan backup...';
+      if (detailEl) detailEl.textContent = detail || 'Menghubungkan ke Supabase...';
+      if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+      if (bar) bar.style.width = `${pct}%`;
+    }
+
+    function showExportBackupResult(message, type = 'success') {
+      const box = document.getElementById('exportBackupResult');
+      if (!box) return;
+      box.style.display = 'block';
+      box.className = `export-backup-result ${type === 'error' ? 'error' : 'success'}`;
+      box.textContent = message;
+      clearTimeout(showExportBackupResult._timer);
+      showExportBackupResult._timer = setTimeout(() => { box.style.display = 'none'; }, 7000);
+    }
+
+    async function fetchAdminExportDataset(dataset) {
+      const result = await LegacyAPI.rpc('getAdminExportBackup', [{ dataset }]);
+      if (!result || result.success === false) throw new Error((result && result.message) || 'Data backup gagal dimuat.');
+      return Array.isArray(result.rows) ? result.rows : [];
+    }
+
+    function exportDateStamp() {
+      const now = new Date();
+      const two = n => String(n).padStart(2, '0');
+      return `${now.getFullYear()}-${two(now.getMonth()+1)}-${two(now.getDate())}_${two(now.getHours())}-${two(now.getMinutes())}`;
+    }
+
+    function normalizeExportValue(value) {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') {
+        try { return JSON.stringify(value); } catch (_) { return String(value); }
+      }
+      return value;
+    }
+
+    const EXCEL_CELL_TEXT_LIMIT = 32000;
+
+    function splitExcelCellValue(value) {
+      const normalized = normalizeExportValue(value);
+      if (typeof normalized !== 'string' || normalized.length <= EXCEL_CELL_TEXT_LIMIT) return [normalized];
+      const parts = [];
+      for (let i = 0; i < normalized.length; i += EXCEL_CELL_TEXT_LIMIT) {
+        parts.push(normalized.slice(i, i + EXCEL_CELL_TEXT_LIMIT));
+      }
+      return parts;
+    }
+
+    function rowsForSpreadsheet(rows) {
+      return (rows || []).map(row => {
+        const clean = {};
+        Object.entries(row || {}).forEach(([key, value]) => {
+          const parts = splitExcelCellValue(value);
+          clean[key] = parts[0] ?? '';
+          for (let i = 1; i < parts.length; i++) clean[`${key}__part${i + 1}`] = parts[i];
+        });
+        return clean;
+      });
+    }
+
+    function downloadBlobFile(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+
+    function csvEscape(value) {
+      const text = String(normalizeExportValue(value));
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    }
+
+    function rowsToCsv(rows) {
+      if (!rows.length) return '\uFEFF';
+      const columns = Array.from(rows.reduce((set, row) => { Object.keys(row || {}).forEach(key => set.add(key)); return set; }, new Set()));
+      const lines = [columns.map(csvEscape).join(',')];
+      rows.forEach(row => lines.push(columns.map(col => csvEscape(row ? row[col] : '')).join(',')));
+      return '\uFEFF' + lines.join('\r\n');
+    }
+
+    async function exportAdminBackupCsv() {
+      if (!currentUser || currentUser.userType !== 'admin') return;
+      const select = document.getElementById('exportCsvDataset');
+      const dataset = select ? select.value : 'students';
+      const meta = ADMIN_EXPORT_DATASETS[dataset];
+      if (!meta) return;
+      try {
+        setExportBackupBusy(true, `Export CSV ${meta.label}`, 'Mengambil data terbaru dari Supabase...', 25);
+        const rows = await fetchAdminExportDataset(dataset);
+        setExportBackupBusy(true, `Export CSV ${meta.label}`, `${rows.length.toLocaleString('id-ID')} baris siap dibuat.`, 75);
+        const csv = rowsToCsv(rows);
+        downloadBlobFile(new Blob([csv], { type:'text/csv;charset=utf-8;' }), `Legacy-Music-Center_${meta.file}_${exportDateStamp()}.csv`);
+        setExportBackupBusy(false);
+        showExportBackupResult(`Export ${meta.label} berhasil • ${rows.length.toLocaleString('id-ID')} baris.`);
+      } catch (error) {
+        setExportBackupBusy(false);
+        showExportBackupResult(`Export CSV gagal: ${error.message || error}`, 'error');
+      }
+    }
+
+    async function exportAdminBackupExcel() {
+      if (!currentUser || currentUser.userType !== 'admin') return;
+      const selected = getSelectedExportDatasets();
+      if (!selected.length) {
+        showExportBackupResult('Pilih minimal satu kategori data untuk dibuatkan backup Excel.', 'error');
+        return;
+      }
+      try {
+        setExportBackupBusy(true, 'Menyiapkan Excel', 'Memuat mesin export Excel...', 3);
+        await LegacyVendors.loadSheetJS();
+        const wb = XLSX.utils.book_new();
+        const summary = [
+          ['LEGACY MUSIC CENTER — BACKUP DATA'],
+          ['Dibuat pada', new Date().toLocaleString('id-ID')],
+          ['Dibuat oleh', currentUser.userName || 'Admin'],
+          ['Sumber data', 'Supabase'],
+          ['Jumlah kategori', selected.length],
+          [],
+          ['Kategori', 'Jumlah Baris']
+        ];
+        let totalRows = 0;
+        for (let i = 0; i < selected.length; i++) {
+          const key = selected[i];
+          const meta = ADMIN_EXPORT_DATASETS[key];
+          const startPct = 8 + (i / selected.length) * 82;
+          setExportBackupBusy(true, `Mengambil ${meta.label}`, `Kategori ${i+1} dari ${selected.length} • membaca Supabase...`, startPct);
+          const rows = rowsForSpreadsheet(await fetchAdminExportDataset(key));
+          totalRows += rows.length;
+          summary.push([meta.label, rows.length]);
+          let ws;
+          if (rows.length) ws = XLSX.utils.json_to_sheet(rows, { cellDates:true });
+          else ws = XLSX.utils.aoa_to_sheet([['Tidak ada data']]);
+          ws['!autofilter'] = rows.length && ws['!ref'] ? { ref: ws['!ref'] } : undefined;
+          ws['!cols'] = rows.length ? Object.keys(rows[0]).map(keyName => ({ wch: Math.min(34, Math.max(12, String(keyName).length + 3)) })) : [{wch:20}];
+          XLSX.utils.book_append_sheet(wb, ws, meta.sheet.slice(0, 31));
+        }
+        const summaryWs = XLSX.utils.aoa_to_sheet(summary);
+        summaryWs['!cols'] = [{wch:28},{wch:24}];
+        XLSX.utils.book_append_sheet(wb, summaryWs, 'Ringkasan');
+        // Keep Ringkasan as first sheet for easier archive review.
+        wb.SheetNames = ['Ringkasan', ...wb.SheetNames.filter(name => name !== 'Ringkasan')];
+        setExportBackupBusy(true, 'Membuat file Excel', `${totalRows.toLocaleString('id-ID')} total baris • menyiapkan file download...`, 95);
+        XLSX.writeFile(wb, `Legacy-Music-Center_Backup_${exportDateStamp()}.xlsx`, { compression:true });
+        setExportBackupBusy(false);
+        showExportBackupResult(`Backup Excel berhasil • ${selected.length} kategori • ${totalRows.toLocaleString('id-ID')} total baris.`);
+      } catch (error) {
+        console.error('Export backup Excel gagal', error);
+        setExportBackupBusy(false);
+        showExportBackupResult(`Backup Excel gagal: ${error.message || error}`, 'error');
+      }
+    }
