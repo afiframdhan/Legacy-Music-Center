@@ -412,6 +412,26 @@
           </div>
         </div>
 
+
+        <div class="content-section" id="section-practice-hub">
+          <div class="task-page-head practice-page-head">
+            <div><h2>Latihan Mandiri</h2><p>Materi yang bisa dibuka kapan saja di rumah, plus Evaluasi Audio/Video untuk membantu perkembangan latihan.</p></div>
+            <div id="practiceTeacherActions" class="practice-head-actions" style="display:none;"><button type="button" class="btn btn-export" onclick="openMediaEvaluationModal()">+ Evaluasi Audio/Video</button><button type="button" class="btn btn-primary" onclick="openPracticeResourceModal()">+ Materi Latihan</button></div>
+          </div>
+          <div class="task-stats practice-stats">
+            <div class="task-stat"><div class="task-stat-icon">📚</div><div class="task-stat-copy"><span>Materi Latihan</span><strong id="practiceStatResources">0</strong><small>Materi aktif</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">▶</div><div class="task-stat-copy"><span>Video Tutorial</span><strong id="practiceStatVideos">0</strong><small>YouTube Unlisted</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">📄</div><div class="task-stat-copy"><span>File / PDF</span><strong id="practiceStatFiles">0</strong><small>Google Drive</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">🎧</div><div class="task-stat-copy"><span>Evaluasi</span><strong id="practiceStatEvaluations">0</strong><small>Audio / Video</small></div></div>
+          </div>
+          <div class="widget-box practice-filter-box"><div class="practice-filter-grid"><div class="form-group" style="margin:0;"><label>Cari</label><input type="search" id="practiceSearch" placeholder="Cari materi, siswa, instrumen..." oninput="renderPracticeHub()"></div><div class="form-group" style="margin:0;"><label>Siswa</label><select id="practiceStudentFilter" onchange="renderPracticeHub()"><option value="">Semua Siswa</option></select></div></div></div>
+          <div id="practiceHubLoading" class="widget-box practice-empty">Memuat materi latihan...</div>
+          <div class="practice-hub-grid">
+            <section><div class="practice-section-title"><div><h3>📚 Materi Latihan</h3><p>Bukan tugas. Materi ini selalu tersedia untuk latihan mandiri.</p></div></div><div id="practiceResourceList" class="practice-resource-list"></div></section>
+            <section><div class="practice-section-title"><div><h3>🎧 Evaluasi Audio / Video</h3><p>Penilaian tone, rhythm, tempo, teknik, ekspresi, feedback, dan target berikutnya.</p></div></div><div id="mediaEvaluationList" class="media-eval-list"></div></section>
+          </div>
+        </div>
+
         <!-- DAFTAR SISWA -->
         <div class="content-section" id="section-siswa">
           <div class="academy-page-head"><div><h2>Daftar Siswa</h2><p>Kelola data siswa, kelas, instrumen, dan guru pengajar dalam satu tampilan.</p></div></div>
@@ -1298,6 +1318,66 @@
         </div>
 
       </div>
+    </div>
+  </div>
+
+
+  <!-- MODAL MATERI LATIHAN -->
+  <div id="modalPracticeResource" class="modal">
+    <div class="modal-content practice-modal-content">
+      <div class="modal-header"><h3 id="practiceResourceModalTitle">Tambah Materi Latihan</h3><button class="modal-close" onclick="closePracticeResourceModal()">&times;</button></div>
+      <form onsubmit="return savePracticeResource(event)">
+        <input type="hidden" id="practiceResourceId">
+        <div class="practice-form-grid">
+          <div class="form-group"><label>Siswa</label><select id="practiceResourceStudent" required onchange="syncPracticeResourceInstrument()"></select></div>
+          <div class="form-group"><label>Instrumen</label><select id="practiceResourceInstrument" required></select></div>
+          <div class="form-group practice-span-2"><label>Judul Materi</label><input id="practiceResourceTitle" required placeholder="Contoh: Latihan Barre Chord Minggu 1"></div>
+          <div class="form-group practice-span-2"><label>Deskripsi / Petunjuk Latihan</label><textarea id="practiceResourceDescription" rows="4" placeholder="Tuliskan cara latihan, tempo, target, atau catatan penting..."></textarea></div>
+          <div class="form-group practice-span-2"><label>Video Tutorial YouTube (Unlisted)</label><input type="url" id="practiceResourceYoutube" placeholder="https://youtu.be/..."><small>Video tutorial disimpan di YouTube agar Google Drive tidak penuh.</small></div>
+          <div class="form-group practice-span-2"><label>File / PDF Google Drive</label><input type="file" id="practiceResourceFiles" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,image/*,audio/*"><small>Maksimal 5 file. Video gunakan YouTube Unlisted.</small></div>
+        </div>
+        <div class="practice-modal-actions"><button type="button" class="btn" onclick="closePracticeResourceModal()">Batal</button><button type="submit" id="btnSavePracticeResource" class="btn btn-primary">Simpan Materi</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL EVALUASI AUDIO VIDEO -->
+  <div id="modalMediaEvaluation" class="modal">
+    <div class="modal-content practice-modal-content media-eval-form-modal">
+      <div class="modal-header"><h3 id="mediaEvaluationModalTitle">Evaluasi Audio/Video Baru</h3><button class="modal-close" onclick="closeMediaEvaluationModal()">&times;</button></div>
+      <form onsubmit="return saveMediaEvaluation(event)">
+        <input type="hidden" id="mediaEvalId">
+        <div class="practice-form-grid">
+          <div class="form-group"><label>Siswa</label><select id="mediaEvalStudent" required onchange="syncEvaluationInstrument()"></select></div>
+          <div class="form-group"><label>Instrumen</label><select id="mediaEvalInstrument" required></select></div>
+          <div class="form-group"><label>Repertoire (opsional)</label><select id="mediaEvalRepertoire"><option value="">Tanpa Repertoire</option></select></div>
+          <div class="form-group"><label>Judul Evaluasi</label><input id="mediaEvalTitle" required placeholder="Contoh: Full Performance - Autumn Leaves"></div>
+          <div class="form-group practice-span-2"><label>Link Audio / Video</label><input type="url" id="mediaEvalUrl" placeholder="YouTube Unlisted atau link Google Drive"><small>Gunakan YouTube Unlisted untuk video panjang. Audio boleh berupa link Google Drive.</small></div>
+        </div>
+        <div class="media-score-editor">
+          <div><label>Tone</label><input id="mediaEvalTone" type="number" min="0" max="100" value="0"></div>
+          <div><label>Rhythm</label><input id="mediaEvalRhythm" type="number" min="0" max="100" value="0"></div>
+          <div><label>Tempo</label><input id="mediaEvalTempo" type="number" min="0" max="100" value="0"></div>
+          <div><label>Teknik</label><input id="mediaEvalTechnique" type="number" min="0" max="100" value="0"></div>
+          <div><label>Ekspresi</label><input id="mediaEvalExpression" type="number" min="0" max="100" value="0"></div>
+        </div>
+        <div class="practice-form-grid">
+          <div class="form-group"><label>Kekuatan Utama</label><textarea id="mediaEvalStrength" rows="3"></textarea></div>
+          <div class="form-group"><label>Perlu Ditingkatkan</label><textarea id="mediaEvalImprovement" rows="3"></textarea></div>
+          <div class="form-group"><label>Target Selanjutnya</label><textarea id="mediaEvalNextTarget" rows="3"></textarea></div>
+          <div class="form-group"><label>Catatan Umum</label><textarea id="mediaEvalNotes" rows="3"></textarea></div>
+          <div class="form-group practice-span-2"><label>Feedback Berdasarkan Waktu</label><textarea id="mediaEvalMarkers" rows="4" placeholder="00:24 | Tempo mulai goyah, gunakan metronome&#10;00:51 | Transisi chord sudah lebih rapi"></textarea><small>Satu feedback per baris dengan format waktu | catatan.</small></div>
+        </div>
+        <div class="practice-modal-actions"><button type="button" class="btn" onclick="closeMediaEvaluationModal()">Batal</button><button type="submit" id="btnSaveMediaEvaluation" class="btn btn-primary">Simpan Evaluasi</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalMediaEvaluationDetail" class="modal">
+    <div class="modal-content media-eval-detail-modal">
+      <div class="modal-header"><h3>Evaluasi Audio / Video</h3><button class="modal-close" onclick="closeMediaEvaluationDetail()">&times;</button></div>
+      <div id="mediaEvaluationDetailBody"></div>
+      <div id="mediaEvaluationDetailActions" class="practice-modal-actions"></div>
     </div>
   </div>
 

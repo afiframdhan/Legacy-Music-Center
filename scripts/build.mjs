@@ -15,6 +15,7 @@ const jsSources = [
   'src/js/pages/progress.js',
   'src/js/pages/academy.js',
   'src/js/pages/repertoire.js',
+  'src/js/pages/practice-hub.js',
   'src/js/pages/admin-control.js',
   'src/js/pages/dashboard.js',
   'src/js/pages/jadwal-absensi.js',

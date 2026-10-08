@@ -4,7 +4,7 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 const COMMON = new Set([
   'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'getLiveModuleData', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
   'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
-  'getRepertoireData'
+  'getRepertoireData', 'getPracticeHubData'
 ]);
 const STUDENT = new Set([...COMMON, 'submitTugasJawaban', 'listAnnualExams', 'getAnnualExam']);
 const TEACHER = new Set([
@@ -14,7 +14,8 @@ const TEACHER = new Set([
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
   'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report',
   'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam',
-  'saveStudentRepertoire', 'deleteStudentRepertoire'
+  'saveStudentRepertoire', 'deleteStudentRepertoire',
+  'savePracticeResource', 'deletePracticeResource', 'saveMediaEvaluation', 'deleteMediaEvaluation'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -31,7 +32,7 @@ const AUDIT_METHODS = new Set([
   'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
   'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
   'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addPengumuman','deletePengumuman',
-  'recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire','saveAnnualExam','publishAnnualExam','deleteAnnualExam',
+  'recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','saveAnnualExam','publishAnnualExam','deleteAnnualExam',
   'publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile'
 ]);
 
@@ -396,6 +397,44 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:result });
     } catch (error) {
       console.error('Repertoire write error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+
+  if (method === 'getPracticeHubData') {
+    try {
+      return json({ ok:true, data:await getPracticeHubDataSupabase(env, session) });
+    } catch (error) {
+      console.error('Practice hub read error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), resources:[], evaluations:[] } });
+    }
+  }
+
+  if (method === 'savePracticeResource' || method === 'deletePracticeResource' || method === 'saveMediaEvaluation' || method === 'deleteMediaEvaluation') {
+    try {
+      let result;
+      if (method === 'savePracticeResource') {
+        const payload = args[0] && typeof args[0] === 'object' ? structuredClone(args[0]) : {};
+        const files = Array.isArray(payload.files) ? payload.files : [];
+        delete payload.files;
+        if (files.length) {
+          const upload = await driveUploadFiles(env, files, 'LegacyMusicCenter_MateriLatihan');
+          if (!upload || upload.success !== true) return json({ ok:true, data:{ success:false, message:(upload && upload.message) || 'Upload file materi latihan gagal.' } });
+          payload.newAttachments = Array.isArray(upload.attachments) ? upload.attachments : [];
+        } else payload.newAttachments = [];
+        result = await savePracticeResourceSupabase(env, session, payload);
+      } else if (method === 'deletePracticeResource') {
+        result = await deletePracticeResourceSupabase(env, session, String(args[0] || '').trim());
+      } else if (method === 'saveMediaEvaluation') {
+        result = await saveMediaEvaluationSupabase(env, session, args[0] && typeof args[0] === 'object' ? structuredClone(args[0]) : {});
+      } else {
+        result = await deleteMediaEvaluationSupabase(env, session, String(args[0] || '').trim());
+      }
+      if (ctx && result && result.success) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Practice hub write error:', error);
       return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
     }
   }
@@ -2205,7 +2244,7 @@ async function getLiveAnnouncementsSupabase(env, session) {
 
 
 async function getLiveModuleDataSupabase(env, session, requestedModules) {
-  const allowed = new Set(['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams']);
+  const allowed = new Set(['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams','practice']);
   const modules = [...new Set((Array.isArray(requestedModules) ? requestedModules : []).map(x => String(x || '').trim()).filter(x => allowed.has(x)))];
   const out = { success:true, syncedAt:new Date().toISOString() };
   if (!modules.length) return out;
@@ -2298,6 +2337,12 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
     if (module === 'repertoire') {
       const result = await getRepertoireDataSupabase(env, session);
       out.repertoire = result.items || result.repertoire || [];
+      return;
+    }
+    if (module === 'practice') {
+      const result = await getPracticeHubDataSupabase(env, session);
+      out.practiceResources = result.resources || [];
+      out.mediaEvaluations = result.evaluations || [];
       return;
     }
     if (module === 'exams') {
@@ -3306,6 +3351,86 @@ async function deleteStudentRepertoireSupabase(env, session, payload) {
   if (!(await annualExamTeacherCanAccessStudent(env, session, String(row.student_id || '').trim()))) throw new Error('Anda tidak memiliki akses ke siswa ini.');
   await supabaseRest(env, `/rest/v1/student_repertoire?repertoire_id=eq.${encodeURIComponent(repertoireId)}`, { method:'DELETE', headers:{ Prefer:'return=minimal' } });
   return { success:true, message:'Repertoire berhasil dihapus.', repertoireID:repertoireId };
+}
+
+
+function mapPracticeResource(row) {
+  return {
+    resourceID:row.resource_id || '', studentID:row.student_id || '', studentName:row.student_name_snapshot || '',
+    teacherID:row.teacher_id || '', teacherName:row.teacher_name_snapshot || '', instrument:row.instrument || '',
+    title:row.title || '', description:row.description || '', youtubeUrl:row.youtube_url || '',
+    attachments:Array.isArray(row.attachments) ? row.attachments : [], createdAt:row.created_at || '', updatedAt:row.updated_at || ''
+  };
+}
+function mapMediaEvaluation(row) {
+  const scores={tone:Number(row.tone_score||0),rhythm:Number(row.rhythm_score||0),tempo:Number(row.tempo_score||0),technique:Number(row.technique_score||0),expression:Number(row.expression_score||0)};
+  const averageScore=Math.round((scores.tone+scores.rhythm+scores.tempo+scores.technique+scores.expression)/5);
+  return {
+    evaluationID:row.evaluation_id || '', studentID:row.student_id || '', studentName:row.student_name_snapshot || '',
+    teacherID:row.teacher_id || '', teacherName:row.teacher_name_snapshot || '', instrument:row.instrument || '', repertoireID:row.repertoire_id || '',
+    title:row.title || '', mediaUrl:row.media_url || '', mediaKind:row.media_kind || 'link', scores, averageScore,
+    strength:row.strength || '', improvement:row.improvement || '', nextTarget:row.next_target || '',
+    markers:Array.isArray(row.feedback_markers) ? row.feedback_markers : [], notes:row.notes || '', createdAt:row.created_at || '', updatedAt:row.updated_at || ''
+  };
+}
+async function practiceAllowedStudentIds(env, session) {
+  if (session.userType === 'siswa') return new Set([String(session.userID || '').trim()]);
+  if (session.userType !== 'guru') return new Set();
+  const [classes,direct] = await Promise.all([
+    sbRows(env,'student_classes',{teacher_id:`eq.${session.userID}`}),
+    sbRows(env,'students',{teacher_id:`eq.${session.userID}`})
+  ]);
+  return new Set([...classes.map(x=>x.student_id),...direct.map(x=>x.student_id)].map(v=>String(v||'').trim()).filter(Boolean));
+}
+async function getPracticeHubDataSupabase(env, session) {
+  if (!['guru','siswa'].includes(session.userType)) throw new Error('Fitur Latihan Mandiri tersedia untuk guru dan siswa.');
+  const ids=await practiceAllowedStudentIds(env,session);
+  if (!ids.size) return {success:true,resources:[],evaluations:[]};
+  const [resourceRows,evaluationRows,repertoireResult]=await Promise.all([
+    sbRows(env,'practice_resources',{active:'eq.true',order:'updated_at.desc.nullslast,created_at.desc'}),
+    sbRows(env,'media_evaluations',{active:'eq.true',order:'updated_at.desc.nullslast,created_at.desc'}),
+    getRepertoireDataSupabase(env, session).catch(() => ({success:true,items:[]}))
+  ]);
+  const ownTeacher=String(session.userID||'').trim();
+  const allow=row=>ids.has(String(row.student_id||'').trim()) && (session.userType==='siswa' || String(row.teacher_id||'').trim()===ownTeacher || ids.has(String(row.student_id||'').trim()));
+  return {success:true,resources:resourceRows.filter(allow).map(mapPracticeResource),evaluations:evaluationRows.filter(allow).map(mapMediaEvaluation),repertoire:Array.isArray(repertoireResult.items)?repertoireResult.items:[]};
+}
+async function practiceStudentAndAccess(env,session,studentId) {
+  if (session.userType !== 'guru') throw new Error('Hanya guru yang dapat mengubah Latihan Mandiri.');
+  if (!studentId) throw new Error('Siswa belum dipilih.');
+  if (!(await annualExamTeacherCanAccessStudent(env,session,studentId))) throw new Error('Anda tidak memiliki akses ke siswa ini.');
+  const rows=await sbRows(env,'students',{student_id:`eq.${studentId}`,limit:'1'}); if(!rows[0])throw new Error('Data siswa tidak ditemukan.'); return rows[0];
+}
+async function savePracticeResourceSupabase(env,session,payload) {
+  const studentId=String(payload.studentID||'').trim(); const student=await practiceStudentAndAccess(env,session,studentId);
+  const resourceId=String(payload.resourceID||'').trim(); let existing=null;
+  if(resourceId){const rows=await sbRows(env,'practice_resources',{resource_id:`eq.${resourceId}`,limit:'1'});existing=rows[0]||null;if(!existing)throw new Error('Materi latihan tidak ditemukan.');if(String(existing.teacher_id||'')!==String(session.userID||''))throw new Error('Materi ini dibuat oleh guru lain.');}
+  const rawYoutube=String(payload.youtubeUrl||'').trim(); const yt=buildYouTubeMeta(rawYoutube); if(rawYoutube&&!yt.videoId)throw new Error('Link video harus berupa link YouTube yang valid.');
+  const oldAttachments=Array.isArray(existing?.attachments)?existing.attachments:[]; const added=Array.isArray(payload.newAttachments)?payload.newAttachments:[];
+  const body={student_id:studentId,student_name_snapshot:String(student.name||''),teacher_id:String(session.userID||''),teacher_name_snapshot:String(session.userName||''),instrument:String(payload.instrument||student.instrument||'Musik'),title:String(payload.title||'').trim(),description:String(payload.description||'').trim(),youtube_url:yt.url||'',attachments:[...oldAttachments,...added],active:true,updated_at:new Date().toISOString()};
+  if(!body.title)throw new Error('Judul materi wajib diisi.');
+  const response=existing?await supabaseRest(env,`/rest/v1/practice_resources?resource_id=eq.${encodeURIComponent(resourceId)}`,{method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)}):await supabaseRest(env,'/rest/v1/practice_resources',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)});
+  return {success:true,message:existing?'Materi latihan berhasil diperbarui.':'Materi latihan berhasil ditambahkan.',item:Array.isArray(response)&&response[0]?mapPracticeResource(response[0]):null};
+}
+async function deletePracticeResourceSupabase(env,session,resourceId) {
+  if(session.userType!=='guru')throw new Error('Hanya guru yang dapat menghapus materi latihan.');
+  const rows=await sbRows(env,'practice_resources',{resource_id:`eq.${resourceId}`,limit:'1'});const row=rows[0];if(!row)throw new Error('Materi latihan tidak ditemukan.');if(String(row.teacher_id||'')!==String(session.userID||''))throw new Error('Materi ini dibuat oleh guru lain.');
+  await supabaseRest(env,`/rest/v1/practice_resources?resource_id=eq.${encodeURIComponent(resourceId)}`,{method:'DELETE',headers:{Prefer:'return=minimal'}});return {success:true,message:'Materi latihan berhasil dihapus.'};
+}
+function parseFeedbackMarkers(text) {
+  return String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>{const parts=line.split('|');return {time:String(parts.shift()||'').trim(),text:parts.join('|').trim()};}).filter(x=>x.time||x.text).slice(0,50);
+}
+async function saveMediaEvaluationSupabase(env,session,payload) {
+  const studentId=String(payload.studentID||'').trim();const student=await practiceStudentAndAccess(env,session,studentId);const id=String(payload.evaluationID||'').trim();let existing=null;
+  if(id){const rows=await sbRows(env,'media_evaluations',{evaluation_id:`eq.${id}`,limit:'1'});existing=rows[0]||null;if(!existing)throw new Error('Evaluasi tidak ditemukan.');if(String(existing.teacher_id||'')!==String(session.userID||''))throw new Error('Evaluasi ini dibuat oleh guru lain.');}
+  const clamp=v=>Math.max(0,Math.min(100,Math.round(Number(v)||0))); const mediaUrl=String(payload.mediaUrl||'').trim(); const yt=buildYouTubeMeta(mediaUrl);
+  const body={student_id:studentId,student_name_snapshot:String(student.name||''),teacher_id:String(session.userID||''),teacher_name_snapshot:String(session.userName||''),instrument:String(payload.instrument||student.instrument||'Musik'),repertoire_id:String(payload.repertoireID||'').trim()||null,title:String(payload.title||'').trim(),media_url:mediaUrl,media_kind:yt.videoId?'youtube':(mediaUrl?'link':'none'),tone_score:clamp(payload.tone),rhythm_score:clamp(payload.rhythm),tempo_score:clamp(payload.tempo),technique_score:clamp(payload.technique),expression_score:clamp(payload.expression),strength:String(payload.strength||'').trim(),improvement:String(payload.improvement||'').trim(),next_target:String(payload.nextTarget||'').trim(),feedback_markers:parseFeedbackMarkers(payload.markers),notes:String(payload.notes||'').trim(),active:true,updated_at:new Date().toISOString()};
+  if(!body.title)throw new Error('Judul evaluasi wajib diisi.');
+  const response=existing?await supabaseRest(env,`/rest/v1/media_evaluations?evaluation_id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)}):await supabaseRest(env,'/rest/v1/media_evaluations',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)});
+  return {success:true,message:existing?'Evaluasi berhasil diperbarui.':'Evaluasi Audio/Video berhasil disimpan.',item:Array.isArray(response)&&response[0]?mapMediaEvaluation(response[0]):null};
+}
+async function deleteMediaEvaluationSupabase(env,session,id) {
+  if(session.userType!=='guru')throw new Error('Hanya guru yang dapat menghapus evaluasi.');const rows=await sbRows(env,'media_evaluations',{evaluation_id:`eq.${id}`,limit:'1'});const row=rows[0];if(!row)throw new Error('Evaluasi tidak ditemukan.');if(String(row.teacher_id||'')!==String(session.userID||''))throw new Error('Evaluasi ini dibuat oleh guru lain.');await supabaseRest(env,`/rest/v1/media_evaluations?evaluation_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:{Prefer:'return=minimal'}});return {success:true,message:'Evaluasi berhasil dihapus.'};
 }
 
 async function getScheduleOverrideRowsForSession(env, session) {

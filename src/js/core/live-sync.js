@@ -81,13 +81,18 @@
       window.globalAnnualExamList = data.exams;
       if (typeof renderAnnualExamList === 'function') renderAnnualExamList();
     }
+    if (set.has('practice')) {
+      if (Array.isArray(data.practiceResources)) practiceResources = data.practiceResources;
+      if (Array.isArray(data.mediaEvaluations)) mediaEvaluations = data.mediaEvaluations;
+      if (typeof renderPracticeHub === 'function') renderPracticeHub();
+    }
   }
 
   async function flushModuleQueue() {
     deltaTimer = null;
     if (!currentUser || !currentUser.userType || !moduleQueue.size) return;
     const modules = [...moduleQueue]; moduleQueue.clear();
-    const lightweight = modules.filter(x => ['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams'].includes(x));
+    const lightweight = modules.filter(x => ['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams','practice'].includes(x));
     const heavy = modules.filter(x => !lightweight.includes(x));
     try {
       if (lightweight.length) {
@@ -148,7 +153,7 @@
     addTugasCombined:'assignments',submitTugasJawaban:'assignments',deleteTugas:'assignments',saveLearningProgress:'progress',deleteLearningProgress:'progress',
     updateJadwal:'schedules',deleteJadwal:'schedules',saveScheduleOverride:'schedules',deleteScheduleOverride:'schedules',addJadwalPengganti:'schedules',deleteJadwalPengganti:'schedules',
     recordTeacherAttendance:'teacher_attendance',deleteTeacherAttendance:'teacher_attendance',saveStudentRepertoire:'repertoire',deleteStudentRepertoire:'repertoire',
-    saveAnnualExam:'exams',publishAnnualExam:'exams',deleteAnnualExam:'exams',addGuru:'people',updateGuru:'people',deleteGuru:'people',addSiswaCombined:'people',updateSiswa:'people',deleteSiswa:'people',deleteExitedStudentRecord:'people'
+    saveAnnualExam:'exams',publishAnnualExam:'exams',deleteAnnualExam:'exams',savePracticeResource:'practice',deletePracticeResource:'practice',saveMediaEvaluation:'practice',deleteMediaEvaluation:'practice',addGuru:'people',updateGuru:'people',deleteGuru:'people',addSiswaCombined:'people',updateSiswa:'people',deleteSiswa:'people',deleteExitedStudentRecord:'people'
   };
 
   window.addEventListener('legacy:data-mutated', event => {
