@@ -428,7 +428,7 @@
           <div id="practiceHubLoading" class="widget-box practice-empty">Memuat materi latihan...</div>
           <div class="practice-hub-grid">
             <section><div class="practice-section-title"><div><h3>📚 Materi Latihan</h3><p>Bukan tugas. Materi ini selalu tersedia untuk latihan mandiri.</p></div></div><div id="practiceResourceList" class="practice-resource-list"></div></section>
-            <section><div class="practice-section-title"><div><h3>🎧 Evaluasi Audio / Video</h3><p>Penilaian tone, rhythm, tempo, teknik, ekspresi, feedback, dan target berikutnya.</p></div></div><div id="mediaEvaluationList" class="media-eval-list"></div></section>
+            <section><div class="practice-section-title"><div><h3>🎧 Evaluasi Audio / Video</h3><p>Pilih siswa dan tugas/latihan agar evaluasi tetap rapi saat data sudah banyak.</p></div></div><div id="mediaEvaluationBrowseFilters" class="media-eval-browse-filters"></div><div id="mediaEvaluationList" class="media-eval-list"></div></section>
           </div>
         </div>
 
@@ -1347,20 +1347,15 @@
       <div class="modal-header"><h3 id="mediaEvaluationModalTitle">Evaluasi Audio/Video Baru</h3><button class="modal-close" onclick="closeMediaEvaluationModal()">&times;</button></div>
       <form onsubmit="return saveMediaEvaluation(event)">
         <input type="hidden" id="mediaEvalId">
-        <div class="practice-form-grid">
-          <div class="form-group"><label>Siswa</label><select id="mediaEvalStudent" required onchange="syncEvaluationInstrument()"></select></div>
-          <div class="form-group"><label>Instrumen</label><select id="mediaEvalInstrument" required></select></div>
-          <div class="form-group"><label>Repertoire (opsional)</label><select id="mediaEvalRepertoire"><option value="">Tanpa Repertoire</option></select></div>
+        <div class="practice-form-grid media-eval-form-top">
+          <div class="form-group"><label>Pilih Siswa</label><select id="mediaEvalStudent" required style="display:none"></select><div id="mediaEvalStudentPicker" class="ph-student-picker"></div></div>
+          <div class="form-group"><label>Instrumen</label><select id="mediaEvalInstrument" required onchange="onMediaEvalInstrumentChange()"></select></div>
+          <div class="form-group practice-span-2"><label>Pilih Tugas / Latihan</label><select id="mediaEvalSource" onchange="onMediaEvalSourceChange()"><option value="">Tanpa sumber khusus</option></select><small>Pilih Tugas, Latihan Mandiri, atau Repertoire siswa agar evaluasi mudah dicari kembali.</small></div>
+          <div class="form-group" style="display:none"><label>Repertoire</label><select id="mediaEvalRepertoire"><option value="">Tanpa Repertoire</option></select></div>
           <div class="form-group"><label>Judul Evaluasi</label><input id="mediaEvalTitle" required placeholder="Contoh: Full Performance - Autumn Leaves"></div>
-          <div class="form-group practice-span-2"><label>Link Audio / Video</label><input type="url" id="mediaEvalUrl" placeholder="YouTube Unlisted atau link Google Drive"><small>Gunakan YouTube Unlisted untuk video panjang. Audio boleh berupa link Google Drive.</small></div>
+          <div class="form-group"><label>Link Audio / Video</label><input type="url" id="mediaEvalUrl" placeholder="YouTube Unlisted atau link Google Drive"><small>Gunakan YouTube Unlisted untuk video panjang. Audio boleh berupa link Google Drive.</small></div>
         </div>
-        <div class="media-score-editor">
-          <div><label>Tone</label><input id="mediaEvalTone" type="number" min="0" max="100" value="0"></div>
-          <div><label>Rhythm</label><input id="mediaEvalRhythm" type="number" min="0" max="100" value="0"></div>
-          <div><label>Tempo</label><input id="mediaEvalTempo" type="number" min="0" max="100" value="0"></div>
-          <div><label>Teknik</label><input id="mediaEvalTechnique" type="number" min="0" max="100" value="0"></div>
-          <div><label>Ekspresi</label><input id="mediaEvalExpression" type="number" min="0" max="100" value="0"></div>
-        </div>
+        <div class="media-aspect-editor-wrap"><div class="practice-section-title"><div><h3>Aspek Penilaian</h3><p>Otomatis mengikuti instrumen. Nama aspek dan nilainya tetap bisa diedit guru.</p></div></div><div id="mediaEvalAspectEditor" class="media-aspect-editor"></div></div>
         <div class="practice-form-grid">
           <div class="form-group"><label>Kekuatan Utama</label><textarea id="mediaEvalStrength" rows="3"></textarea></div>
           <div class="form-group"><label>Perlu Ditingkatkan</label><textarea id="mediaEvalImprovement" rows="3"></textarea></div>

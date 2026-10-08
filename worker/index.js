@@ -3364,11 +3364,20 @@ function mapPracticeResource(row) {
 }
 function mapMediaEvaluation(row) {
   const scores={tone:Number(row.tone_score||0),rhythm:Number(row.rhythm_score||0),tempo:Number(row.tempo_score||0),technique:Number(row.technique_score||0),expression:Number(row.expression_score||0)};
-  const averageScore=Math.round((scores.tone+scores.rhythm+scores.tempo+scores.technique+scores.expression)/5);
+  const legacyAspects=[
+    {key:'tone',label:'Tone',description:'Kualitas dan konsistensi bunyi.',score:scores.tone},
+    {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan kestabilan pulse.',score:scores.rhythm},
+    {key:'tempo',label:'Tempo',description:'Kestabilan tempo.',score:scores.tempo},
+    {key:'technique',label:'Teknik',description:'Ketepatan dan kontrol teknik instrumen.',score:scores.technique},
+    {key:'expression',label:'Ekspresi',description:'Musikalitas, dinamika, dan penghayatan.',score:scores.expression}
+  ];
+  const aspects=Array.isArray(row.score_aspects)&&row.score_aspects.length?row.score_aspects.map((x,i)=>({key:String(x?.key||`aspect_${i+1}`),label:String(x?.label||`Aspek ${i+1}`),description:String(x?.description||''),score:Math.max(0,Math.min(100,Number(x?.score||0)))})):legacyAspects;
+  const averageScore=aspects.length?Math.round(aspects.reduce((sum,x)=>sum+Number(x.score||0),0)/aspects.length):0;
   return {
     evaluationID:row.evaluation_id || '', studentID:row.student_id || '', studentName:row.student_name_snapshot || '',
     teacherID:row.teacher_id || '', teacherName:row.teacher_name_snapshot || '', instrument:row.instrument || '', repertoireID:row.repertoire_id || '',
-    title:row.title || '', mediaUrl:row.media_url || '', mediaKind:row.media_kind || 'link', scores, averageScore,
+    sourceType:row.source_type || '', sourceID:row.source_id || '', sourceLabel:row.source_label || '',
+    title:row.title || '', mediaUrl:row.media_url || '', mediaKind:row.media_kind || 'link', scores, aspects, averageScore,
     strength:row.strength || '', improvement:row.improvement || '', nextTarget:row.next_target || '',
     markers:Array.isArray(row.feedback_markers) ? row.feedback_markers : [], notes:row.notes || '', createdAt:row.created_at || '', updatedAt:row.updated_at || ''
   };
@@ -3424,7 +3433,11 @@ async function saveMediaEvaluationSupabase(env,session,payload) {
   const studentId=String(payload.studentID||'').trim();const student=await practiceStudentAndAccess(env,session,studentId);const id=String(payload.evaluationID||'').trim();let existing=null;
   if(id){const rows=await sbRows(env,'media_evaluations',{evaluation_id:`eq.${id}`,limit:'1'});existing=rows[0]||null;if(!existing)throw new Error('Evaluasi tidak ditemukan.');if(String(existing.teacher_id||'')!==String(session.userID||''))throw new Error('Evaluasi ini dibuat oleh guru lain.');}
   const clamp=v=>Math.max(0,Math.min(100,Math.round(Number(v)||0))); const mediaUrl=String(payload.mediaUrl||'').trim(); const yt=buildYouTubeMeta(mediaUrl);
-  const body={student_id:studentId,student_name_snapshot:String(student.name||''),teacher_id:String(session.userID||''),teacher_name_snapshot:String(session.userName||''),instrument:String(payload.instrument||student.instrument||'Musik'),repertoire_id:String(payload.repertoireID||'').trim()||null,title:String(payload.title||'').trim(),media_url:mediaUrl,media_kind:yt.videoId?'youtube':(mediaUrl?'link':'none'),tone_score:clamp(payload.tone),rhythm_score:clamp(payload.rhythm),tempo_score:clamp(payload.tempo),technique_score:clamp(payload.technique),expression_score:clamp(payload.expression),strength:String(payload.strength||'').trim(),improvement:String(payload.improvement||'').trim(),next_target:String(payload.nextTarget||'').trim(),feedback_markers:parseFeedbackMarkers(payload.markers),notes:String(payload.notes||'').trim(),active:true,updated_at:new Date().toISOString()};
+  let aspects=Array.isArray(payload.aspects)?payload.aspects.slice(0,10).map((x,i)=>({key:String(x?.key||`aspect_${i+1}`).trim().slice(0,50),label:String(x?.label||`Aspek ${i+1}`).trim().slice(0,80),description:String(x?.description||'').trim().slice(0,240),score:clamp(x?.score)})):[];
+  if(!aspects.length){aspects=[{key:'tone',label:'Tone',score:clamp(payload.tone)},{key:'rhythm',label:'Rhythm',score:clamp(payload.rhythm)},{key:'tempo',label:'Tempo',score:clamp(payload.tempo)},{key:'technique',label:'Teknik',score:clamp(payload.technique)},{key:'expression',label:'Ekspresi',score:clamp(payload.expression)}];}
+  const byKey=Object.fromEntries(aspects.map(x=>[String(x.key||'').toLowerCase(),x.score]));
+  const fallback=i=>Number(aspects[i]?.score||0);
+  const body={student_id:studentId,student_name_snapshot:String(student.name||''),teacher_id:String(session.userID||''),teacher_name_snapshot:String(session.userName||''),instrument:String(payload.instrument||student.instrument||'Musik'),repertoire_id:String(payload.repertoireID||'').trim()||null,source_type:String(payload.sourceType||'').trim().slice(0,30),source_id:String(payload.sourceID||'').trim().slice(0,120),source_label:String(payload.sourceLabel||'').trim().slice(0,240),title:String(payload.title||'').trim(),media_url:mediaUrl,media_kind:yt.videoId?'youtube':(mediaUrl?'link':'none'),score_aspects:aspects,tone_score:clamp(byKey.tone??fallback(0)),rhythm_score:clamp(byKey.rhythm??fallback(1)),tempo_score:clamp(byKey.tempo??fallback(2)),technique_score:clamp(byKey.technique??fallback(3)),expression_score:clamp(byKey.expression??fallback(4)),strength:String(payload.strength||'').trim(),improvement:String(payload.improvement||'').trim(),next_target:String(payload.nextTarget||'').trim(),feedback_markers:parseFeedbackMarkers(payload.markers),notes:String(payload.notes||'').trim(),active:true,updated_at:new Date().toISOString()};
   if(!body.title)throw new Error('Judul evaluasi wajib diisi.');
   const response=existing?await supabaseRest(env,`/rest/v1/media_evaluations?evaluation_id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)}):await supabaseRest(env,'/rest/v1/media_evaluations',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)});
   return {success:true,message:existing?'Evaluasi berhasil diperbarui.':'Evaluasi Audio/Video berhasil disimpan.',item:Array.isArray(response)&&response[0]?mapMediaEvaluation(response[0]):null};
