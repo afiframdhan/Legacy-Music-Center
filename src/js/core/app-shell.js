@@ -33,6 +33,7 @@
       document.getElementById('dashCurrentDate').textContent = now.toLocaleDateString('id-ID', options);
       const addDateInput = document.getElementById('addSiswaTanggalMasuk');
       if (addDateInput && !addDateInput.value) addDateInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      initLmcPersonFilterPickers();
     }
 
     function initSignaturePads() {
@@ -250,3 +251,168 @@
       setTimeout(() => { if(!sb.classList.contains('open') && window.innerWidth <= 768) sb.style.display = 'none'; }, 300);
     }
 
+
+
+    // Unified searchable person filter used across Admin/Guru/Siswa pages.
+    // The original <select> remains the source of truth so existing onchange
+    // handlers and business logic keep working unchanged.
+    const LMC_PERSON_FILTERS = {
+      adminSelectGuruFilter:'teacher',
+      lpPageTeacher:'teacher', lpPageStudent:'student',
+      repertoireTeacherFilter:'teacher', repertoireStudentFilter:'student',
+      practiceStudentFilter:'student', studentReportGuru:'teacher',
+      filterSiswaGuru:'teacher', filterJadwalGuru:'teacher',
+      makeupFilterTeacher:'teacher', operationalCalendarTeacher:'teacher',
+      filterProgressGuru:'teacher', filterProgressSiswa:'student', filterRiwayatSelect:'student',
+      taskStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
+    };
+
+    function lmcPersonInitials(name) {
+      const words=String(name||'').trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return '?';
+      return (words.length===1 ? words[0].slice(0,1) : words[0].slice(0,1)+words[1].slice(0,1)).toUpperCase();
+    }
+
+    function lmcPersonCleanLabel(label) {
+      return String(label||'').replace(/\s+/g,' ').trim();
+    }
+
+    function lmcPersonFindStudent(value, label) {
+      const v=String(value||'').trim().toLowerCase();
+      const text=lmcPersonCleanLabel(label).toLowerCase();
+      return (globalSiswaList||[]).find(s=>{
+        const id=String(s.siswaID||s.id||'').trim().toLowerCase();
+        const name=String(s.nama||'').trim().toLowerCase();
+        return (v && (v===id || v===name)) || (name && (text===name || text.startsWith(name+' ') || text.startsWith(name+'(') || text.startsWith(name+' -') || text.startsWith(name+' •')));
+      }) || null;
+    }
+
+    function lmcPersonFindTeacher(value, label) {
+      const v=String(value||'').trim().toLowerCase();
+      const text=lmcPersonCleanLabel(label).toLowerCase();
+      return (globalGuruList||[]).find(g=>{
+        const id=String(g.id||g.guruID||'').trim().toLowerCase();
+        const name=String(g.nama||'').trim().toLowerCase();
+        return (v && (v===id || v===name)) || (name && (text===name || text.startsWith(name+' ') || text.startsWith(name+'(') || text.startsWith(name+' -') || text.startsWith(name+' •')));
+      }) || null;
+    }
+
+    function lmcPersonStudentMeta(student, fallback='') {
+      if (!student) return fallback || 'Siswa';
+      const classes=Array.isArray(student.kelasList)?student.kelasList:[];
+      const cls=classes[0]||{};
+      return [cls.instrumen||student.instrumen||'', cls.grade||cls.kelas||student.kelas||''].filter(Boolean).join(' • ') || 'Siswa';
+    }
+
+    function lmcPersonTeacherMeta(teacher, fallback='') {
+      if (!teacher) return fallback || 'Guru Pengajar';
+      return String(teacher.instrumen||'Guru Pengajar').trim() || 'Guru Pengajar';
+    }
+
+    function lmcPersonAvatar(person, kind, fallbackName) {
+      const name=String(person?.nama||fallbackName||'').trim();
+      const photo=String(person?.foto||person?.photoUrl||person?.fotoProfil||'').trim();
+      const initials=lmcPersonInitials(name);
+      if (photo) return `<span class="lmc-person-avatar"><img src="${escapeTaskHtml(photo)}" alt="${escapeTaskHtml(name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span style="display:none">${escapeTaskHtml(initials)}</span></span>`;
+      return `<span class="lmc-person-avatar"><span>${escapeTaskHtml(initials)}</span></span>`;
+    }
+
+    function lmcPersonFilterOptionModel(select, option, kind) {
+      const label=lmcPersonCleanLabel(option.textContent||option.label||'');
+      const value=String(option.value??'');
+      const generic=!value || /^(semua|pilih|--)/i.test(label);
+      if (generic) return {value,label:label||((kind==='teacher')?'Semua Guru':'Semua Siswa'),meta:kind==='teacher'?'Tampilkan semua guru':'Tampilkan semua siswa',person:null,generic:true};
+      const person=kind==='teacher'?lmcPersonFindTeacher(value,label):lmcPersonFindStudent(value,label);
+      const name=person?.nama || label.replace(/\s*[\(•—-].*$/,'').trim() || label;
+      const meta=kind==='teacher'?lmcPersonTeacherMeta(person,label===name?'':label.replace(name,'').replace(/^[\s(•—-]+|[)\s]+$/g,'')):lmcPersonStudentMeta(person,label===name?'':label.replace(name,'').replace(/^[\s(•—-]+|[)\s]+$/g,''));
+      return {value,label:name,meta,person,generic:false};
+    }
+
+    function closeLmcPersonFilterPickers(except=null) {
+      document.querySelectorAll('.lmc-person-filter.open').forEach(host=>{
+        if (host===except) return;
+        host.classList.remove('open');
+        host.querySelector('.lmc-person-filter-trigger')?.setAttribute('aria-expanded','false');
+      });
+    }
+
+    function lmcPersonFilterSearch(host, query) {
+      const q=String(query||'').trim().toLowerCase(); let count=0;
+      host.querySelectorAll('.lmc-person-filter-option').forEach(row=>{
+        const ok=!q || String(row.dataset.search||'').includes(q);
+        row.hidden=!ok; if(ok)count++;
+      });
+      const empty=host.querySelector('.lmc-person-filter-empty'); if(empty) empty.hidden=count>0;
+    }
+
+    function lmcPersonFilterChoose(selectId, encodedValue) {
+      const select=document.getElementById(selectId); if(!select)return;
+      let value=''; try{value=decodeURIComponent(encodedValue||'');}catch(_){value=encodedValue||'';}
+      select.value=value;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+      closeLmcPersonFilterPickers();
+      requestAnimationFrame(()=>refreshLmcPersonFilterPicker(select));
+    }
+
+    function refreshLmcPersonFilterPicker(select) {
+      if (!select || !LMC_PERSON_FILTERS[select.id]) return;
+      const kind=LMC_PERSON_FILTERS[select.id];
+      let host=select.nextElementSibling;
+      if (!host || !host.classList.contains('lmc-person-filter')) return enhanceLmcPersonFilter(select);
+      const options=[...select.options].map(o=>lmcPersonFilterOptionModel(select,o,kind));
+      const selected=options.find(o=>String(o.value)===String(select.value)) || options[0] || {label:kind==='teacher'?'Pilih Guru':'Pilih Siswa',meta:'',generic:true};
+      const triggerPerson=selected.generic
+        ? `<span class="lmc-person-avatar generic">${kind==='teacher'?'🎓':'◎'}</span>`
+        : lmcPersonAvatar(selected.person,kind,selected.label);
+      const trigger=host.querySelector('.lmc-person-filter-trigger');
+      trigger.disabled=!!select.disabled;
+      host.classList.toggle('is-disabled',!!select.disabled);
+      trigger.innerHTML=`<span class="lmc-person-filter-person">${triggerPerson}<span><b>${escapeTaskHtml(selected.label)}</b><small>${escapeTaskHtml(selected.meta||'')}</small></span></span><span class="lmc-person-filter-chevron">⌄</span>`;
+      const list=host.querySelector('.lmc-person-filter-options');
+      if(list) list.innerHTML=options.map(item=>{
+        const avatar=item.generic?`<span class="lmc-person-avatar generic">${kind==='teacher'?'🎓':'◎'}</span>`:lmcPersonAvatar(item.person,kind,item.label);
+        const active=String(item.value)===String(select.value)?' active':'';
+        const search=escapeTaskHtml(`${item.label} ${item.meta}`.toLowerCase());
+        return `<button type="button" class="lmc-person-filter-option${active}" data-search="${search}" onclick="lmcPersonFilterChoose('${escapeTaskHtml(select.id)}','${encodeURIComponent(item.value)}')">${avatar}<span><b>${escapeTaskHtml(item.label)}</b><small>${escapeTaskHtml(item.meta||'')}</small></span></button>`;
+      }).join('')+`<div class="lmc-person-filter-empty" hidden>Tidak ada ${kind==='teacher'?'guru':'siswa'} yang cocok.</div>`;
+    }
+
+    function enhanceLmcPersonFilter(select) {
+      if (!select || !LMC_PERSON_FILTERS[select.id]) return;
+      if (select.nextElementSibling?.classList.contains('lmc-person-filter')) return refreshLmcPersonFilterPicker(select);
+      const kind=LMC_PERSON_FILTERS[select.id];
+      select.classList.add('lmc-person-filter-native');
+      const host=document.createElement('div'); host.className='lmc-person-filter'; host.dataset.forSelect=select.id;
+      host.innerHTML=`<button type="button" class="lmc-person-filter-trigger" aria-expanded="false"></button><button type="button" class="lmc-person-filter-backdrop" aria-label="Tutup pilihan"></button><div class="lmc-person-filter-menu"><div class="lmc-person-filter-head"><div><b>${kind==='teacher'?'Pilih Guru':'Pilih Siswa'}</b><small>Cari berdasarkan nama, instrumen, atau kelas</small></div><button type="button" class="lmc-person-filter-close" aria-label="Tutup">×</button></div><div class="lmc-person-filter-search"><span>⌕</span><input type="search" placeholder="Cari ${kind==='teacher'?'guru':'siswa'}..."></div><div class="lmc-person-filter-options"></div></div>`;
+      select.insertAdjacentElement('afterend',host);
+      const trigger=host.querySelector('.lmc-person-filter-trigger');
+      trigger.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();refreshLmcPersonFilterPicker(select);if(select.disabled)return;const open=!host.classList.contains('open');closeLmcPersonFilterPickers(host);host.classList.toggle('open',open);trigger.setAttribute('aria-expanded',open?'true':'false');if(open)setTimeout(()=>host.querySelector('input[type="search"]')?.focus(),20);});
+      host.querySelector('.lmc-person-filter-close').addEventListener('click',()=>closeLmcPersonFilterPickers());
+      host.querySelector('.lmc-person-filter-backdrop').addEventListener('click',()=>closeLmcPersonFilterPickers());
+      host.querySelector('input[type="search"]').addEventListener('input',event=>lmcPersonFilterSearch(host,event.target.value));
+      select.addEventListener('change',()=>requestAnimationFrame(()=>refreshLmcPersonFilterPicker(select)));
+      refreshLmcPersonFilterPicker(select);
+    }
+
+    function refreshAllLmcPersonFilterPickers() {
+      Object.keys(LMC_PERSON_FILTERS).forEach(id=>{const select=document.getElementById(id);if(select)enhanceLmcPersonFilter(select);});
+    }
+
+    function initLmcPersonFilterPickers() {
+      if (window.__lmcPersonFiltersReady) { refreshAllLmcPersonFilterPickers(); return; }
+      window.__lmcPersonFiltersReady=true;
+      refreshAllLmcPersonFilterPickers();
+      document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('.lmc-person-filter'))closeLmcPersonFilterPickers();},true);
+      document.addEventListener('keydown',event=>{if(event.key==='Escape')closeLmcPersonFilterPickers();});
+      const observer=new MutationObserver(records=>{
+        let needs=false;
+        for(const record of records){
+          const target=record.target;
+          if(target?.id && LMC_PERSON_FILTERS[target.id]){needs=true;break;}
+          if(target?.closest){const select=target.closest('select');if(select?.id && LMC_PERSON_FILTERS[select.id]){needs=true;break;}}
+          if([...record.addedNodes||[]].some(node=>node.nodeType===1 && (node.matches?.('select') || node.querySelector?.('select')))){needs=true;break;}
+        }
+        if(needs) requestAnimationFrame(refreshAllLmcPersonFilterPickers);
+      });
+      observer.observe(document.body,{childList:true,subtree:true});
+    }
