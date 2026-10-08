@@ -1,8 +1,9 @@
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 1800;
-  const FOCUS_REFRESH_MIN_AGE = 1800;
+  const ACTIVE_INTERVAL = 4000;
+  const IDLE_INTERVAL = 12000;
+  const FOCUS_REFRESH_MIN_AGE = 2500;
   let lastPollAt = 0;
   let refreshTimer = null;
   let deltaTimer = null;
@@ -88,6 +89,35 @@
     }
   }
 
+  function markModulesLoaded(modules) {
+    (modules || []).forEach(module => {
+      globalLoadedModules.add(module);
+      globalPartialModules.delete(module);
+    });
+  }
+
+  async function ensureLiveModules(modules, options = {}) {
+    const requested = [...new Set((modules || []).filter(Boolean))];
+    const needed = requested.filter(module => options.force || globalPartialModules.has(module) || !globalLoadedModules.has(module));
+    if (!needed.length || !currentUser?.userType) return true;
+    const key = needed.slice().sort().join(',');
+    if (globalModuleLoadInFlight.has(key)) return globalModuleLoadInFlight.get(key);
+    const task = LegacyAPI.rpc('getLiveModuleData', [{ modules:needed }])
+      .then(res => {
+        if (!res || res.success === false) throw new Error(res?.message || 'Data modul gagal dimuat.');
+        renderChangedModules(needed, res);
+        markModulesLoaded(needed);
+        return true;
+      })
+      .catch(error => {
+        console.warn('[Legacy Module Loader]', needed.join(','), error?.message || error);
+        return false;
+      })
+      .finally(() => globalModuleLoadInFlight.delete(key));
+    globalModuleLoadInFlight.set(key, task);
+    return task;
+  }
+
   async function flushModuleQueue() {
     deltaTimer = null;
     if (!currentUser || !currentUser.userType || !moduleQueue.size) return;
@@ -97,7 +127,10 @@
     try {
       if (lightweight.length) {
         const res = await LegacyAPI.rpc('getLiveModuleData', [{ modules:lightweight }]);
-        if (res && res.success !== false) renderChangedModules(lightweight, res);
+        if (res && res.success !== false) {
+          renderChangedModules(lightweight, res);
+          markModulesLoaded(lightweight);
+        }
       }
     } catch (error) {
       console.debug('[Legacy Live Sync] delta sync skipped:', error?.message || error);
@@ -134,16 +167,33 @@
     } finally { globalLiveSyncRunning = false; }
   }
 
+  function nextSyncDelay() {
+    const recentlyActive = Date.now() - (globalLastInteractionAt || 0) < 30000;
+    return recentlyActive ? ACTIVE_INTERVAL : IDLE_INTERVAL;
+  }
+
+  function scheduleNextPoll() {
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
+    if (!currentUser?.userType) return;
+    globalLiveSyncTimer = setTimeout(async () => {
+      globalLiveSyncTimer = null;
+      await pollLiveSync(false);
+      scheduleNextPoll();
+    }, nextSyncDelay());
+  }
+
   function configureGlobalLiveSync() {
     if (!currentUser || !currentUser.userType) return;
-    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
-    pollLiveSync(true);
-    globalLiveSyncTimer = setInterval(() => pollLiveSync(false), ACTIVE_INTERVAL);
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
+    pollLiveSync(true).finally(scheduleNextPoll);
   }
 
   function stopGlobalLiveSync() {
-    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    globalLoadedModules.clear();
+    globalPartialModules.clear();
+    globalModuleLoadInFlight.clear();
     moduleQueue.clear();
     if (deltaTimer) clearTimeout(deltaTimer); deltaTimer = null;
   }
@@ -160,13 +210,27 @@
     const method = event?.detail?.method || '';
     const module = mutationToModule[method];
     if (module) queueModuleSync([module]);
-    setTimeout(() => pollLiveSync(true), 260);
+    setTimeout(() => pollLiveSync(true), 140);
   });
-  window.addEventListener('focus', () => { if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && currentUser?.userType) pollLiveSync(true); });
+  ['pointerdown','keydown','touchstart'].forEach(type => {
+    window.addEventListener(type, () => { globalLastInteractionAt = Date.now(); }, { passive:true });
+  });
+  window.addEventListener('focus', () => {
+    globalLastInteractionAt = Date.now();
+    if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentUser?.userType) {
+      globalLastInteractionAt = Date.now();
+      pollLiveSync(true);
+      scheduleNextPoll();
+    }
+  });
 
   window.configureGlobalLiveSync = configureGlobalLiveSync;
   window.stopGlobalLiveSync = stopGlobalLiveSync;
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
   window.queueLiveModuleSync = queueModuleSync;
+  window.ensureLiveModules = ensureLiveModules;
+  window.applyLiveModulePayload = renderChangedModules;
 })();

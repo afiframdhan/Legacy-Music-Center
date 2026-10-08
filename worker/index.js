@@ -2301,14 +2301,14 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       const params = { order:'created_at.desc' };
       if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
-      out.assignments = (await sbRows(env, 'assignments', params)).map(mapAssignment);
+      out.assignments = (await sbPagedRows(env, 'assignments', params)).map(mapAssignment);
       return;
     }
     if (module === 'progress') {
       const params = { order:'last_updated_at.desc.nullslast,created_at.desc' };
       if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
-      out.progress = (await sbRows(env, 'learning_progress', params)).map(mapProgress);
+      out.progress = (await sbPagedRows(env, 'learning_progress', params)).map(mapProgress);
       return;
     }
     if (module === 'schedules') {
@@ -2316,7 +2316,7 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
       const [rows, replacements, overrides] = await Promise.all([
-        sbRows(env, 'schedules', params),
+        sbPagedRows(env, 'schedules', params),
         session.userType === 'siswa' ? sbRowsSafe(env,'replacement_schedules',{student_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
           session.userType === 'guru' ? sbRowsSafe(env,'replacement_schedules',{teacher_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
           sbRowsSafe(env,'replacement_schedules',{order:'scheduled_date.desc.nullslast,created_at.desc'}),
@@ -2331,7 +2331,7 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       const params = { order:'attendance_date.desc,created_at.desc' };
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
       if (session.userType === 'siswa') { out.teacherAttendance = []; return; }
-      out.teacherAttendance = (await sbRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
+      out.teacherAttendance = (await sbPagedRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
       return;
     }
     if (module === 'repertoire') {
@@ -2377,6 +2377,15 @@ async function sbRowsSafe(env, table, params = {}) {
     return await sbRows(env, table, params);
   } catch (error) {
     console.error(`Optional Supabase table ${table} failed:`, error);
+    return [];
+  }
+}
+
+async function sbPagedRowsSafe(env, table, params = {}, maxRows = 10000) {
+  try {
+    return await sbPagedRows(env, table, params, maxRows);
+  } catch (error) {
+    console.error(`Optional paged Supabase table ${table} failed:`, error);
     return [];
   }
 }
@@ -2519,9 +2528,9 @@ function intervalsOverlap(startA,endA,startB,endB) {
 
 async function buildAdminDataQuality(env) {
   const [students,teachers,classes,schedules,overrides,progress] = await Promise.all([
-    sbRows(env,'students',{order:'name.asc'}), sbRows(env,'teachers',{order:'name.asc'}), sbRows(env,'student_classes',{order:'created_at.asc'}),
-    sbRows(env,'schedules',{order:'day_name.asc,start_time.asc'}), sbRows(env,'schedule_overrides',{status:'eq.Aktif',order:'original_date.desc'}),
-    sbRows(env,'learning_progress',{order:'last_updated_at.desc.nullslast,created_at.desc'})
+    sbPagedRows(env,'students',{order:'name.asc'}), sbPagedRows(env,'teachers',{order:'name.asc'}), sbPagedRows(env,'student_classes',{order:'created_at.asc'}),
+    sbPagedRows(env,'schedules',{order:'day_name.asc,start_time.asc'}), sbPagedRows(env,'schedule_overrides',{status:'eq.Aktif',order:'original_date.desc'}),
+    sbPagedRows(env,'learning_progress',{order:'last_updated_at.desc.nullslast,created_at.desc'})
   ]);
   const findings=[];
   const add=(severity,category,title,detail,entityName,section)=>findings.push({id:`DQ-${findings.length+1}`,severity,category,title,detail,entityName:entityName||'',section:section||'section-siswa'});
@@ -3558,11 +3567,11 @@ async function buildStudentDashboardSupabase(env, session) {
   const [students, classes, schedules, attendance, assignments, progress, replacements, announcements, scheduleOverrides, teachers] =
     await Promise.all([
       sbRows(env, 'students', { student_id:`eq.${id}`, limit:'1' }),
-      sbRows(env, 'student_classes', { student_id:`eq.${id}`, order:'created_at.asc' }),
-      sbRows(env, 'schedules', { student_id:`eq.${id}`, order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { student_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc' }),
-      sbRows(env, 'assignments', { student_id:`eq.${id}`, order:'created_at.desc' }),
-      sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
+      sbPagedRows(env, 'student_classes', { student_id:`eq.${id}`, order:'created_at.asc' }),
+      sbPagedRows(env, 'schedules', { student_id:`eq.${id}`, order:'created_at.asc' }),
+      sbRows(env, 'student_attendance', { student_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'120' }),
+      sbRows(env, 'assignments', { student_id:`eq.${id}`, order:'created_at.desc', limit:'120' }),
+      sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'72' }),
       sbRowsSafe(env, 'replacement_schedules', { student_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
       sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
       getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; }),
@@ -3622,6 +3631,7 @@ async function buildStudentDashboardSupabase(env, session) {
     success:true,
     dataSource:'supabase',
     userType:'siswa',
+    partialModules:['attendance','assignments','progress'],
     guruList:teachers
       .filter(row => {
         const teacherIds = new Set(classes.map(c => String(c.teacher_id || '')).filter(Boolean));
@@ -3664,26 +3674,51 @@ async function buildStudentDashboardSupabase(env, session) {
 
 async function buildTeacherDashboardSupabase(env, session) {
   const id = session.userID;
-  const [teachers, students, classes, schedules, attendance, assignments, progress, replacements, announcements, publications, scheduleOverrides] =
+
+  // Fast path: only load the students/classes that actually belong to this teacher.
+  // The previous implementation downloaded every student and every class in the school
+  // on each teacher login, then filtered them in Worker memory.
+  const [teachers, teacherClasses, directStudents, schedules, attendance, assignments, progress, replacements, announcements, publications, scheduleOverrides] =
     await Promise.all([
       sbRows(env, 'teachers', { teacher_id:`eq.${id}`, limit:'1' }),
-      sbRows(env, 'students', { order:'name.asc' }),
-      sbRows(env, 'student_classes', { order:'created_at.asc' }),
-      sbRows(env, 'schedules', { teacher_id:`eq.${id}`, order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc' }),
-      sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc' }),
-      sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
+      sbPagedRows(env, 'student_classes', { teacher_id:`eq.${id}`, order:'created_at.asc' }),
+      sbPagedRows(env, 'students', { teacher_id:`eq.${id}`, order:'name.asc' }),
+      sbPagedRows(env, 'schedules', { teacher_id:`eq.${id}`, order:'created_at.asc' }),
+      sbRows(env, 'student_attendance', { teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'220' }),
+      sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc', limit:'160' }),
+      sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'120' }),
       sbRowsSafe(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' }),
+      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc', limit:'120' }),
+      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'160' }),
       getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })
     ]);
 
   const teacher = teachers[0];
   if (!teacher) throw new Error('Data guru tidak ditemukan di Supabase.');
 
+  const directById = new Map(directStudents.map(student => [String(student.student_id || ''), student]));
+  const classStudentIds = [...new Set(teacherClasses.map(row => String(row.student_id || '').trim()).filter(Boolean))];
+  const missingIds = classStudentIds.filter(studentId => !directById.has(studentId));
+
+  let classStudents = [];
+  if (missingIds.length) {
+    const cleanIds = missingIds.map(value => String(value).replace(/[(),"]/g,'')).filter(Boolean);
+    if (cleanIds.length) {
+      classStudents = await sbPagedRows(env, 'students', {
+        student_id:`in.(${cleanIds.join(',')})`,
+        order:'name.asc'
+      });
+    }
+  }
+
+  const studentMap = new Map();
+  [...directStudents, ...classStudents].forEach(student => {
+    if (student && student.student_id) studentMap.set(String(student.student_id), student);
+  });
+  const students = [...studentMap.values()].sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'id'));
+
   const classMap = new Map();
-  for (const row of classes) {
+  for (const row of teacherClasses) {
     const key = String(row.student_id || '');
     if (!classMap.has(key)) classMap.set(key, []);
     classMap.get(key).push(row);
@@ -3694,16 +3729,7 @@ async function buildTeacherDashboardSupabase(env, session) {
   const studentNames = new Set();
 
   for (const student of students) {
-    const allClasses = classMap.get(student.student_id) || [];
-    const teacherClassesRaw = allClasses.filter(row => String(row.teacher_id || '') === id);
-
-    const shouldInclude =
-      teacherClassesRaw.length > 0 ||
-      String(student.teacher_id || '') === id ||
-      (!student.teacher_id && allClasses.length === 0);
-
-    if (!shouldInclude) continue;
-
+    const teacherClassesRaw = classMap.get(String(student.student_id || '')) || [];
     const kelasList = teacherClassesRaw.map(row => mapClassRow(row, schedules));
     const instruments = uniqueText(kelasList.map(x => x.instrumen));
     const grades = uniqueText(kelasList.map(x => x.grade));
@@ -3745,31 +3771,32 @@ async function buildTeacherDashboardSupabase(env, session) {
       String(publication.sentByID || '').trim() === String(id || '').trim()
     )
     .map(publication => {
-    const progressItem = progressById.get(String(publication?.progressID || '')) || null;
-    const publicStudentId = String(publication?.studentID || '');
-    const student = studentByPublicId.get(publicStudentId) || null;
-    const studentClassList = teacherStudents.find(item => String(item.siswaID || '') === publicStudentId)?.kelasList || [];
-    const matchingClass = studentClassList.find(item =>
-      progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
-    ) || studentClassList[0] || null;
+      const progressItem = progressById.get(String(publication?.progressID || '')) || null;
+      const publicStudentId = String(publication?.studentID || '');
+      const student = studentByPublicId.get(publicStudentId) || null;
+      const studentClassList = teacherStudents.find(item => String(item.siswaID || '') === publicStudentId)?.kelasList || [];
+      const matchingClass = studentClassList.find(item =>
+        progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
+      ) || studentClassList[0] || null;
 
-    return {
-      ...(publication || {}),
-      studentID: publicStudentId,
-      studentName: student?.name || progressItem?.namaSiswa || '',
-      period: progressItem?.periode || '',
-      periodType: progressItem?.tipePeriode || '',
-      teacher: progressItem?.guru || teacher.name || publication?.sentBy || '',
-      instrument: matchingClass?.instrumen || student?.instrument || '',
-      grade: matchingClass?.grade || student?.grade || '',
-      status:'Terkirim'
-    };
-  });
+      return {
+        ...(publication || {}),
+        studentID: publicStudentId,
+        studentName: student?.name || progressItem?.namaSiswa || '',
+        period: progressItem?.periode || '',
+        periodType: progressItem?.tipePeriode || '',
+        teacher: progressItem?.guru || teacher.name || publication?.sentBy || '',
+        instrument: matchingClass?.instrumen || student?.instrument || '',
+        grade: matchingClass?.grade || student?.grade || '',
+        status:'Terkirim'
+      };
+    });
 
   return {
     success:true,
     dataSource:'supabase',
     userType:'guru',
+    partialModules:['attendance','assignments','progress'],
     guruInfo:{
       userID:teacher.teacher_id,
       nama:teacher.name || '',
@@ -3797,18 +3824,18 @@ async function buildAdminDashboardSupabase(env, session) {
   const [admins, students, teachers, classes, schedules, attendance, progress, replacements, announcements, history, teacherAttendance, scheduleOverrides, publications] =
     await Promise.all([
       sbRows(env, 'admins', { admin_id:`eq.${session.userID}`, limit:'1' }),
-      sbRows(env, 'students', { order:'name.asc' }),
-      sbRows(env, 'teachers', { order:'name.asc' }),
-      sbRows(env, 'student_classes', { order:'created_at.asc' }),
-      sbRows(env, 'schedules', { order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc' }),
-      sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc' }),
+      sbPagedRows(env, 'students', { order:'name.asc' }),
+      sbPagedRows(env, 'teachers', { order:'name.asc' }),
+      sbPagedRows(env, 'student_classes', { order:'created_at.asc' }),
+      sbPagedRows(env, 'schedules', { order:'created_at.asc' }),
+      sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc', limit:'240' }),
+      sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc', limit:'220' }),
       sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' }),
       sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc' }),
+      sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc', limit:'300' }),
+      sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc', limit:'220' }),
       getScheduleOverrideRowsForSession(env, session),
-      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' })
+      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'220' })
     ]);
 
   const admin = admins[0] || null;
@@ -3883,6 +3910,7 @@ async function buildAdminDashboardSupabase(env, session) {
     success:true,
     dataSource:'supabase',
     userType:'admin',
+    partialModules:['attendance','progress','teacher_attendance'],
     adminInfo:admin ? {
       userID:admin.admin_id,
       nama:admin.name || '',

@@ -29,7 +29,8 @@ const cssSources = [
   'src/css/components.css',
   'src/css/pages/tugas.css',
   'src/css/pages/progress-and-pages.css',
-  'src/css/responsive-theme-admin.css'
+  'src/css/responsive-theme-admin.css',
+  'src/css/theme-system.css'
 ];
 
 async function concat(files) {

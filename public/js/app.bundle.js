@@ -299,6 +299,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let globalLiveSyncTimer = null;
     let globalLiveSyncRunning = false;
     let globalLiveSyncVersions = {};
+    let globalLoadedModules = new Set();
+    let globalPartialModules = new Set();
+    let globalModuleLoadInFlight = new Map();
+    let globalLastInteractionAt = Date.now();
     let dashboardLoadInFlight = false;
     let dashboardRefreshQueued = false;
     let dashboardLastLoadedAt = 0;
@@ -699,8 +703,9 @@ let currentUser = { userType: '', userID: '', userName: '' };
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 1800;
-  const FOCUS_REFRESH_MIN_AGE = 1800;
+  const ACTIVE_INTERVAL = 4000;
+  const IDLE_INTERVAL = 12000;
+  const FOCUS_REFRESH_MIN_AGE = 2500;
   let lastPollAt = 0;
   let refreshTimer = null;
   let deltaTimer = null;
@@ -786,6 +791,35 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
   }
 
+  function markModulesLoaded(modules) {
+    (modules || []).forEach(module => {
+      globalLoadedModules.add(module);
+      globalPartialModules.delete(module);
+    });
+  }
+
+  async function ensureLiveModules(modules, options = {}) {
+    const requested = [...new Set((modules || []).filter(Boolean))];
+    const needed = requested.filter(module => options.force || globalPartialModules.has(module) || !globalLoadedModules.has(module));
+    if (!needed.length || !currentUser?.userType) return true;
+    const key = needed.slice().sort().join(',');
+    if (globalModuleLoadInFlight.has(key)) return globalModuleLoadInFlight.get(key);
+    const task = LegacyAPI.rpc('getLiveModuleData', [{ modules:needed }])
+      .then(res => {
+        if (!res || res.success === false) throw new Error(res?.message || 'Data modul gagal dimuat.');
+        renderChangedModules(needed, res);
+        markModulesLoaded(needed);
+        return true;
+      })
+      .catch(error => {
+        console.warn('[Legacy Module Loader]', needed.join(','), error?.message || error);
+        return false;
+      })
+      .finally(() => globalModuleLoadInFlight.delete(key));
+    globalModuleLoadInFlight.set(key, task);
+    return task;
+  }
+
   async function flushModuleQueue() {
     deltaTimer = null;
     if (!currentUser || !currentUser.userType || !moduleQueue.size) return;
@@ -795,7 +829,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     try {
       if (lightweight.length) {
         const res = await LegacyAPI.rpc('getLiveModuleData', [{ modules:lightweight }]);
-        if (res && res.success !== false) renderChangedModules(lightweight, res);
+        if (res && res.success !== false) {
+          renderChangedModules(lightweight, res);
+          markModulesLoaded(lightweight);
+        }
       }
     } catch (error) {
       console.debug('[Legacy Live Sync] delta sync skipped:', error?.message || error);
@@ -832,16 +869,33 @@ let currentUser = { userType: '', userID: '', userName: '' };
     } finally { globalLiveSyncRunning = false; }
   }
 
+  function nextSyncDelay() {
+    const recentlyActive = Date.now() - (globalLastInteractionAt || 0) < 30000;
+    return recentlyActive ? ACTIVE_INTERVAL : IDLE_INTERVAL;
+  }
+
+  function scheduleNextPoll() {
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
+    if (!currentUser?.userType) return;
+    globalLiveSyncTimer = setTimeout(async () => {
+      globalLiveSyncTimer = null;
+      await pollLiveSync(false);
+      scheduleNextPoll();
+    }, nextSyncDelay());
+  }
+
   function configureGlobalLiveSync() {
     if (!currentUser || !currentUser.userType) return;
-    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
-    pollLiveSync(true);
-    globalLiveSyncTimer = setInterval(() => pollLiveSync(false), ACTIVE_INTERVAL);
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
+    pollLiveSync(true).finally(scheduleNextPoll);
   }
 
   function stopGlobalLiveSync() {
-    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    globalLoadedModules.clear();
+    globalPartialModules.clear();
+    globalModuleLoadInFlight.clear();
     moduleQueue.clear();
     if (deltaTimer) clearTimeout(deltaTimer); deltaTimer = null;
   }
@@ -858,15 +912,29 @@ let currentUser = { userType: '', userID: '', userName: '' };
     const method = event?.detail?.method || '';
     const module = mutationToModule[method];
     if (module) queueModuleSync([module]);
-    setTimeout(() => pollLiveSync(true), 260);
+    setTimeout(() => pollLiveSync(true), 140);
   });
-  window.addEventListener('focus', () => { if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && currentUser?.userType) pollLiveSync(true); });
+  ['pointerdown','keydown','touchstart'].forEach(type => {
+    window.addEventListener(type, () => { globalLastInteractionAt = Date.now(); }, { passive:true });
+  });
+  window.addEventListener('focus', () => {
+    globalLastInteractionAt = Date.now();
+    if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentUser?.userType) {
+      globalLastInteractionAt = Date.now();
+      pollLiveSync(true);
+      scheduleNextPoll();
+    }
+  });
 
   window.configureGlobalLiveSync = configureGlobalLiveSync;
   window.stopGlobalLiveSync = stopGlobalLiveSync;
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
   window.queueLiveModuleSync = queueModuleSync;
+  window.ensureLiveModules = ensureLiveModules;
+  window.applyLiveModulePayload = renderChangedModules;
 })();
 
     function setLoginType(type) {
@@ -989,17 +1057,23 @@ let currentUser = { userType: '', userID: '', userName: '' };
       let menus = [];
       
       if(currentUser.userType === 'siswa') {
-        menus = [ 
-          { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
-          { id: 'section-practice-hub', label: 'Latihan Mandiri', icon: icons.practice },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
-          { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas } 
+        menus = [
+          { id:'dashboard-siswa', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Belajar', key:'student-learning', icon:icons.progress, items:[
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
+            { id:'section-tugas', label:'Tugas', icon:icons.tugas },
+            { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
+            { id:'section-practice-hub', label:'Latihan Mandiri', icon:icons.practice },
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress }
+          ]},
+          { group:'Hasil', key:'student-results', icon:icons.laporan, items:[
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan },
+            { id:'section-annual-exam', label:'Sertifikat', icon:icons.sertifikat }
+          ]},
+          { group:'Jadwal & Info', key:'student-info', icon:icons.jadwal, items:[
+            { id:'section-pengganti', label:'Jadwal Pengganti', icon:icons.pengganti },
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman }
+          ]}
         ];
       } else if(currentUser.userType === 'admin') {
         menus = [
@@ -1008,7 +1082,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
             { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
             { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
             { id:'section-annual-exam', label:'Ujian & Sertifikat', icon:icons.sertifikat },
-            { id:'section-progress', label:'Materi & Progress', icon:icons.progress },
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
             { id:'section-laporan', label:'Laporan', icon:icons.laporan }
           ]},
           { group:'Siswa & Kelas', key:'students', icon:icons.siswa, items:[
@@ -1035,36 +1109,31 @@ let currentUser = { userType: '', userID: '', userName: '' };
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
       } else {
-        menus = [ 
-          { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
-          { id: 'section-practice-hub', label: 'Latihan Mandiri', icon: icons.practice },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
-          { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
-          { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
-          { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas }, 
-          { id: 'fitur-guru', label: 'Manajemen Kelas', icon: icons.manajemen } 
+        menus = [
+          { id:'dashboard-guru', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Pembelajaran', key:'teacher-learning', icon:icons.progress, items:[
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
+            { id:'section-tugas', label:'Tugas', icon:icons.tugas },
+            { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
+            { id:'section-practice-hub', label:'Latihan Mandiri', icon:icons.practice },
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
+            { id:'section-annual-exam', label:'Ujian Tahunan', icon:icons.sertifikat }
+          ]},
+          { group:'Siswa & Jadwal', key:'teacher-students', icon:icons.siswa, items:[
+            { id:'section-siswa', label:'Daftar Siswa', icon:icons.siswa },
+            { id:'section-jadwal', label:'Jadwal Pelajaran', icon:icons.jadwal },
+            { id:'section-pengganti', label:'Jadwal Pengganti', icon:icons.pengganti },
+            { id:'fitur-guru', label:'Manajemen Kelas', icon:icons.manajemen }
+          ]},
+          { group:'Komunikasi', key:'teacher-comms', icon:icons.pengumuman, items:[
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman },
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan }
+          ]}
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'flex');
       }
-      
-      if (currentUser.userType === 'admin') {
-        renderAdminGroupedNavigation(navMenu, menus);
-      } else {
-        menus.forEach((item, index) => {
-          const li = document.createElement('li'); const a = document.createElement('a');
-          a.className = 'nav-link' + (index === 0 ? ' active' : '');
-          a.id = 'nav-' + item.id;
-          a.innerHTML = `${item.icon} <span>${item.label}</span>`;
-          a.onclick = () => switchTab(item.id);
-          li.appendChild(a); navMenu.appendChild(li);
-        });
-      }
+
+      renderAdminGroupedNavigation(navMenu, menus);
       document.querySelectorAll('.admin-only-quick-action').forEach(el => el.style.display = currentUser.userType === 'admin' ? 'flex' : 'none');
       const teacherManagementBox = document.getElementById('adminTeacherManagementBox');
       if (teacherManagementBox) teacherManagementBox.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
@@ -1091,7 +1160,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function renderAdminGroupedNavigation(navMenu, menus) {
-      const stored = (() => { try { return JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}'); } catch (_) { return {}; } })();
+      const stored = (() => { try { return JSON.parse(localStorage.getItem(`legacyNavGroups_${currentUser.userType}`) || '{}'); } catch (_) { return {}; } })();
       menus.forEach((item, index) => {
         if (item.standalone) {
           const li = document.createElement('li');
@@ -1135,14 +1204,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const next = forceOpen === null ? !group.classList.contains('expanded') : Boolean(forceOpen);
       group.classList.toggle('expanded', next);
       try {
-        const stored = JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}');
+        const stored = JSON.parse(localStorage.getItem(`legacyNavGroups_${currentUser.userType}`) || '{}');
         stored[key] = next;
-        localStorage.setItem('legacyAdminNavGroups', JSON.stringify(stored));
+        localStorage.setItem(`legacyNavGroups_${currentUser.userType}`, JSON.stringify(stored));
       } catch (_) {}
     }
 
     function revealAdminNavSection(sectionId) {
-      if (currentUser.userType !== 'admin') return;
       const link = document.getElementById('nav-' + sectionId);
       const group = link ? link.closest('.admin-nav-group') : null;
       if (group && !group.classList.contains('expanded')) toggleAdminNavGroup(group.dataset.group, true);
@@ -1150,6 +1218,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
     function switchTab(sectionId) {
       revealAdminNavSection(sectionId);
+      const lazyModulesBySection = {
+        'section-progress':['attendance'],
+        'section-tugas':['assignments'],
+        'section-learning-progress':['progress'],
+        'section-jadwal':['schedules'],
+        'section-pengganti':['schedules'],
+        'section-absensi-guru':['teacher_attendance']
+      };
+      const lazyModules = lazyModulesBySection[sectionId];
+      if (lazyModules && typeof ensureLiveModules === 'function') {
+        ensureLiveModules(lazyModules).catch(() => {});
+      }
       document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
       const activeLink = document.getElementById('nav-' + sectionId) || (sectionId === 'section-profil' ? document.getElementById('navProfilLink') : null);
       if(activeLink) activeLink.classList.add('active');
@@ -1367,6 +1447,22 @@ let currentUser = { userType: '', userID: '', userName: '' };
         globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
+
+        // Dashboard V3 loads only the data needed to paint the first screen quickly.
+        // Historical modules can be completed lazily when their page is opened.
+        globalPartialModules = new Set(Array.isArray(data.partialModules) ? data.partialModules : []);
+        globalLoadedModules = new Set();
+        const bootModules = {
+          attendance:Array.isArray(data.absensiList),
+          assignments:Array.isArray(data.tugasList),
+          progress:Array.isArray(data.learningProgressList),
+          schedules:Array.isArray(data.jadwal || data.schedules),
+          announcements:Array.isArray(data.pengumumanList),
+          teacher_attendance:Array.isArray(data.teacherAttendanceList)
+        };
+        Object.entries(bootModules).forEach(([module, present]) => {
+          if (present && !globalPartialModules.has(module)) globalLoadedModules.add(module);
+        });
 
         // Do not make a second blocking request for Guru List after dashboard load.
         // Admin already receives guruList from the same Supabase dashboard response;
@@ -3358,6 +3454,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     let practiceActiveEvaluation = '';
     let mediaEvalBrowseStudent = '';
     let mediaEvalBrowseSource = '';
+    let practiceActiveTab = 'materials';
 
     const MEDIA_EVAL_ASPECT_PRESETS = {
       gitar:[
@@ -3455,6 +3552,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     }
 
     function loadPracticeHub() {
+      if (typeof ensureLiveModules === 'function') ensureLiveModules(['assignments']).catch(()=>{});
       const loading = document.getElementById('practiceHubLoading');
       if (loading) { loading.style.display='block'; loading.textContent = practiceHubLoaded ? 'Memperbarui materi latihan...' : 'Memuat materi latihan...'; }
       google.script.run.withSuccessHandler(res => {
@@ -3511,8 +3609,27 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       });
     }
 
+    function setPracticeHubTab(tab) {
+      practiceActiveTab = tab === 'evaluations' ? 'evaluations' : 'materials';
+      document.getElementById('practiceMaterialsPane')?.classList.toggle('active', practiceActiveTab === 'materials');
+      document.getElementById('practiceEvaluationsPane')?.classList.toggle('active', practiceActiveTab === 'evaluations');
+      document.getElementById('practiceTabMaterials')?.classList.toggle('active', practiceActiveTab === 'materials');
+      document.getElementById('practiceTabEvaluations')?.classList.toggle('active', practiceActiveTab === 'evaluations');
+      const addMaterial = document.getElementById('practiceAddMaterialBtn');
+      const addEvaluation = document.getElementById('practiceAddEvaluationBtn');
+      if (currentUser.userType === 'guru') {
+        if (addMaterial) addMaterial.style.display = practiceActiveTab === 'materials' ? 'inline-flex' : 'none';
+        if (addEvaluation) addEvaluation.style.display = practiceActiveTab === 'evaluations' ? 'inline-flex' : 'none';
+      }
+      try { sessionStorage.setItem('legacyPracticeTab', practiceActiveTab); } catch (_) {}
+    }
+
     function renderPracticeHub() {
       const loading=document.getElementById('practiceHubLoading'); if(loading) loading.style.display='none';
+      if (!practiceActiveTab) {
+        try { practiceActiveTab = sessionStorage.getItem('legacyPracticeTab') || 'materials'; } catch (_) { practiceActiveTab='materials'; }
+      }
+      setPracticeHubTab(practiceActiveTab);
       renderPracticeResources();
       renderMediaEvaluationBrowseFilters();
       renderMediaEvaluations();
@@ -3599,7 +3716,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if(currentUser.userType==='siswa')mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
       host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
-      const picker=document.getElementById('mediaEvalBrowseStudentPicker');if(picker){if(currentUser.userType==='siswa'){const student=phStudent(sid);picker.innerHTML=`<div class="ph-picker-trigger readonly">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||currentUser.userName||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></div>`;}else renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);}
+      const picker=document.getElementById('mediaEvalBrowseStudentPicker');if(picker){if(currentUser.userType==='siswa'){const student=phStudent(sid);picker.innerHTML=`<div class="ph-picker-trigger readonly"><span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||currentUser.userName||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span></div>`;}else renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);}
       const select=document.getElementById('mediaEvalBrowseSource');if(select)select.disabled=!sid;
     }
 

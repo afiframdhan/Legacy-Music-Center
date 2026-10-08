@@ -415,8 +415,15 @@
 
         <div class="content-section" id="section-practice-hub">
           <div class="task-page-head practice-page-head">
-            <div><h2>Latihan Mandiri</h2><p>Materi yang bisa dibuka kapan saja di rumah, plus Evaluasi Audio/Video untuk membantu perkembangan latihan.</p></div>
-            <div id="practiceTeacherActions" class="practice-head-actions" style="display:none;"><button type="button" class="btn btn-export" onclick="openMediaEvaluationModal()">+ Evaluasi Audio/Video</button><button type="button" class="btn btn-primary" onclick="openPracticeResourceModal()">+ Materi Latihan</button></div>
+            <div><h2>Latihan Mandiri</h2><p>Materi latihan yang selalu tersedia dan Evaluasi Audio/Video dalam satu tempat yang rapi.</p></div>
+            <div id="practiceTeacherActions" class="practice-head-actions" style="display:none;">
+              <button type="button" id="practiceAddEvaluationBtn" class="btn btn-export" onclick="openMediaEvaluationModal()">+ Evaluasi Audio/Video</button>
+              <button type="button" id="practiceAddMaterialBtn" class="btn btn-primary" onclick="openPracticeResourceModal()">+ Materi Latihan</button>
+            </div>
+          </div>
+          <div class="practice-mode-tabs" role="tablist" aria-label="Jenis latihan">
+            <button type="button" id="practiceTabMaterials" class="practice-mode-tab active" onclick="setPracticeHubTab('materials')">📚 Materi Latihan</button>
+            <button type="button" id="practiceTabEvaluations" class="practice-mode-tab" onclick="setPracticeHubTab('evaluations')">🎧 Evaluasi Audio / Video</button>
           </div>
           <div class="task-stats practice-stats">
             <div class="task-stat"><div class="task-stat-icon">📚</div><div class="task-stat-copy"><span>Materi Latihan</span><strong id="practiceStatResources">0</strong><small>Materi aktif</small></div></div>
@@ -426,8 +433,10 @@
           </div>
           <div class="widget-box practice-filter-box"><div class="practice-filter-grid"><div class="form-group" style="margin:0;"><label>Cari</label><input type="search" id="practiceSearch" placeholder="Cari materi, siswa, instrumen..." oninput="renderPracticeHub()"></div><div class="form-group" style="margin:0;"><label>Siswa</label><select id="practiceStudentFilter" onchange="renderPracticeHub()"><option value="">Semua Siswa</option></select></div></div></div>
           <div id="practiceHubLoading" class="widget-box practice-empty">Memuat materi latihan...</div>
-          <div class="practice-hub-grid">
+          <div id="practiceMaterialsPane" class="practice-mode-pane active">
             <section><div class="practice-section-title"><div><h3>📚 Materi Latihan</h3><p>Bukan tugas. Materi ini selalu tersedia untuk latihan mandiri.</p></div></div><div id="practiceResourceList" class="practice-resource-list"></div></section>
+          </div>
+          <div id="practiceEvaluationsPane" class="practice-mode-pane">
             <section><div class="practice-section-title"><div><h3>🎧 Evaluasi Audio / Video</h3><p>Pilih siswa dan tugas/latihan agar evaluasi tetap rapi saat data sudah banyak.</p></div></div><div id="mediaEvaluationBrowseFilters" class="media-eval-browse-filters"></div><div id="mediaEvaluationList" class="media-eval-list"></div></section>
           </div>
         </div>
@@ -742,7 +751,7 @@
 
         <!-- MATERI & PROGRESS -->
         <div class="content-section" id="section-progress">
-          <div class="attendance-page-head"><h2>Materi & Progress (Absensi)</h2><p>Catat kehadiran, materi pertemuan, latihan, dan perkembangan siswa dalam satu tampilan.</p></div>
+          <div class="attendance-page-head"><h2>Materi & Absensi</h2><p>Catat kehadiran, materi pertemuan, latihan, dan perkembangan siswa dalam satu tampilan.</p></div>
           <div class="widget-box attendance-form-box collapsible-widget" id="formAbsensiContainer" style="display:none;">
             <div class="widget-header">
               <div class="widget-title">Catat Kehadiran & Progress Pertemuan</div>
@@ -873,7 +882,7 @@
         <div class="content-section" id="section-tugas">
           <div class="task-page-head">
             <div>
-              <h2>Tugas & Latihan</h2>
+              <h2>Tugas</h2>
               <p id="taskPageSubtitle">Kelola latihan, lampiran materi, dan hasil tugas dalam satu tempat.</p>
             </div>
             <button type="button" id="btnOpenCreateTask" class="btn btn-primary" style="display:none;" onclick="toggleCreateTaskForm()">+ Buat Tugas Baru</button>

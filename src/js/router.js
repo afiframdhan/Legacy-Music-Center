@@ -24,17 +24,23 @@
       let menus = [];
       
       if(currentUser.userType === 'siswa') {
-        menus = [ 
-          { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
-          { id: 'section-practice-hub', label: 'Latihan Mandiri', icon: icons.practice },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
-          { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas } 
+        menus = [
+          { id:'dashboard-siswa', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Belajar', key:'student-learning', icon:icons.progress, items:[
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
+            { id:'section-tugas', label:'Tugas', icon:icons.tugas },
+            { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
+            { id:'section-practice-hub', label:'Latihan Mandiri', icon:icons.practice },
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress }
+          ]},
+          { group:'Hasil', key:'student-results', icon:icons.laporan, items:[
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan },
+            { id:'section-annual-exam', label:'Sertifikat', icon:icons.sertifikat }
+          ]},
+          { group:'Jadwal & Info', key:'student-info', icon:icons.jadwal, items:[
+            { id:'section-pengganti', label:'Jadwal Pengganti', icon:icons.pengganti },
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman }
+          ]}
         ];
       } else if(currentUser.userType === 'admin') {
         menus = [
@@ -43,7 +49,7 @@
             { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
             { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
             { id:'section-annual-exam', label:'Ujian & Sertifikat', icon:icons.sertifikat },
-            { id:'section-progress', label:'Materi & Progress', icon:icons.progress },
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
             { id:'section-laporan', label:'Laporan', icon:icons.laporan }
           ]},
           { group:'Siswa & Kelas', key:'students', icon:icons.siswa, items:[
@@ -70,36 +76,31 @@
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
       } else {
-        menus = [ 
-          { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
-          { id: 'section-practice-hub', label: 'Latihan Mandiri', icon: icons.practice },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
-          { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
-          { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
-          { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas }, 
-          { id: 'fitur-guru', label: 'Manajemen Kelas', icon: icons.manajemen } 
+        menus = [
+          { id:'dashboard-guru', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Pembelajaran', key:'teacher-learning', icon:icons.progress, items:[
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
+            { id:'section-tugas', label:'Tugas', icon:icons.tugas },
+            { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
+            { id:'section-practice-hub', label:'Latihan Mandiri', icon:icons.practice },
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
+            { id:'section-annual-exam', label:'Ujian Tahunan', icon:icons.sertifikat }
+          ]},
+          { group:'Siswa & Jadwal', key:'teacher-students', icon:icons.siswa, items:[
+            { id:'section-siswa', label:'Daftar Siswa', icon:icons.siswa },
+            { id:'section-jadwal', label:'Jadwal Pelajaran', icon:icons.jadwal },
+            { id:'section-pengganti', label:'Jadwal Pengganti', icon:icons.pengganti },
+            { id:'fitur-guru', label:'Manajemen Kelas', icon:icons.manajemen }
+          ]},
+          { group:'Komunikasi', key:'teacher-comms', icon:icons.pengumuman, items:[
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman },
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan }
+          ]}
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'flex');
       }
-      
-      if (currentUser.userType === 'admin') {
-        renderAdminGroupedNavigation(navMenu, menus);
-      } else {
-        menus.forEach((item, index) => {
-          const li = document.createElement('li'); const a = document.createElement('a');
-          a.className = 'nav-link' + (index === 0 ? ' active' : '');
-          a.id = 'nav-' + item.id;
-          a.innerHTML = `${item.icon} <span>${item.label}</span>`;
-          a.onclick = () => switchTab(item.id);
-          li.appendChild(a); navMenu.appendChild(li);
-        });
-      }
+
+      renderAdminGroupedNavigation(navMenu, menus);
       document.querySelectorAll('.admin-only-quick-action').forEach(el => el.style.display = currentUser.userType === 'admin' ? 'flex' : 'none');
       const teacherManagementBox = document.getElementById('adminTeacherManagementBox');
       if (teacherManagementBox) teacherManagementBox.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
@@ -126,7 +127,7 @@
     }
 
     function renderAdminGroupedNavigation(navMenu, menus) {
-      const stored = (() => { try { return JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}'); } catch (_) { return {}; } })();
+      const stored = (() => { try { return JSON.parse(localStorage.getItem(`legacyNavGroups_${currentUser.userType}`) || '{}'); } catch (_) { return {}; } })();
       menus.forEach((item, index) => {
         if (item.standalone) {
           const li = document.createElement('li');
@@ -170,14 +171,13 @@
       const next = forceOpen === null ? !group.classList.contains('expanded') : Boolean(forceOpen);
       group.classList.toggle('expanded', next);
       try {
-        const stored = JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}');
+        const stored = JSON.parse(localStorage.getItem(`legacyNavGroups_${currentUser.userType}`) || '{}');
         stored[key] = next;
-        localStorage.setItem('legacyAdminNavGroups', JSON.stringify(stored));
+        localStorage.setItem(`legacyNavGroups_${currentUser.userType}`, JSON.stringify(stored));
       } catch (_) {}
     }
 
     function revealAdminNavSection(sectionId) {
-      if (currentUser.userType !== 'admin') return;
       const link = document.getElementById('nav-' + sectionId);
       const group = link ? link.closest('.admin-nav-group') : null;
       if (group && !group.classList.contains('expanded')) toggleAdminNavGroup(group.dataset.group, true);
@@ -185,6 +185,18 @@
 
     function switchTab(sectionId) {
       revealAdminNavSection(sectionId);
+      const lazyModulesBySection = {
+        'section-progress':['attendance'],
+        'section-tugas':['assignments'],
+        'section-learning-progress':['progress'],
+        'section-jadwal':['schedules'],
+        'section-pengganti':['schedules'],
+        'section-absensi-guru':['teacher_attendance']
+      };
+      const lazyModules = lazyModulesBySection[sectionId];
+      if (lazyModules && typeof ensureLiveModules === 'function') {
+        ensureLiveModules(lazyModules).catch(() => {});
+      }
       document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
       const activeLink = document.getElementById('nav-' + sectionId) || (sectionId === 'section-profil' ? document.getElementById('navProfilLink') : null);
       if(activeLink) activeLink.classList.add('active');

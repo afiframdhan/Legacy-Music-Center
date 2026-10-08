@@ -4,6 +4,7 @@
     let practiceActiveEvaluation = '';
     let mediaEvalBrowseStudent = '';
     let mediaEvalBrowseSource = '';
+    let practiceActiveTab = 'materials';
 
     const MEDIA_EVAL_ASPECT_PRESETS = {
       gitar:[
@@ -101,6 +102,7 @@
     }
 
     function loadPracticeHub() {
+      if (typeof ensureLiveModules === 'function') ensureLiveModules(['assignments']).catch(()=>{});
       const loading = document.getElementById('practiceHubLoading');
       if (loading) { loading.style.display='block'; loading.textContent = practiceHubLoaded ? 'Memperbarui materi latihan...' : 'Memuat materi latihan...'; }
       google.script.run.withSuccessHandler(res => {
@@ -157,8 +159,27 @@
       });
     }
 
+    function setPracticeHubTab(tab) {
+      practiceActiveTab = tab === 'evaluations' ? 'evaluations' : 'materials';
+      document.getElementById('practiceMaterialsPane')?.classList.toggle('active', practiceActiveTab === 'materials');
+      document.getElementById('practiceEvaluationsPane')?.classList.toggle('active', practiceActiveTab === 'evaluations');
+      document.getElementById('practiceTabMaterials')?.classList.toggle('active', practiceActiveTab === 'materials');
+      document.getElementById('practiceTabEvaluations')?.classList.toggle('active', practiceActiveTab === 'evaluations');
+      const addMaterial = document.getElementById('practiceAddMaterialBtn');
+      const addEvaluation = document.getElementById('practiceAddEvaluationBtn');
+      if (currentUser.userType === 'guru') {
+        if (addMaterial) addMaterial.style.display = practiceActiveTab === 'materials' ? 'inline-flex' : 'none';
+        if (addEvaluation) addEvaluation.style.display = practiceActiveTab === 'evaluations' ? 'inline-flex' : 'none';
+      }
+      try { sessionStorage.setItem('legacyPracticeTab', practiceActiveTab); } catch (_) {}
+    }
+
     function renderPracticeHub() {
       const loading=document.getElementById('practiceHubLoading'); if(loading) loading.style.display='none';
+      if (!practiceActiveTab) {
+        try { practiceActiveTab = sessionStorage.getItem('legacyPracticeTab') || 'materials'; } catch (_) { practiceActiveTab='materials'; }
+      }
+      setPracticeHubTab(practiceActiveTab);
       renderPracticeResources();
       renderMediaEvaluationBrowseFilters();
       renderMediaEvaluations();
@@ -245,7 +266,7 @@
       if(currentUser.userType==='siswa')mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
       host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
-      const picker=document.getElementById('mediaEvalBrowseStudentPicker');if(picker){if(currentUser.userType==='siswa'){const student=phStudent(sid);picker.innerHTML=`<div class="ph-picker-trigger readonly">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||currentUser.userName||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></div>`;}else renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);}
+      const picker=document.getElementById('mediaEvalBrowseStudentPicker');if(picker){if(currentUser.userType==='siswa'){const student=phStudent(sid);picker.innerHTML=`<div class="ph-picker-trigger readonly"><span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||currentUser.userName||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span></div>`;}else renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);}
       const select=document.getElementById('mediaEvalBrowseSource');if(select)select.disabled=!sid;
     }
 

@@ -1447,7 +1447,7 @@ html[data-theme="dark"] .attendance-multiline-input::placeholder{color:#718096!i
 .ph-picker-all{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#fff3ec;color:#f15a24;font-weight:900;flex:0 0 auto}
 .ph-student-avatar{display:inline-grid;place-items:center;overflow:hidden;border-radius:50%;background:#fff3ec;color:#f15a24;font-weight:900;flex:0 0 auto}
 .ph-student-avatar.sm{width:38px;height:38px}.ph-student-avatar.md{width:54px;height:54px}
-.ph-student-avatar img,.ph-student-avatar>span{width:100%;height:100%;object-fit:cover}.ph-student-avatar>span{display:grid;place-items:center;text-align:center;line-height:1;margin:0;padding:0}
+.ph-student-avatar img,.ph-student-avatar>span{width:100%;height:100%;object-fit:cover;place-items:center}
 .media-aspect-editor-wrap{margin:16px 0}
 .media-aspect-editor{display:grid;gap:9px}
 .media-aspect-editor-row{display:grid;grid-template-columns:minmax(180px,1.35fr) minmax(180px,1fr) 72px 105px;gap:10px;align-items:center;padding:11px 12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}
@@ -1705,3 +1705,152 @@ html[data-theme="dark"] .attendance-multiline-input::placeholder{color:#718096!i
       .export-backup-actions,.export-csv-controls { justify-content:stretch; }
       .export-backup-actions .btn,.export-csv-controls .btn,.export-csv-controls select { flex:1 1 auto; min-width:0; }
     }
+
+/* =========================================================
+   LEGACY UI FOUNDATION V4
+   Shared theme tokens + responsive component guardrails.
+   This file intentionally overrides only neutral surfaces so
+   feature-specific accent colors keep their existing meaning.
+   ========================================================= */
+:root,
+html[data-theme="light"] {
+  color-scheme: light;
+  --lmc-bg: #f8fafc;
+  --lmc-surface: #ffffff;
+  --lmc-surface-soft: #f8fafc;
+  --lmc-surface-muted: #f1f5f9;
+  --lmc-text: #17232d;
+  --lmc-text-2: #475569;
+  --lmc-text-3: #7b8ba1;
+  --lmc-border: #e5ebf2;
+  --lmc-border-strong: #cfd9e6;
+  --lmc-input: #ffffff;
+  --lmc-shadow: 0 12px 30px rgba(15,23,42,.08);
+  --lmc-overlay: rgba(15,23,42,.42);
+  --lmc-accent: #f15a24;
+  --lmc-accent-soft: #fff4ed;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --lmc-bg: #0b1220;
+  --lmc-surface: #111b2e;
+  --lmc-surface-soft: #162238;
+  --lmc-surface-muted: #1d2a41;
+  --lmc-text: #eef4fb;
+  --lmc-text-2: #c2cede;
+  --lmc-text-3: #91a3bb;
+  --lmc-border: #2d3d56;
+  --lmc-border-strong: #40516c;
+  --lmc-input: #101a2d;
+  --lmc-shadow: 0 16px 40px rgba(0,0,0,.32);
+  --lmc-overlay: rgba(2,6,23,.7);
+  --lmc-accent: #ff7544;
+  --lmc-accent-soft: #2b1a16;
+}
+
+html, body, #appView, .content { background: var(--lmc-bg); color: var(--lmc-text-2); }
+.header, .sidebar { background: var(--lmc-surface); border-color: var(--lmc-border); }
+.user-info-name, .widget-title, .practice-section-title h3, .task-page-head h2, .academy-page-head h2 { color: var(--lmc-text); }
+
+/* Neutral cards should follow the selected theme automatically. */
+:where(.widget-box,.welcome-banner,.stat-card-siswa,.data-list-box,.practice-filter-box,.practice-resource-card,.media-eval-card,.media-eval-browse-filters,.lp-modal,.modal-content,.task-detail-modal,.export-backup-progress) {
+  background-color: var(--lmc-surface);
+  border-color: var(--lmc-border);
+}
+
+/* Native controls follow Light/Dark/Automatic consistently, including iOS Safari. */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea) {
+  background-color: var(--lmc-input);
+  color: var(--lmc-text);
+  border-color: var(--lmc-border-strong);
+}
+:where(input,select,textarea)::placeholder { color: var(--lmc-text-3); opacity: 1; }
+:where(label,.form-group label) { color: var(--lmc-text-2); }
+html[data-theme="dark"] :where(input,select,textarea) { color-scheme: dark; }
+html[data-theme="light"] :where(input,select,textarea) { color-scheme: light; }
+
+/* Reusable grouped navigation for Admin, Guru and Siswa. */
+.admin-nav-group-button { color: var(--lmc-text-3); }
+.admin-nav-group-button:hover { background: var(--lmc-accent-soft); color: var(--lmc-accent); }
+.admin-nav-child { margin-left: 2px; }
+.admin-nav-submenu { max-height: 520px; overflow: hidden; transition: max-height .2s ease, opacity .2s ease; }
+.admin-nav-group:not(.expanded) .admin-nav-submenu { max-height: 0; opacity: 0; }
+.admin-nav-group.expanded .admin-nav-submenu { opacity: 1; }
+
+/* One visual language for filters. */
+:where(.filter-grid,.practice-filter-grid,.repertoire-filter-grid,.annual-exam-filters,.attendance-filter-panel,.academy-filter-bar,.lp-page-filter,.admin-monitor-filter,.student-report-filter,.media-eval-browse-grid) {
+  gap: 10px;
+}
+:where(.filter-grid,.practice-filter-grid,.repertoire-filter-grid,.annual-exam-filters,.attendance-filter-panel,.academy-filter-bar,.lp-page-filter,.admin-monitor-filter,.student-report-filter,.media-eval-browse-grid) :where(input,select) {
+  min-height: 42px;
+  border-radius: 10px;
+}
+
+/* Modal guardrails: never exceed the viewport and always scroll internally. */
+:where(.modal-content,.lp-modal,.media-eval-form-modal,.media-eval-detail-modal,.task-detail-modal) {
+  max-height: min(92dvh, 920px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  box-shadow: var(--lmc-shadow);
+}
+
+/* Latihan Mandiri is split into two clear views instead of one long page. */
+.practice-mode-tabs {
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px;
+  margin: 2px 0 14px;
+  border: 1px solid var(--lmc-border);
+  border-radius: 12px;
+  background: var(--lmc-surface);
+}
+.practice-mode-tab {
+  appearance: none;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--lmc-text-2);
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.practice-mode-tab.active { background: var(--lmc-accent); color: #fff; }
+.practice-mode-pane { display: none; }
+.practice-mode-pane.active { display: block; }
+
+/* Loading hint used by lazy modules; it must never cover the page. */
+.lmc-module-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--lmc-text-3);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .content { padding: 14px; }
+  .practice-mode-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .practice-mode-tab { min-width: 0; padding: 10px 8px; }
+  :where(.filter-grid,.practice-filter-grid,.repertoire-filter-grid,.annual-exam-filters,.attendance-filter-panel,.academy-filter-bar,.lp-page-filter,.admin-monitor-filter,.student-report-filter,.media-eval-browse-grid) {
+    grid-template-columns: 1fr !important;
+  }
+  :where(.modal-content,.lp-modal,.media-eval-form-modal,.media-eval-detail-modal,.task-detail-modal) {
+    width: min(96vw, 760px) !important;
+    max-width: min(96vw, 760px) !important;
+    margin-inline: auto;
+  }
+}
+
+@media (max-width: 600px) {
+  .content { padding: 12px; }
+  .task-page-head,.academy-page-head { align-items: flex-start; gap: 10px; }
+  .practice-head-actions { width: 100%; }
+  .practice-head-actions .btn { flex: 1 1 0; justify-content: center; }
+  .practice-mode-tabs { position: sticky; top: 58px; z-index: 20; box-shadow: 0 5px 18px rgba(15,23,42,.06); }
+  .widget-box { border-radius: 14px; }
+  .responsive-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}

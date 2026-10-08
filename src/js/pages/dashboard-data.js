@@ -48,6 +48,22 @@
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 
+        // Dashboard V3 loads only the data needed to paint the first screen quickly.
+        // Historical modules can be completed lazily when their page is opened.
+        globalPartialModules = new Set(Array.isArray(data.partialModules) ? data.partialModules : []);
+        globalLoadedModules = new Set();
+        const bootModules = {
+          attendance:Array.isArray(data.absensiList),
+          assignments:Array.isArray(data.tugasList),
+          progress:Array.isArray(data.learningProgressList),
+          schedules:Array.isArray(data.jadwal || data.schedules),
+          announcements:Array.isArray(data.pengumumanList),
+          teacher_attendance:Array.isArray(data.teacherAttendanceList)
+        };
+        Object.entries(bootModules).forEach(([module, present]) => {
+          if (present && !globalPartialModules.has(module)) globalLoadedModules.add(module);
+        });
+
         // Do not make a second blocking request for Guru List after dashboard load.
         // Admin already receives guruList from the same Supabase dashboard response;
         // Guru only needs their own identity for role-specific screens; siswa does not
