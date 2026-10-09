@@ -3803,13 +3803,37 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       return practiceResources.filter(x => (!sid || String(x.studentID||'')===sid) && (!q || [x.title,x.description,x.studentName,x.instrument].some(v=>String(v||'').toLowerCase().includes(q))));
     }
 
+    function mediaEvalBrowseSourceItem(studentId, value) {
+      const raw=String(value||'');
+      if(!raw)return null;
+      const idx=raw.indexOf(':');
+      if(idx<0)return null;
+      const type=raw.slice(0,idx), id=raw.slice(idx+1);
+      return mediaEvalSourceItems(studentId).find(x=>String(x.type)===type&&String(x.id)===id) || null;
+    }
+
+    function mediaEvalMatchesBrowseSource(item, sourceValue, studentId) {
+      const source=String(sourceValue||'');
+      if(!source)return true;
+      const idx=source.indexOf(':');
+      const type=idx>-1?source.slice(0,idx):'';
+      const id=idx>-1?source.slice(idx+1):'';
+      if(String(item.sourceType||'')===type && String(item.sourceID||'')===id)return true;
+      if(type==='repertoire' && String(item.repertoireID||'')===id)return true;
+      const selected=mediaEvalBrowseSourceItem(studentId,source);
+      const selectedLabel=String(selected?.label||'').trim().toLowerCase();
+      const itemLabel=String(item.sourceLabel||'').trim().toLowerCase();
+      if(selectedLabel && itemLabel && selectedLabel===itemLabel)return true;
+      return false;
+    }
+
     function phFilteredEvaluations() {
       const generalSid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
       const sid=mediaEvalBrowseStudent || generalSid;
       const source=String(mediaEvalBrowseSource||'');
       const q=String(document.getElementById('practiceSearch')?.value||'').trim().toLowerCase();
       return mediaEvaluations.filter(x => {
-        const sourceMatch=!source || `${x.sourceType||''}:${x.sourceID||''}`===source;
+        const sourceMatch=mediaEvalMatchesBrowseSource(x,source,sid);
         return (!sid || String(x.studentID||'')===sid) && sourceMatch && (!q || [x.title,x.studentName,x.instrument,x.strength,x.improvement,x.sourceLabel].some(v=>String(v||'').toLowerCase().includes(q)));
       });
     }
@@ -3961,18 +3985,38 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');mediaEvalBrowseSource='';renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
     function chooseMediaEvalFormStudent(studentId){const sel=document.getElementById('mediaEvalStudent');if(sel)sel.value=studentId;document.getElementById('mediaEvalStudentPicker')?.classList.remove('open');syncEvaluationInstrument();renderStudentPicker('mediaEvalStudentPicker',studentId,'chooseMediaEvalFormStudent',false);}
 
+    function closeMediaSourcePickers(){document.querySelectorAll('.media-source-picker.open').forEach(el=>el.classList.remove('open'));}
+    function toggleMediaSourcePicker(event){event?.stopPropagation();const host=document.getElementById('mediaEvalBrowseSourcePicker');if(!host||host.classList.contains('disabled'))return;const open=!host.classList.contains('open');closeMediaSourcePickers();closePhStudentPickers();if(open)host.classList.add('open');}
+    function chooseMediaEvalBrowseSource(value){mediaEvalBrowseSource=String(value||'');closeMediaSourcePickers();renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function renderMediaEvalBrowseSourcePicker(studentId){
+      const host=document.getElementById('mediaEvalBrowseSourcePicker');if(!host)return;
+      const items=mediaEvalSourceItems(studentId);
+      const selected=mediaEvalBrowseSourceItem(studentId,mediaEvalBrowseSource);
+      const label=selected?.label||'Semua / Tanpa sumber khusus';
+      const groups=[['practice','Latihan Mandiri'],['assignment','Tugas'],['repertoire','Repertoire']];
+      const options=groups.map(([type,groupLabel])=>{const rows=items.filter(x=>x.type===type);if(!rows.length)return '';return `<div class="media-source-group"><div class="media-source-group-label">${phEsc(groupLabel)}</div>${rows.map(x=>{const value=`${x.type}:${x.id}`;return `<button type="button" class="media-source-option ${value===mediaEvalBrowseSource?'active':''}" onclick="chooseMediaEvalBrowseSource('${phEsc(value)}')"><span class="media-source-option-icon">${type==='practice'?'📚':type==='assignment'?'📝':'🎵'}</span><span><b>${phEsc(x.label)}</b><small>${phEsc(x.meta||groupLabel)}</small></span><span class="media-source-check">${value===mediaEvalBrowseSource?'✓':''}</span></button>`;}).join('')}</div>`;}).join('');
+      host.classList.toggle('disabled',!studentId);
+      host.innerHTML=`<button type="button" class="media-source-trigger" aria-haspopup="listbox" onclick="toggleMediaSourcePicker(event)" ${studentId?'':'disabled'}><span><b>${phEsc(label)}</b><small>${studentId?'Filter berdasarkan tugas, latihan, atau repertoire':'Pilih siswa terlebih dahulu'}</small></span><span class="ph-picker-chevron">⌄</span></button><button type="button" class="media-source-backdrop" aria-label="Tutup pilihan" onclick="closeMediaSourcePickers()"></button><div class="media-source-menu"><div class="media-source-menu-head"><div><b>Pilih Tugas / Latihan</b><small>Materi latihan, tugas, atau repertoire siswa.</small></div><button type="button" class="ph-picker-close" onclick="closeMediaSourcePickers()">×</button></div><div class="media-source-options"><button type="button" class="media-source-option ${!mediaEvalBrowseSource?'active':''}" onclick="chooseMediaEvalBrowseSource('')"><span class="media-source-option-icon">◎</span><span><b>Semua / Tanpa sumber khusus</b><small>Tampilkan seluruh evaluasi</small></span><span class="media-source-check">${!mediaEvalBrowseSource?'✓':''}</span></button>${options||'<div class="ph-picker-empty">Belum ada tugas, latihan, atau repertoire.</div>'}</div></div>`;
+    }
+
+    if(!window.__lmcMediaSourcePickerOutsideBound){
+      window.__lmcMediaSourcePickerOutsideBound=true;
+      document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('.media-source-picker'))closeMediaSourcePickers();},true);
+      document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMediaSourcePickers();});
+    }
+
     function renderMediaEvaluationBrowseFilters(){
       const host=document.getElementById('mediaEvaluationBrowseFilters');if(!host)return;
       const isStudent=currentUser.userType==='siswa';
       if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
       if(isStudent){
-        host.innerHTML=`<div class="media-eval-browse-grid media-eval-browse-grid-student"><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid student-only"><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
       }else{
-        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
         renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
       }
-      const select=document.getElementById('mediaEvalBrowseSource');if(select)select.disabled=!sid;
+      renderMediaEvalBrowseSourcePicker(sid);
     }
 
     function renderMediaEvaluations() {
