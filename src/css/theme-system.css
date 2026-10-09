@@ -226,3 +226,58 @@ html[data-theme="dark"] #section-laporan #student360ReportHistory{
   background:var(--lmc-surface)!important;border-color:var(--lmc-border)!important;
 }
 @media(max-width:700px){.task-toolbar.task-toolbar-student{grid-template-columns:1fr!important}.media-eval-browse-grid.media-eval-browse-grid-student{grid-template-columns:1fr}}
+
+/* ========================================================================== */
+/* RELEASE CANDIDATE — final theme safety net                                */
+/* Keep neutral UI surfaces readable in Light / Dark / Automatic.            */
+/* ========================================================================== */
+.security-settings{
+  display:flex;align-items:center;justify-content:space-between;gap:18px;
+  padding:16px;border:1px solid var(--lmc-border);border-radius:16px;background:var(--lmc-surface);
+}
+.security-settings h3{margin:0;color:var(--lmc-text)}
+.security-settings p{margin:5px 0 0;color:var(--lmc-text-2);font-size:12px;line-height:1.45}
+.force-password-content{width:min(460px,94vw);background:var(--lmc-surface)!important;color:var(--lmc-text)!important;border:1px solid var(--lmc-border)}
+.force-password-content .modal-header p{margin:4px 0 0;color:var(--lmc-text-2);font-size:12px}
+.force-password-content form{display:grid;gap:12px}
+.force-password-message{padding:10px 12px;border-radius:10px;background:var(--lmc-surface-2);border:1px solid var(--lmc-border);color:var(--lmc-text-2);font-size:12px;line-height:1.45}
+.force-password-message.error{background:#fff1f2;border-color:#fecdd3;color:#be123c}
+html[data-theme="dark"] .force-password-message.error{background:#3b2024;border-color:#7f1d1d;color:#fecdd3}
+
+html[data-theme="dark"] :where(
+  .student-dashboard-empty,.student-report-empty,.academy-empty,.task-empty,.annual-exam-empty,.repertoire-empty,.practice-empty,
+  .room-summary-card,.room-card,.annual-exam-summary>div,.annual-exam-card,.repertoire-meta,.repertoire-summary-card,.repertoire-summary-row,
+  .admin-control-stat,.admin-control-action,.admin-audit-row,.admin-quality-stats>div,.admin-quality-card,.teacher-monitor-card,
+  .student-report-row,.dashboard-student-table tbody tr,.attendance-responsive-table tbody tr,.attendance-responsive-table td,
+  .lp-component,.lp-signature-preview,.notification-head,.today-schedule-item,.siswa-card-schedule
+){background:#111b2e!important;border-color:#31415a!important;color:#dbe6f3!important}
+
+html[data-theme="dark"] :where(
+  .student-dashboard-empty,.student-report-empty,.academy-empty,.task-empty,.annual-exam-empty,.repertoire-empty,.practice-empty,
+  .student-report-empty *, .academy-empty *, .task-empty *, .annual-exam-empty *, .repertoire-empty *, .practice-empty *,
+  .siswa-card-schedule .siswa-card-title,.siswa-card-schedule .coach-title-label,.siswa-card-schedule .coach-name-label,
+  .siswa-card-schedule .siswa-detail-row span,.student-dashboard-report-title,.student-dashboard-report-copy,
+  .academy-info-title,.academy-info-copy,.admin-control-stat b,.admin-control-action b,.admin-control-action em,
+  .admin-audit-copy strong,.admin-quality-stats b,.admin-quality-copy strong,.teacher-monitor-head h3,.teacher-monitor-metrics b,
+  .annual-exam-summary b,.annual-exam-card h3,.repertoire-summary-card h3,.repertoire-summary-row strong
+){color:#e8eef7!important}
+
+html[data-theme="dark"] :where(
+  .siswa-card-schedule .siswa-detail-row svg,.siswa-card-schedule .siswa-card-details,
+  .student-dashboard-report-copy p,.academy-info-copy p,.admin-control-stat span,.admin-control-stat small,
+  .admin-control-action small,.admin-audit-copy p,.admin-audit-copy small,.admin-quality-stats span,.admin-quality-copy p,.admin-quality-copy small,
+  .teacher-monitor-head p,.teacher-monitor-notes,.annual-exam-card p,.repertoire-summary-row small
+){color:#9fb0c7!important}
+
+html[data-theme="dark"] :where(.lp-ring::after,.lp-minimal-score::before,.media-eval-score::before){background:#111b2e!important}
+html[data-theme="dark"] :where(.lp-student-select,.lp-form-component select,.lp-form-component textarea,.lp-component-controls input,.lp-signature-upload input[type="file"],.lp-signature-upload input[type="text"]){background:#0c1627!important;color:#e8eef7!important;border-color:#34445e!important}
+html[data-theme="dark"] :where(.repertoire-filter-box,.academy-filter-bar,.schedule-override-divider,.teacher-monitor-notes){background:#17243a!important;border-color:#394a64!important;color:#dbe6f3!important}
+
+html[data-theme="dark"] .modal-close{color:#cbd5e1!important}
+html[data-theme="dark"] .modal-close:hover{background:#1e293b!important;color:#fff!important}
+
+@media(max-width:600px){
+  .security-settings{align-items:flex-start;flex-direction:column}
+  .security-settings .btn{width:100%}
+  .force-password-content{width:100vw!important;max-width:none!important;height:100dvh;max-height:100dvh;border-radius:0!important;margin:0!important}
+}

@@ -164,11 +164,28 @@
       return '🎸';
     }
 
-    function getFormattedDateString(hariStr) {
-      const today = new Date();
+    function getNextScheduleDate(hariStr, jamMulai) {
+      const dayMap = {minggu:0,ahad:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,"jum'at":5,sabtu:6};
+      const target = dayMap[String(hariStr || '').trim().toLowerCase()];
+      const now = new Date();
+      if (target == null) return new Date(now);
+      let addDays = (target - now.getDay() + 7) % 7;
+      if (addDays === 0 && jamMulai) {
+        const parts = String(jamMulai).match(/^(\d{1,2}):(\d{2})/);
+        if (parts) {
+          const start = new Date(now); start.setHours(Number(parts[1]), Number(parts[2]), 0, 0);
+          if (start <= now) addDays = 7;
+        }
+      }
+      const next = new Date(now); next.setDate(now.getDate() + addDays); next.setHours(0,0,0,0);
+      return next;
+    }
+
+    function getFormattedDateString(hariStr, jamMulai) {
+      const next = getNextScheduleDate(hariStr, jamMulai);
       const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-      const hari = hariStr || "Rabu";
-      return `${hari}, ${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear()}`;
+      const dayNames = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+      return `${dayNames[next.getDay()]}, ${next.getDate()} ${monthNames[next.getMonth()]} ${next.getFullYear()}`;
     }
 
     function renderSiswa(data) {
@@ -193,12 +210,13 @@
       container.innerHTML = '';
 
       if (data.schedules && data.schedules.length > 0) {
-        data.schedules.forEach(nextJadwal => {
+        const upcomingSchedules = [...data.schedules].sort((a,b)=>getNextScheduleDate(a.hari,a.jamMulai)-getNextScheduleDate(b.hari,b.jamMulai));
+        upcomingSchedules.forEach(nextJadwal => {
         const instrumenNama = nextJadwal.instrumen || (data.siswaInfo ? data.siswaInfo.instrumen : 'Gitar');
         const siswaNama = currentUser.userName;
         const iconInstrumen = getInstrumenIcon(instrumenNama);
         const durationStr = calculateDurationMinutes(nextJadwal.jamMulai, nextJadwal.jamSelesai);
-        const dateStr = getFormattedDateString(nextJadwal.hari);
+        const dateStr = getFormattedDateString(nextJadwal.hari, nextJadwal.jamMulai);
         
         const coachNama = nextJadwal.guru || (data.siswaInfo ? data.siswaInfo.guru : '');
         const coachObj = globalGuruList.find(g => String(g.nama).trim().toLowerCase() === String(coachNama).trim().toLowerCase());

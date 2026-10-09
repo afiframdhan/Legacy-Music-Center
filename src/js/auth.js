@@ -19,9 +19,10 @@
         btn.disabled = false; btn.textContent = 'Login';
         if (!res.success) { document.getElementById('loginError').textContent = res.message; document.getElementById('loginError').style.display = 'block'; } 
         else {
-          currentUser = { userType: res.userType, userID: res.userID, userName: res.userName };
+          currentUser = { userType: res.userType, userID: res.userID, userName: res.userName, mustChangePassword:Boolean(res.mustChangePassword) };
           saveLoginSession(currentUser);
           showApp();
+          if (currentUser.mustChangePassword) setTimeout(openForcePasswordModal, 0);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Login';
@@ -42,9 +43,10 @@
         sessionStorage.removeItem('userType');
         sessionStorage.removeItem('userID');
         sessionStorage.removeItem('userName');
+        sessionStorage.removeItem('mustChangePassword');
       } catch (ignore) {}
       try { document.cookie = `${AUTH_COOKIE_KEY}=; Max-Age=0; Path=/; SameSite=Lax; Secure`; } catch (ignore) {}
-      currentUser = { userType: '', userID: '', userName: '' };
+      currentUser = { userType: '', userID: '', userName: '', mustChangePassword:false };
       showLogin();
     }
     function showLogin() { document.getElementById('appView').style.display = 'none'; document.getElementById('loginView').style.display = 'flex'; }
@@ -84,10 +86,50 @@
 
     window.addEventListener('legacy:session-expired', () => {
       try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
-      try { sessionStorage.removeItem('userType'); sessionStorage.removeItem('userID'); sessionStorage.removeItem('userName'); } catch (_) {}
+      try { sessionStorage.removeItem('userType'); sessionStorage.removeItem('userID'); sessionStorage.removeItem('userName');
+        sessionStorage.removeItem('mustChangePassword'); } catch (_) {}
       if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
-      currentUser = { userType:'', userID:'', userName:'' };
+      currentUser = { userType:'', userID:'', userName:'', mustChangePassword:false };
       showLogin();
       const msg = document.getElementById('loginError');
       if (msg) { msg.textContent = 'Sesi login berakhir. Silakan login kembali.'; msg.style.display = 'block'; }
     });
+
+
+    function openForcePasswordModal(){
+      openChangePasswordModal(true);
+    }
+    function openChangePasswordModal(forced=false){
+      const modal=document.getElementById('modalForcePassword'); if(!modal)return;
+      modal.dataset.forced = forced ? '1' : '0';
+      document.getElementById('forcePasswordNew').value='';
+      document.getElementById('forcePasswordConfirm').value='';
+      const close=document.getElementById('forcePasswordClose'); if(close) close.style.display=forced?'none':'block';
+      const title=document.getElementById('forcePasswordTitle'); if(title) title.textContent=forced?'Buat Password Baru':'Ubah Password';
+      const subtitle=document.getElementById('forcePasswordSubtitle'); if(subtitle) subtitle.textContent=forced?'Password awal hanya boleh digunakan sekali.':'Gunakan password yang unik dan tidak dibagikan.';
+      const msg=document.getElementById('forcePasswordMessage'); if(msg){msg.textContent=forced?'Untuk keamanan akun, buat password baru sebelum melanjutkan.':'Password minimal 8 karakter dan mengandung huruf serta angka.';msg.className='force-password-message';}
+      modal.style.display='flex';
+      setTimeout(()=>document.getElementById('forcePasswordNew')?.focus(),80);
+    }
+    function closeChangePasswordModal(){
+      const modal=document.getElementById('modalForcePassword'); if(!modal)return;
+      if(modal.dataset.forced==='1') return;
+      modal.style.display='none';
+    }
+    function handleForcePasswordChange(event){
+      event.preventDefault();
+      const password=document.getElementById('forcePasswordNew').value;
+      const confirmPassword=document.getElementById('forcePasswordConfirm').value;
+      const btn=document.getElementById('forcePasswordSubmit');
+      const msg=document.getElementById('forcePasswordMessage');
+      if(password.length<8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)){msg.textContent='Password minimal 8 karakter dan harus mengandung huruf serta angka.';msg.className='force-password-message error';return false;}
+      if(password!==confirmPassword){msg.textContent='Konfirmasi password tidak sama.';msg.className='force-password-message error';return false;}
+      btn.disabled=true;btn.textContent='Menyimpan...';
+      google.script.run.withSuccessHandler(res=>{
+        btn.disabled=false;btn.textContent='Simpan Password Baru';
+        if(!res?.success){msg.textContent=res?.message||'Gagal memperbarui password.';msg.className='force-password-message error';return;}
+        currentUser.mustChangePassword=false;saveLoginSession(currentUser);
+        document.getElementById('modalForcePassword').style.display='none';
+      }).withFailureHandler(error=>{btn.disabled=false;btn.textContent='Simpan Password Baru';msg.textContent=error?.message||String(error);msg.className='force-password-message error';}).changeOwnPassword({password,confirmPassword});
+      return false;
+    }

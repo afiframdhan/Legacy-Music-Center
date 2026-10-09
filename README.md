@@ -1,42 +1,60 @@
-# Legacy Music Center — GitHub + Cloudflare migration
+# Legacy Music Center — Release Candidate
 
-Repositori ini adalah tahap migrasi aman dari Google Apps Script HtmlService ke **Cloudflare Workers + Static Assets**, dengan backend Spreadsheet/Drive/Docs lama tetap dipertahankan agar fungsi tidak hilang.
+Aplikasi Legacy Music Center adalah PWA sekolah musik untuk Admin, Guru, dan Siswa.
 
-## Arsitektur
+## Arsitektur produksi
 
-Browser → Cloudflare static assets → `/api/rpc` Cloudflare Worker → Apps Script `doPost()` → Google Spreadsheet / Drive / Docs.
+Browser/PWA → Cloudflare Worker + Static Assets → Supabase.
 
-Frontend lama tetap menggunakan antarmuka `google.script.run`, tetapi `public/js/services/api.js` menyediakan compatibility shim sehingga pemanggilan tersebut dikirim ke Worker API. Ini membuat migrasi UI berisiko rendah dan memungkinkan refactor per modul setelah produksi stabil.
+Google Apps Script **bukan database utama**. Apps Script/Drive Service hanya dipakai untuk kebutuhan Google Drive/file tertentu dan shadow compatibility legacy yang berjalan di background.
 
-## Langkah setup
+Komponen utama:
+- `public/` — static frontend/PWA.
+- `src/` — source JS/CSS yang dibundle oleh `npm run build`.
+- `worker/index.js` — same-origin API, signed session, role allowlist, Supabase access, push notification, Drive bridge.
+- `supabase/migrations/` — migration tambahan fitur produksi.
+- `backend/Code.gs` — legacy/Drive bridge jika masih dipakai.
 
-1. Upload isi folder ini ke repository GitHub baru.
-2. Ganti `Code.gs` Apps Script dengan `backend/Code.gs`, lalu **Deploy > Manage deployments > Edit > New version** sebagai Web App.
-3. Buat token acak >= 32 karakter. Dari editor Apps Script, jalankan `configureLegacyApiToken('TOKEN_ANDA')` satu kali.
-4. Install dependency: `npm install`.
-5. Simpan secret Cloudflare:
-   - `npx wrangler secret put APPS_SCRIPT_URL` → URL Web App Apps Script `/exec`
-   - `npx wrangler secret put APPS_SCRIPT_TOKEN` → token yang sama dengan langkah 3
-   - `npx wrangler secret put SESSION_SECRET` → random secret lain >= 32 karakter
-6. Test lokal dengan `.dev.vars` (copy dari `.dev.vars.example`) lalu `npm run dev`.
-7. Deploy: `npm run deploy`. Setelah stabil, hubungkan repo GitHub ke Cloudflare Builds bila ingin auto-deploy setiap push.
+## Secret Cloudflare wajib
 
-## Login setelah migrasi
+- `SESSION_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-Login pertama setelah pindah domain perlu dilakukan ulang satu kali agar Cloudflare membuat cookie session HttpOnly. Setelah itu session API bertahan hingga 1 tahun, sementara mekanisme localStorage UI lama juga tetap dipertahankan.
+Untuk upload Google Drive:
+- `DRIVE_SCRIPT_URL`
+- `DRIVE_SCRIPT_TOKEN`
 
-## Kenapa `legacy-app.js` dan `app.css` masih besar?
+Legacy Apps Script shadow bersifat opsional untuk mayoritas fitur Supabase-first:
+- `APPS_SCRIPT_URL`
+- `APPS_SCRIPT_TOKEN`
 
-Ini disengaja untuk tahap pertama. Memecah 5.000+ baris sekaligus sambil memindahkan platform berisiko menimbulkan regression. Struktur folder modular sudah disiapkan; ekstraksi ke `pages/`, `components/`, dan service files sebaiknya dilakukan setelah deployment kompatibilitas ini lolos regression test.
+## Setup release
 
-## Regression test wajib
+1. Jalankan migration Supabase yang belum terpasang, termasuk `32_release_security_and_auth.sql`.
+2. `npm install`
+3. `npm run build`
+4. `node --check worker/index.js`
+5. Deploy ke branch/environment `test` terlebih dahulu.
+6. Jalankan checklist `docs/RELEASE-CHECKLIST.md` untuk tiga role.
+7. Setelah lolos, merge/deploy ke production.
 
-Uji tiga role (Siswa, Guru, Admin): login/logout, reload/close browser, dashboard, jadwal, tambah/edit/hapus siswa, guru, tugas + YouTube + lampiran, jawaban tugas, absensi + tanda tangan, progress belajar + cetak, jadwal pengganti, pengumuman, foto profil, laporan/statistik, dan konflik ruangan.
+## Login & keamanan
 
-## V3 performance pass
-See `docs/REFACTOR-V3.md`. V3 lazy-loads FullCalendar/CropperJS and deduplicates simultaneous identical read RPCs while leaving legacy global handlers untouched. Backend and Spreadsheet contracts are unchanged.
+- Admin/Guru: session server maksimal 30 hari.
+- Siswa: session server maksimal 90 hari.
+- Login memiliki rate-limit bertingkat setelah beberapa percobaan gagal.
+- Siswa baru menerima password awal acak dan wajib membuat password baru pada login pertama.
+- Semua role dapat mengubah password dari halaman Profil Saya.
 
+## Database & file
 
-## V4 Backend Performance
+Metadata utama berada di Supabase. File/PDF/foto yang memang perlu Drive tetap diunggah melalui Drive Service. Video latihan/tutorial disarankan memakai YouTube Unlisted agar Drive tidak cepat penuh.
 
-Lihat `docs/REFACTOR-V4.md`. V4 menambahkan request-local Spreadsheet snapshot untuk dashboard, header snapshot, cache logo laporan, dan timing log tanpa mengubah kontrak API.
+## Build
+
+```bash
+npm run build
+```
+
+Build melakukan bundling source, syntax check bundle, dan static parity check.

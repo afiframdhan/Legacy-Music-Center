@@ -1,12 +1,51 @@
-# Architecture
+# Legacy Music Center — Architecture
 
-## Current safe-migration target
+## Production data flow
 
-- `public/`: UI delivered from Cloudflare edge.
-- `worker/index.js`: same-origin API gateway, persistent signed session, role method allowlist, Apps Script proxy.
-- `backend/Code.gs`: existing business logic + Spreadsheet/Drive/Docs integration + JSON RPC endpoint.
-- Google Spreadsheet remains the database in this phase.
+```text
+Browser / PWA
+   ↓
+Cloudflare Static Assets
+   ↓
+Cloudflare Worker `/api/*`
+   ↓
+Supabase (database/auth metadata)
+   ├─ students / teachers / classes / schedules
+   ├─ attendance / assignments / progress
+   ├─ repertoire / exams / reports / audit
+   └─ live sync / push metadata
 
-## Recommended next phase
+File upload only when required
+   ↓
+Drive Service / Apps Script
+   ↓
+Google Drive
+```
 
-After production parity is proven, extract UI code gradually from `legacy-app.js` into services/components/pages. Only after that consider replacing Apps Script with Google Sheets API / a real database. Replacing Apps Script and refactoring the UI simultaneously is intentionally avoided.
+## Source of truth
+
+Supabase adalah source of truth untuk metadata aplikasi. Spreadsheet/Apps Script tidak boleh digunakan sebagai fallback diam-diam untuk data utama.
+
+Apps Script tersisa untuk:
+- upload/file Google Drive;
+- compatibility shadow legacy yang tidak boleh memblokir operasi Supabase-first bila secret Apps Script belum tersedia.
+
+## Session
+
+Cloudflare Worker membuat cookie session `HttpOnly`, `Secure`, `SameSite=Strict`.
+- Admin/Guru: 30 hari.
+- Siswa: 90 hari.
+
+Frontend menyimpan identity ringan hanya untuk fast boot; API tetap memvalidasi cookie server.
+
+## Login security
+
+Migration 32 menambahkan:
+- rate-limit login;
+- `must_change_password`;
+- RPC ubah password;
+- password awal siswa acak.
+
+## Release rule
+
+Semua perubahan diuji di environment `test` sebelum production. Lihat `docs/RELEASE-CHECKLIST.md`.

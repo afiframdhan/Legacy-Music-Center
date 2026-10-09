@@ -37,32 +37,35 @@
     }
 
     function saveLoginSession(user) {
-      const session = { userType: user.userType || '', userID: user.userID || '', userName: user.userName || '' };
+      const localMaxAge = (user.userType === 'siswa' ? 7776000 : 2592000);
+      const session = { userType: user.userType || '', userID: user.userID || '', userName: user.userName || '', mustChangePassword:Boolean(user.mustChangePassword), expiresAt:Date.now() + localMaxAge * 1000 };
       const serialized = JSON.stringify(session);
       try { localStorage.setItem(AUTH_STORAGE_KEY, serialized); } catch (ignore) {}
       try {
         sessionStorage.setItem('userType', session.userType);
         sessionStorage.setItem('userID', session.userID);
         sessionStorage.setItem('userName', session.userName);
+        sessionStorage.setItem('mustChangePassword', session.mustChangePassword ? '1' : '0');
       } catch (ignore) {}
-      try { document.cookie = `${AUTH_COOKIE_KEY}=${encodeURIComponent(serialized)}; Max-Age=31536000; Path=/; SameSite=Lax; Secure`; } catch (ignore) {}
+      try { document.cookie = `${AUTH_COOKIE_KEY}=${encodeURIComponent(serialized)}; Max-Age=${localMaxAge}; Path=/; SameSite=Lax; Secure`; } catch (ignore) {}
     }
 
     function getSavedLoginSession() {
       try {
         const saved = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null');
-        if (saved && saved.userType && saved.userID && saved.userName) return saved;
+        if (saved && saved.expiresAt && Number(saved.expiresAt) <= Date.now()) localStorage.removeItem(AUTH_STORAGE_KEY);
+        else if (saved && saved.userType && saved.userID && saved.userName) return saved;
       } catch (ignore) {}
       try {
         const cookie = document.cookie.split('; ').find(item => item.startsWith(AUTH_COOKIE_KEY + '='));
         const saved = cookie ? JSON.parse(decodeURIComponent(cookie.substring(cookie.indexOf('=') + 1))) : null;
-        if (saved && saved.userType && saved.userID && saved.userName) return saved;
+        if (saved && (!saved.expiresAt || Number(saved.expiresAt) > Date.now()) && saved.userType && saved.userID && saved.userName) return saved;
       } catch (ignore) {}
       try {
         const userType = sessionStorage.getItem('userType');
         const userID = sessionStorage.getItem('userID');
         const userName = sessionStorage.getItem('userName');
-        return userType && userID && userName ? { userType, userID, userName } : null;
+        return userType && userID && userName ? { userType, userID, userName, mustChangePassword:sessionStorage.getItem('mustChangePassword') === '1' } : null;
       } catch (ignore) { return null; }
     }
 

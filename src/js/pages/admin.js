@@ -373,6 +373,9 @@
         btn.disabled = false; btn.textContent = 'Simpan Siswa & Jadwal';
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if(res.success) {
+          if (res.initialPassword) {
+            setTimeout(()=>alert(`Siswa berhasil dibuat.\n\nPassword awal: ${res.initialPassword}\n\nBerikan password ini kepada siswa/orang tua. Saat login pertama, siswa wajib membuat password baru.`), 50);
+          }
           document.getElementById('formTambahSiswaCombined').reset();
           document.getElementById('addStudentExtraClasses').innerHTML = '';
           const now = new Date();

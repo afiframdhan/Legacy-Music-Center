@@ -20,9 +20,10 @@
             }
             const payload = await response.json().catch(()=>null);
             if (response.ok && payload?.ok && payload.data) {
-              currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
+              currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName, mustChangePassword:Boolean(payload.data.mustChangePassword) };
               saveLoginSession(currentUser);
               if (typeof hydrateFastIdentityShell === 'function') hydrateFastIdentityShell();
+              if (currentUser.mustChangePassword && typeof openForcePasswordModal === 'function') openForcePasswordModal();
             }
           })
           .catch(() => { clearTimeout(timer); /* cached session remains usable; API calls will validate it */ });

@@ -1,10 +1,13 @@
 const COOKIE_NAME = 'legacy_api_session';
-const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
+const SESSION_MAX_AGE = 60 * 60 * 24 * 90;
+const STAFF_SESSION_MAX_AGE = 60 * 60 * 24 * 30;
+const STUDENT_SESSION_MAX_AGE = 60 * 60 * 24 * 90;
+function sessionMaxAgeForRole(role){ return String(role||'').toLowerCase()==='siswa' ? STUDENT_SESSION_MAX_AGE : STAFF_SESSION_MAX_AGE; }
 
 const COMMON = new Set([
   'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'getLiveModuleData', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
   'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
-  'getRepertoireData', 'getPracticeHubData'
+  'getRepertoireData', 'getPracticeHubData', 'changeOwnPassword'
 ]);
 const STUDENT = new Set([...COMMON, 'submitTugasJawaban', 'listAnnualExams', 'getAnnualExam']);
 const TEACHER = new Set([
@@ -93,7 +96,7 @@ export default {
       if (!env.SESSION_SECRET) return json({ ok:false, error:'SESSION_SECRET belum dikonfigurasi.' }, 500);
       const session = await readSession(request, env.SESSION_SECRET);
       if (!session) return json({ ok:false, error:'Sesi login tidak valid atau sudah berakhir.' }, 401);
-      return json({ ok:true, data:{ userType:session.userType, userID:session.userID, userName:session.userName } });
+      return json({ ok:true, data:{ userType:session.userType, userID:session.userID, userName:session.userName, mustChangePassword:Boolean(session.mustChangePassword) } });
     }
 
     if (url.pathname === '/api/logout' && request.method === 'POST') {
@@ -137,40 +140,74 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:false, error:'Konfigurasi Supabase TEST belum lengkap.' }, 500);
     }
 
+    const role = String(args[0] || '').trim().toLowerCase();
+    const username = String(args[1] || '').trim().toLowerCase();
+    const clientIp = String(request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown').split(',')[0].trim();
+    const loginGuardKey = await sha256Hex(`${role}|${username}|${clientIp}`);
+    try {
+      const guard = await supabaseRpc(env, 'legacy_login_guard_status', { p_key:loginGuardKey });
+      const status = Array.isArray(guard) ? guard[0] : guard;
+      if (status && status.allowed === false) {
+        const wait = Math.max(1, Number(status.retry_after_seconds || 60));
+        return json({ ok:true, data:{ success:false, message:`Terlalu banyak percobaan login. Coba lagi dalam ${wait} detik.` } });
+      }
+    } catch (error) {
+      console.error('Login guard status failed (continuing safely):', error);
+    }
+
     let result;
     try {
       result = await verifyLoginSupabaseRpc(env, args);
     } catch (error) {
       console.error('Supabase login RPC error:', error);
-      return json({
-        ok:true,
-        data:{ success:false, message:'Login gagal diproses. Silakan coba lagi.' }
-      });
+      return json({ ok:true, data:{ success:false, message:'Login gagal diproses. Silakan coba lagi.' } });
     }
+
+    try { await supabaseRpc(env, 'legacy_record_login_attempt', { p_key:loginGuardKey, p_success:Boolean(result.success) }); }
+    catch (error) { console.error('Login guard record failed:', error); }
 
     if (!result.success) return json({ ok:true, data:result });
 
+    const maxAge = sessionMaxAgeForRole(result.userType);
     const session = {
       userType: result.userType,
       userID: result.userID,
       userName: result.userName,
-      exp: Math.floor(Date.now()/1000) + SESSION_MAX_AGE
+      mustChangePassword:Boolean(result.mustChangePassword),
+      exp: Math.floor(Date.now()/1000) + maxAge
     };
 
     const token = await signSession(session, env.SESSION_SECRET);
 
     return json({ ok:true, data:result }, 200, {
-      'set-cookie': `${COOKIE_NAME}=${token}; Max-Age=${SESSION_MAX_AGE}; Path=/; HttpOnly; Secure; SameSite=Strict`
+      'set-cookie': `${COOKIE_NAME}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Strict`
     });
-  }
-
-  if (!env.APPS_SCRIPT_URL || !env.APPS_SCRIPT_TOKEN) {
-    return json({ ok:false, error:'Konfigurasi Apps Script belum lengkap.' }, 500);
   }
 
   const session = await readSession(request, env.SESSION_SECRET);
   if (!session) return json({ ok:false, error:'Sesi login tidak valid atau sudah berakhir.' }, 401);
   if (!isAllowed(session.userType, method)) return json({ ok:false, error:'Akses fungsi ditolak.' }, 403);
+
+  if (method === 'changeOwnPassword') {
+    const payload = args[0] && typeof args[0] === 'object' ? args[0] : {};
+    const nextPassword = String(payload.password || '').trim();
+    const confirmPassword = String(payload.confirmPassword || '').trim();
+    if (nextPassword.length < 8 || !/[A-Za-z]/.test(nextPassword) || !/[0-9]/.test(nextPassword)) {
+      return json({ ok:true, data:{ success:false, message:'Password minimal 8 karakter dan harus mengandung huruf serta angka.' } });
+    }
+    if (nextPassword !== confirmPassword) return json({ ok:true, data:{ success:false, message:'Konfirmasi password tidak sama.' } });
+    try {
+      const result = await supabaseRpc(env, 'legacy_change_own_password', { p_user_id:session.userID, p_role:session.userType, p_new_password:nextPassword });
+      const maxAge = sessionMaxAgeForRole(session.userType);
+      const refreshed = { ...session, mustChangePassword:false, exp:Math.floor(Date.now()/1000)+maxAge };
+      const token = await signSession(refreshed, env.SESSION_SECRET);
+      return json({ ok:true, data:{ success:true, message:'Password berhasil diperbarui.' } }, 200, {
+        'set-cookie': `${COOKIE_NAME}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Strict`
+      });
+    } catch (error) {
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
 
   if (method === 'getPushConfig') {
     const publicKey = String(env.VAPID_PUBLIC_KEY || '').trim();
@@ -649,27 +686,31 @@ async function handleRpc(request, env, ctx) {
   }
 
   if (method === 'updateSelfProfile') {
-    const result = await gasRpc(env, method, safeArgs);
-
-    if (result && result.success === true) {
-      try {
-        const payload = safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {};
-        await supabaseRpc(env, 'legacy_update_identity_profile', {
-          p_role: session.userType,
-          p_user_id: session.userID,
-          p_name: String(payload.nama || '').trim() || null,
-          p_email: String(payload.email || '').trim() || null,
-          p_phone: String(payload.noHp || '').trim() || null,
-          p_instrument: String(payload.instrumen || '').trim() || null,
-          p_photo_url: null
-        });
-      } catch (error) {
-        console.error('Supabase identity mirror failed for updateSelfProfile:', error);
-      }
+    const payload = safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {};
+    try {
+      await supabaseRpc(env, 'legacy_update_identity_profile', {
+        p_role: session.userType,
+        p_user_id: session.userID,
+        p_name: String(payload.nama || '').trim() || null,
+        p_email: String(payload.email || '').trim() || null,
+        p_phone: String(payload.noHp || '').trim() || null,
+        p_instrument: String(payload.instrumen || '').trim() || null,
+        p_photo_url: null
+      });
+    } catch (error) {
+      console.error('Supabase identity update failed for updateSelfProfile:', error);
+      return json({ ok:true, data:{ success:false, message:'Gagal memperbarui profil di database.' } });
     }
 
-    if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
-      return json({ ok:true, data:result });
+    const result = { success:true, message:'Profil berhasil diperbarui.', userID:session.userID };
+    if (ctx && env.APPS_SCRIPT_URL && env.APPS_SCRIPT_TOKEN) {
+      ctx.waitUntil(gasRpc(env, method, safeArgs).catch(error => console.error('Apps Script profile shadow failed:', error)));
+    }
+    if (ctx && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
+    const maxAge = sessionMaxAgeForRole(session.userType);
+    const refreshedSession = { ...session, userName:String(payload.nama || session.userName || '').trim(), exp:Math.floor(Date.now()/1000)+maxAge };
+    const refreshedToken = await signSession(refreshedSession, env.SESSION_SECRET);
+    return json({ ok:true, data:result }, 200, { 'set-cookie':`${COOKIE_NAME}=${refreshedToken}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Strict` });
   }
 
   // PHASE 10: Guru is now Supabase-first.
@@ -740,6 +781,17 @@ async function handleRpc(request, env, ctx) {
 
     if (result && result.success === true && method !== 'deleteSiswa') {
       const studentId = String(result.siswaID || payload.siswaID || '').trim();
+      if (method === 'addSiswaCombined' && studentId) {
+        try {
+          const initialPassword = generateInitialPassword();
+          await supabaseRpc(env, 'legacy_set_account_password', { p_user_id:studentId, p_role:'siswa', p_password:initialPassword, p_must_change:true });
+          result.initialPassword = initialPassword;
+          result.message = `${result.message || 'Siswa berhasil ditambahkan.'} Password awal: ${initialPassword}`;
+        } catch (error) {
+          console.error('Initial student password hardening failed:', error);
+          return json({ ok:true, data:{ success:false, message:'Data siswa tersimpan, tetapi password awal gagal dibuat. Jalankan migration 32 lalu coba tambah siswa baru lagi.' } });
+        }
+      }
       try {
         await patchStudentClassDatesFromPayload(env, studentId, payload);
         if (studentId) {
@@ -1228,6 +1280,9 @@ async function handleRpc(request, env, ctx) {
   }
 
 
+  if (!env.APPS_SCRIPT_URL || !env.APPS_SCRIPT_TOKEN) {
+    return json({ ok:false, error:'Fitur ini membutuhkan konfigurasi Apps Script/Drive yang belum lengkap.' }, 503);
+  }
   const result = await gasRpc(env, method, safeArgs);
   if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
       return json({ ok:true, data:result });
@@ -1369,6 +1424,50 @@ function hasSupabaseConfig(env) {
   return Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+async function sha256Hex(value) {
+  const data = new TextEncoder().encode(String(value || ''));
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(x => x.toString(16).padStart(2,'0')).join('');
+}
+
+function generateInitialPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const bytes = new Uint8Array(12); crypto.getRandomValues(bytes);
+  let out = 'LmC-';
+  for (let i=0;i<bytes.length;i++) out += alphabet[bytes[i] % alphabet.length];
+  out += '-7';
+  return out;
+}
+
+function weekdayIndexId(dayName) {
+  const map={minggu:0,ahad:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,jum'at:5,sabtu:6};
+  return map[String(dayName||'').trim().toLowerCase()] ?? null;
+}
+function sameYearMonthIso(iso, year, monthIndex){
+  const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return !!m && Number(m[1])===year && Number(m[2])===monthIndex+1;
+}
+function countWeekdayInMonth(year, monthIndex, weekday){
+  if (weekday == null) return 0; let total=0; const days=new Date(year,monthIndex+1,0).getDate();
+  for(let d=1;d<=days;d++) if(new Date(year,monthIndex,d).getDay()===weekday) total++;
+  return total;
+}
+function calculateMonthlyExpectedClasses(schedules, overrides, studentId) {
+  const now=new Date();
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit'}).formatToParts(now);
+  const year=Number(parts.find(p=>p.type==='year')?.value || now.getUTCFullYear());
+  const month=Number(parts.find(p=>p.type==='month')?.value || (now.getUTCMonth()+1))-1;
+  let total=(Array.isArray(schedules)?schedules:[]).filter(x=>String(x.status||'Aktif').toLowerCase()==='aktif').reduce((sum,row)=>sum+countWeekdayInMonth(year,month,weekdayIndexId(row.day_name||row.hari)),0);
+  for(const row of (Array.isArray(overrides)?overrides:[])){
+    if(String(row.status||'Aktif').toLowerCase()!=='aktif') continue;
+    if(studentId && String(row.absent_student_id||'')!==String(studentId)) continue;
+    const originalInMonth=sameYearMonthIso(row.original_date,year,month);
+    const makeupInMonth=sameYearMonthIso(row.makeup_date,year,month);
+    if(originalInMonth && row.makeup_date && !makeupInMonth) total=Math.max(0,total-1);
+    if(!originalInMonth && makeupInMonth) total+=1;
+  }
+  return Math.max(0,total);
+}
+
 async function verifyLoginSupabaseRpc(env, args) {
   const [rawRole, rawUsername, rawPassword] = args;
   const role = String(rawRole || '').trim().toLowerCase();
@@ -1422,7 +1521,8 @@ async function verifyLoginSupabaseRpc(env, args) {
     success:true,
     userID:String(account.user_id || ''),
     userName:String(account.display_name || ''),
-    userType:String(account.role || role)
+    userType:String(account.role || role),
+    mustChangePassword:Boolean(account.must_change_password)
   };
 }
 
@@ -1735,7 +1835,7 @@ async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
     p_left_on: String(payload.tglKeluar || '').trim() || null,
     p_classes: normalizedClasses,
     p_replace_classes: String(payload.currentUserType || '').toLowerCase() === 'admin' || method === 'addSiswaCombined',
-    p_initial_password: method === 'addSiswaCombined' ? 'password123' : null
+    p_initial_password: null
   });
 }
 
@@ -3660,7 +3760,7 @@ async function buildStudentDashboardSupabase(env, session) {
       .filter(row => String(row.status || 'Aktif').toLowerCase() === 'aktif')
       .map(row => mapSchedule(row, false)),
     absensiList:attendance.map(mapAttendance),
-    absensiProgress:{ hadir, total:4 },
+    absensiProgress:{ hadir, total:calculateMonthlyExpectedClasses(schedules, scheduleOverrides, student.student_id) },
     tugasList:assignments.map(mapAssignment),
     learningProgressList:mappedProgressList,
     studentReports,

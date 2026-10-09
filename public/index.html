@@ -1267,7 +1267,7 @@
           <div class="profile-layout">
             <div class="profile-photo-container">
               <div class="profile-avatar-large" onclick="triggerPhotoSelect()">
-                <img id="myProfilePhotoImg" src="" style="display:none;">
+                <img id="myProfilePhotoImg" src="" alt="Foto profil" style="display:none;">
                 <span id="myProfileInitials">A</span>
                 <div class="overlay">Ubah Foto</div>
               </div>
@@ -1310,6 +1310,14 @@
                 <button type="button" id="btnDisablePush" class="btn btn-danger-outline" onclick="disablePushNotifications()" style="display:none;">Nonaktifkan</button>
               </div>
               <small class="push-settings-help">Untuk iPhone: tambahkan aplikasi ke Home Screen, buka dari ikon Home Screen, lalu tekan Aktifkan Notifikasi.</small>
+            </section>
+
+            <section class="security-settings" aria-labelledby="securitySettingsTitle">
+              <div>
+                <h3 id="securitySettingsTitle">Keamanan Akun</h3>
+                <p>Gunakan password unik minimal 8 karakter yang mengandung huruf dan angka.</p>
+              </div>
+              <button type="button" class="btn btn-secondary" onclick="openChangePasswordModal()">Ubah Password</button>
             </section>
 
             <form id="formEditProfileSelf" onsubmit="return handleSaveSelfProfile(event)">
@@ -1664,6 +1672,22 @@
     </div>
   </div>
 
+  <!-- MODAL UBAH PASSWORD -->
+  <div id="modalForcePassword" class="modal force-password-modal" aria-modal="true" role="dialog" aria-labelledby="forcePasswordTitle">
+    <div class="modal-content force-password-content">
+      <div class="modal-header">
+        <div><h3 id="forcePasswordTitle">Ubah Password</h3><p id="forcePasswordSubtitle">Perbarui password akun Anda.</p></div>
+        <button type="button" id="forcePasswordClose" class="modal-close" onclick="closeChangePasswordModal()">&times;</button>
+      </div>
+      <form onsubmit="return handleForcePasswordChange(event)">
+        <div id="forcePasswordMessage" class="force-password-message"></div>
+        <div class="form-group"><label>Password Baru</label><input id="forcePasswordNew" type="password" autocomplete="new-password" minlength="8" required placeholder="Minimal 8 karakter"></div>
+        <div class="form-group"><label>Konfirmasi Password Baru</label><input id="forcePasswordConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Ulangi password baru"></div>
+        <button id="forcePasswordSubmit" type="submit" class="btn btn-primary" style="width:100%;">Simpan Password Baru</button>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL CROPPER FOTO -->
   <div id="modalCropper" class="modal">
     <div class="modal-content">
@@ -1671,7 +1695,7 @@
         <h3>Potong Foto Profile (Crop)</h3>
         <button class="modal-close" onclick="closeCropperModal()">&times;</button>
       </div>
-      <div class="cropper-modal-container"><img id="imageToCrop" src=""></div>
+      <div class="cropper-modal-container"><img id="imageToCrop" src="" alt="Pratinjau foto untuk dipotong"></div>
       <div style="display:flex; justify-content:flex-end; gap:10px;">
         <button class="btn" onclick="closeCropperModal()" style="background:#e2e8f0; color:#475569;">Batal</button>
         <button class="btn btn-primary" onclick="cropAndUploadPhoto()">Simpan Foto</button>
