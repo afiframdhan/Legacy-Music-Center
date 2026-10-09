@@ -3935,7 +3935,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
           x.title,x.studentName,x.instrument,x.strength,x.improvement,x.nextTarget,
           x.sourceLabel,x.teacherName,x.notes,phFormatDate(x.updatedAt||x.createdAt)
         ].map(v=>String(v||'').toLowerCase()).join(' ');
-        return (!sid || String(x.studentID||'')===sid) && (!q || haystack.includes(q));
+        return (!sid || String(x.studentID||'')===sid) && mediaEvalMatchesBrowseSource(x,mediaEvalBrowseSource,sid) && (!q || haystack.includes(q));
       });
     }
 
@@ -4083,7 +4083,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       document.addEventListener('keydown',event=>{if(event.key==='Escape')closePhStudentPickers();});
     }
 
-    function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');mediaEvalBrowseSource='';renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
     function setMediaEvalBrowseQuery(value){mediaEvalBrowseQuery=String(value||'');renderMediaEvaluations();}
     function chooseMediaEvalFormStudent(studentId){const sel=document.getElementById('mediaEvalStudent');if(sel)sel.value=studentId;document.getElementById('mediaEvalStudentPicker')?.classList.remove('open');syncEvaluationInstrument();renderStudentPicker('mediaEvalStudentPicker',studentId,'chooseMediaEvalFormStudent',false);}
 
@@ -4112,12 +4112,15 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const isStudent=currentUser.userType==='siswa';
       if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
+      const sourceField=`<div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div>`;
       const searchField=`<div><label>Cari / Filter Evaluasi</label><div class="media-eval-search-field"><span>⌕</span><input type="search" value="${phEsc(mediaEvalBrowseQuery)}" placeholder="Cari judul, materi, repertoire, instrumen..." oninput="setMediaEvalBrowseQuery(this.value)"></div></div>`;
       if(isStudent){
-        host.innerHTML=`<div class="media-eval-browse-grid student-only">${searchField}</div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid student-only with-source">${sourceField}${searchField}</div>`;
+        renderMediaEvalBrowseSourcePicker(sid);
       }else{
-        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div>${searchField}</div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid with-source"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div>${sourceField}${searchField}</div>`;
         renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
+        renderMediaEvalBrowseSourcePicker(sid);
       }
     }
 
