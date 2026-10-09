@@ -3385,3 +3385,98 @@ html[data-theme="dark"] .annual-exam-modal .annual-score-avg{
   border-color:var(--lmc-border,#34445e)!important;
   color:#ff8a3d!important;
 }
+
+/* ======================================================================
+   RELEASE UI GUARD 2026-10-10 — viewport backdrop + annual score parity
+   - fixes iPhone white side gutters around any open modal
+   - makes Penguji 1 / Penguji 2 / Rata-rata identical score boxes
+   - no business/data flow changes
+   ====================================================================== */
+
+/* Some iOS/WebKit layouts keep a small gutter outside a fixed modal when
+   the modal lives under a transformed application shell. Paint the backdrop
+   at body level so every dialog covers the entire visual viewport. */
+body:has(.modal[style*="display: flex"])::before,
+body:has(.modal[style*="display:flex"])::before,
+body:has(.modal.show)::before,
+body:has(.modal.open)::before,
+body:has(.modal[aria-hidden="false"])::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100dvh;
+  background:rgba(15,23,42,.50);
+  z-index:29990;
+  pointer-events:none;
+}
+body:has(.modal[style*="display: flex"]),
+body:has(.modal[style*="display:flex"]),
+body:has(.modal.show),
+body:has(.modal.open),
+body:has(.modal[aria-hidden="false"]){
+  overflow:hidden!important;
+}
+.modal{
+  margin:0!important;
+  max-width:none!important;
+}
+
+@media(max-width:700px){
+  /* Keep the three exam score columns visually identical. */
+  .annual-exam-modal .annual-exam-score-table td:nth-child(n+3){
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    justify-content:flex-start!important;
+    min-width:0!important;
+    padding:6px 2px!important;
+    background:transparent!important;
+  }
+  .annual-exam-modal .annual-exam-score-table td:nth-child(n+3)::before{
+    display:flex!important;
+    align-items:flex-end!important;
+    justify-content:center!important;
+    height:24px!important;
+    min-height:24px!important;
+    margin:0 0 6px!important;
+    line-height:1.1!important;
+  }
+  .annual-exam-modal .annual-exam-score-table input[type="number"],
+  .annual-exam-modal .annual-score-avg-value{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:100%!important;
+    min-width:0!important;
+    height:52px!important;
+    min-height:52px!important;
+    margin:0!important;
+    padding:0 6px!important;
+    border:1px solid var(--lmc-border,#dfe6ee)!important;
+    border-radius:11px!important;
+    background:var(--lmc-input,#fff)!important;
+    color:var(--lmc-text,#17232d)!important;
+    font-size:19px!important;
+    font-weight:750!important;
+    line-height:1!important;
+    text-align:center!important;
+    box-sizing:border-box!important;
+  }
+  .annual-exam-modal .annual-score-avg{
+    color:inherit!important;
+    font-size:inherit!important;
+    font-weight:inherit!important;
+    text-align:initial!important;
+  }
+  .annual-exam-modal .annual-score-avg-value{
+    color:#f15a24!important;
+    font-weight:850!important;
+  }
+}
+
+html[data-theme="dark"] .annual-exam-modal .annual-score-avg-value{
+  background:var(--lmc-input,#0c1627)!important;
+  border-color:var(--lmc-border,#34445e)!important;
+  color:#ff8a3d!important;
+}
