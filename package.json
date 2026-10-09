@@ -3,7 +3,7 @@
   "private": true,
   "version": "3.0.0",
   "scripts": {
-    "build": "node scripts/build.mjs && node --check public/js/app.bundle.js && node scripts/check.mjs",
+    "build": "node scripts/build.mjs && node --check public/js/app.bundle.js && node --check worker/index.js && node scripts/check.mjs",
     "dev": "wrangler dev",
     "deploy:test": "wrangler deploy --env test",
     "deploy:production": "wrangler deploy --env production",

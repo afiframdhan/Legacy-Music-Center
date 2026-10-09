@@ -1440,7 +1440,7 @@ function generateInitialPassword() {
 }
 
 function weekdayIndexId(dayName) {
-  const map={minggu:0,ahad:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,jum'at:5,sabtu:6};
+  const map={minggu:0,ahad:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,"jum'at":5,sabtu:6};
   return map[String(dayName||'').trim().toLowerCase()] ?? null;
 }
 function sameYearMonthIso(iso, year, monthIndex){
