@@ -264,7 +264,7 @@
       filterSiswaGuru:'teacher', filterJadwalGuru:'teacher',
       makeupFilterTeacher:'teacher', operationalCalendarTeacher:'teacher',
       filterProgressGuru:'teacher', filterProgressSiswa:'student', absensiSiswa:'student',
-      taskStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
+      taskStudentFilter:'student', practiceStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
     };
 
     function lmcPersonInitials(name) {
@@ -309,11 +309,45 @@
       return String(teacher.instrumen||'Guru Pengajar').trim() || 'Guru Pengajar';
     }
 
+    function lmcPersonPhotoCandidates(value) {
+      const raw=String(value||'').trim();
+      if(!raw)return [];
+      const list=[];
+      const push=url=>{const clean=String(url||'').trim();if(clean&&!list.includes(clean))list.push(clean);};
+      if(/^data:image\//i.test(raw)||/^blob:/i.test(raw)){push(raw);return list;}
+      let match=raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if(!match)match=raw.match(/[?&]id=([^&#]+)/i);
+      if(!match)match=raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if(match&&match[1]){
+        const id=decodeURIComponent(match[1]);
+        push(`https://lh3.googleusercontent.com/d/${id}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w400`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
+      }
+      push(raw);
+      return list;
+    }
+
+    function lmcPersonAvatarFallback(img) {
+      if(!img)return;
+      try{
+        const list=JSON.parse(img.dataset.lmcPhotoFallbacks||'[]');
+        const index=Number(img.dataset.lmcPhotoFallbackIndex||0);
+        if(index<list.length){img.dataset.lmcPhotoFallbackIndex=String(index+1);img.src=list[index];return;}
+      }catch(_){}
+      img.style.display='none';
+      if(img.nextElementSibling)img.nextElementSibling.style.display='grid';
+    }
+
     function lmcPersonAvatar(person, kind, fallbackName) {
       const name=String(person?.nama||fallbackName||'').trim();
-      const photo=String(person?.foto||person?.photoUrl||person?.fotoProfil||'').trim();
+      const photo=String(person?.foto||person?.photoUrl||person?.fotoProfil||person?.photo_url||'').trim();
       const initials=lmcPersonInitials(name);
-      if (photo) return `<span class="lmc-person-avatar"><img src="${escapeTaskHtml(photo)}" alt="${escapeTaskHtml(name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span style="display:none">${escapeTaskHtml(initials)}</span></span>`;
+      const candidates=lmcPersonPhotoCandidates(photo);
+      if(candidates.length){
+        const fallbacks=escapeTaskHtml(JSON.stringify(candidates.slice(1)));
+        return `<span class="lmc-person-avatar"><img src="${escapeTaskHtml(candidates[0])}" data-lmc-photo-fallbacks='${fallbacks}' data-lmc-photo-fallback-index="0" alt="${escapeTaskHtml(name)}" onerror="lmcPersonAvatarFallback(this)"><span style="display:none">${escapeTaskHtml(initials)}</span></span>`;
+      }
       return `<span class="lmc-person-avatar"><span>${escapeTaskHtml(initials)}</span></span>`;
     }
 

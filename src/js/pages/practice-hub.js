@@ -97,7 +97,12 @@
     function phStudentAvatar(student, size='md') {
       const name=String(student?.nama||'S').trim();
       const initial=phEsc(name.charAt(0).toUpperCase()||'S');
-      if (student?.foto) return `<span class="ph-student-avatar ${size}"><img src="${phEsc(student.foto)}" alt="${phEsc(name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span style="display:none">${initial}</span></span>`;
+      const photo=String(student?.foto||student?.photoUrl||student?.fotoProfil||student?.photo_url||'').trim();
+      const candidates=typeof lmcPersonPhotoCandidates==='function'?lmcPersonPhotoCandidates(photo):(photo?[photo]:[]);
+      if(candidates.length){
+        const fallbacks=phEsc(JSON.stringify(candidates.slice(1)));
+        return `<span class="ph-student-avatar ${size}"><img src="${phEsc(candidates[0])}" data-lmc-photo-fallbacks='${fallbacks}' data-lmc-photo-fallback-index="0" alt="${phEsc(name)}" onerror="if(typeof lmcPersonAvatarFallback==='function'){lmcPersonAvatarFallback(this)}else{this.style.display='none';this.nextElementSibling.style.display='grid'}"><span style="display:none">${initial}</span></span>`;
+      }
       return `<span class="ph-student-avatar ${size}"><span>${initial}</span></span>`;
     }
 

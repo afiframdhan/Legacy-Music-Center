@@ -157,3 +157,29 @@ html[data-theme="light"] :where(input,select,textarea) { color-scheme: light; }
   width:100%;min-height:44px;height:44px;box-sizing:border-box;border-radius:10px;
 }
 :where(.filter-grid,.practice-filter-grid,.repertoire-filter-grid,.annual-exam-filters,.attendance-filter-panel,.academy-filter-bar,.lp-page-filter,.admin-monitor-filter,.student-report-filter,.media-eval-browse-grid) .lmc-person-filter{width:100%;}
+
+
+/* V4.3 dark-mode completion pass for neutral interactive surfaces. */
+html[data-theme="dark"] :where(
+  .notification-button,.notification-panel,.notification-head,.notification-item,
+  .widget-collapse-btn,.theme-option,.student-report-filter,.student-report-tab,
+  .task-stat,.task-card,.task-toolbar,.task-empty,.task-youtube-compact,.task-mini-action,
+  .repertoire-meta,.repertoire-summary-card,.repertoire-summary-row,.repertoire-empty,
+  .admin-control-stat,.admin-control-action,.admin-audit-row,.admin-quality-card,.admin-quality-stats>div,
+  .teacher-monitor-card,.teacher-monitor-actions button,
+  .academy-card,.today-schedule-item,.siswa-card-schedule,.profile-layout,
+  .room-summary-card,.room-card,.lp-component,.lp-form-component,.lp-signature-preview
+){background-color:var(--lmc-surface)!important;border-color:var(--lmc-border)!important;color:var(--lmc-text-2)!important;}
+html[data-theme="dark"] :where(
+  .task-toolbar input,.task-toolbar select,.lp-student-select,
+  .lp-form-component select,.lp-form-component textarea,.lp-component-controls input,
+  .lp-signature-upload input[type="file"],.lp-signature-upload input[type="text"]
+){background:var(--lmc-input)!important;border-color:var(--lmc-border-strong)!important;color:var(--lmc-text)!important;}
+html[data-theme="dark"] :where(
+  .task-card h3,.task-empty strong,.repertoire-summary-card b,.repertoire-summary-row b,
+  .admin-control-stat b,.admin-control-action b,.admin-quality-card b,.teacher-monitor-card b,
+  .room-card h3,.room-summary-card b,.lp-component b,.lp-form-component-title
+){color:var(--lmc-text)!important;}
+html[data-theme="dark"] :where(.modern-data-table tbody tr,.dashboard-student-table tbody tr,.attendance-responsive-table tbody tr){background:var(--lmc-surface)!important;border-color:var(--lmc-border)!important;}
+html[data-theme="dark"] :where(.modern-data-table td,.dashboard-student-table td,.attendance-responsive-table td){color:var(--lmc-text-2)!important;border-color:var(--lmc-border)!important;}
+html[data-theme="dark"] .practice-filter-box select{background:var(--lmc-input)!important;color:var(--lmc-text)!important;border-color:var(--lmc-border-strong)!important;}
