@@ -162,6 +162,19 @@
       return mediaEvalSourceItems(studentId).find(x=>String(x.type)===type&&String(x.id)===id) || null;
     }
 
+    function mediaEvalLegacyMediaKey(url) {
+      const raw=String(url||'').trim();
+      if(!raw)return '';
+      const yid=phYoutubeId(raw);
+      if(yid)return `youtube:${yid}`;
+      try {
+        const parsed=new URL(raw,window.location.origin);
+        return `${parsed.origin}${parsed.pathname}`.replace(/\/$/,'').toLowerCase();
+      } catch (_) {
+        return raw.split(/[?#]/)[0].replace(/\/$/,'').toLowerCase();
+      }
+    }
+
     function mediaEvalMatchesBrowseSource(item, sourceValue, studentId) {
       const source=String(sourceValue||'');
       if(!source)return true;
@@ -174,6 +187,21 @@
       const selectedLabel=String(selected?.label||'').trim().toLowerCase();
       const itemLabel=String(item.sourceLabel||'').trim().toLowerCase();
       if(selectedLabel && itemLabel && selectedLabel===itemLabel)return true;
+
+      // Kompatibilitas evaluasi lama sebelum source_type/source_id disimpan.
+      // Jika evaluasi dan Materi Latihan memakai media yang sama, anggap tertaut.
+      const hasExplicitSource=!!(String(item.sourceType||'').trim() || String(item.sourceID||'').trim() || String(item.sourceLabel||'').trim() || String(item.repertoireID||'').trim());
+      if(!hasExplicitSource && type==='practice' && selected){
+        const resource=practiceResources.find(r=>String(r.resourceID||'')===id);
+        const evalMedia=mediaEvalLegacyMediaKey(item.mediaUrl);
+        const resourceMedia=mediaEvalLegacyMediaKey(resource?.youtubeUrl);
+        if(evalMedia && resourceMedia && evalMedia===resourceMedia)return true;
+
+        // Data sangat lama tidak punya metadata sumber. Bila siswa hanya punya satu
+        // Materi Latihan pada instrumen yang sama, itu adalah fallback paling aman.
+        const sameInstrumentResources=practiceResources.filter(r=>String(r.studentID||'')===String(studentId||'') && String(r.instrument||'').trim().toLowerCase()===String(item.instrument||'').trim().toLowerCase());
+        if(sameInstrumentResources.length===1 && String(sameInstrumentResources[0].resourceID||'')===id)return true;
+      }
       return false;
     }
 
