@@ -1260,3 +1260,44 @@ html[data-theme="dark"] .annual-exam-modal .annual-score-avg-value{
   border-color:var(--lmc-border,#34445e)!important;
   color:#ff8a3d!important;
 }
+
+/* 2026-10-10 — Annual Exam: remove duplicate outer box from average cell.
+   The TD is only a layout container; the visible score box is .annual-score-avg-value. */
+@media (max-width:700px){
+  .annual-exam-modal .annual-exam-score-table td.annual-score-avg{
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    justify-content:flex-start!important;
+    width:auto!important;
+    min-width:0!important;
+    height:auto!important;
+    min-height:0!important;
+    padding:6px 2px!important;
+    margin:0!important;
+    border:0!important;
+    border-radius:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+    color:inherit!important;
+    font-size:inherit!important;
+    font-weight:inherit!important;
+    line-height:normal!important;
+    text-align:initial!important;
+  }
+  .annual-exam-modal .annual-exam-score-table td.annual-score-avg::before{
+    display:flex!important;
+  }
+  .annual-exam-modal .annual-score-avg-value{
+    flex:0 0 52px!important;
+    width:100%!important;
+    height:52px!important;
+    min-height:52px!important;
+    margin:0!important;
+  }
+}
+html[data-theme="dark"] .annual-exam-modal .annual-exam-score-table td.annual-score-avg{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+}
