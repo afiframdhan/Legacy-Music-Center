@@ -1671,7 +1671,7 @@
         <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
         <div class="annual-exam-card-actions">
           ${currentUser.userType==='guru'?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button>`:''}
-          ${!isStudent?`<button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          <button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">${isStudent?'Form Penilaian':'Form Nilai'}</button>
           <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
           ${currentUser.userType==='guru'&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
           ${currentUser.userType==='guru'?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}

@@ -866,6 +866,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
     function enhanceLmcPersonFilter(select) {
       if (!select || !LMC_PERSON_FILTERS[select.id]) return;
+      if (select.id==='taskStudentFilter' && currentUser?.userType==='siswa') {
+        select.classList.add('lmc-person-filter-native');
+        const oldHost=select.nextElementSibling;
+        if(oldHost?.classList?.contains('lmc-person-filter')) oldHost.remove();
+        return;
+      }
       if (select.nextElementSibling?.classList.contains('lmc-person-filter')) return refreshLmcPersonFilterPicker(select);
       const kind=LMC_PERSON_FILTERS[select.id];
       select.classList.add('lmc-person-filter-native');
@@ -3718,6 +3724,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     let practiceActiveEvaluation = '';
     let mediaEvalBrowseStudent = '';
     let mediaEvalBrowseSource = '';
+    let mediaEvalBrowseQuery = '';
     let practiceActiveTab = 'materials';
 
     const MEDIA_EVAL_ASPECT_PRESETS = {
@@ -3922,11 +3929,13 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function phFilteredEvaluations() {
       const generalSid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
       const sid=mediaEvalBrowseStudent || generalSid;
-      const source=String(mediaEvalBrowseSource||'');
-      const q=String(document.getElementById('practiceSearch')?.value||'').trim().toLowerCase();
+      const q=String(mediaEvalBrowseQuery||'').trim().toLowerCase();
       return mediaEvaluations.filter(x => {
-        const sourceMatch=mediaEvalMatchesBrowseSource(x,source,sid);
-        return (!sid || String(x.studentID||'')===sid) && sourceMatch && (!q || [x.title,x.studentName,x.instrument,x.strength,x.improvement,x.sourceLabel].some(v=>String(v||'').toLowerCase().includes(q)));
+        const haystack=[
+          x.title,x.studentName,x.instrument,x.strength,x.improvement,x.nextTarget,
+          x.sourceLabel,x.teacherName,x.notes,phFormatDate(x.updatedAt||x.createdAt)
+        ].map(v=>String(v||'').toLowerCase()).join(' ');
+        return (!sid || String(x.studentID||'')===sid) && (!q || haystack.includes(q));
       });
     }
 
@@ -4074,7 +4083,8 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       document.addEventListener('keydown',event=>{if(event.key==='Escape')closePhStudentPickers();});
     }
 
-    function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');mediaEvalBrowseSource='';renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function setMediaEvalBrowseQuery(value){mediaEvalBrowseQuery=String(value||'');renderMediaEvaluations();}
     function chooseMediaEvalFormStudent(studentId){const sel=document.getElementById('mediaEvalStudent');if(sel)sel.value=studentId;document.getElementById('mediaEvalStudentPicker')?.classList.remove('open');syncEvaluationInstrument();renderStudentPicker('mediaEvalStudentPicker',studentId,'chooseMediaEvalFormStudent',false);}
 
     function closeMediaSourcePickers(){document.querySelectorAll('.media-source-picker.open').forEach(el=>el.classList.remove('open'));}
@@ -4102,13 +4112,13 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const isStudent=currentUser.userType==='siswa';
       if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
+      const searchField=`<div><label>Cari / Filter Evaluasi</label><div class="media-eval-search-field"><span>⌕</span><input type="search" value="${phEsc(mediaEvalBrowseQuery)}" placeholder="Cari judul, materi, repertoire, instrumen..." oninput="setMediaEvalBrowseQuery(this.value)"></div></div>`;
       if(isStudent){
-        host.innerHTML=`<div class="media-eval-browse-grid student-only"><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid student-only">${searchField}</div>`;
       }else{
-        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div>${searchField}</div>`;
         renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
       }
-      renderMediaEvalBrowseSourcePicker(sid);
     }
 
     function renderMediaEvaluations() {
@@ -6548,7 +6558,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
         <div class="annual-exam-card-actions">
           ${currentUser.userType==='guru'?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button>`:''}
-          ${!isStudent?`<button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          <button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">${isStudent?'Form Penilaian':'Form Nilai'}</button>
           <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
           ${currentUser.userType==='guru'&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
           ${currentUser.userType==='guru'?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
@@ -7720,12 +7730,18 @@ function normalizeTaskStatus(task) {
     function updateTaskStudentFilter() {
       const select = document.getElementById('taskStudentFilter');
       if (!select) return;
+      const toolbar=select.closest('.task-toolbar');
+      const customPicker=select.nextElementSibling?.classList?.contains('lmc-person-filter') ? select.nextElementSibling : null;
       if (currentUser.userType === 'siswa') {
         select.style.display = 'none';
         select.value = 'semua';
+        if(customPicker) customPicker.style.display='none';
+        toolbar?.classList.add('student-mode');
         return;
       }
       select.style.display = '';
+      if(customPicker) customPicker.style.display='';
+      toolbar?.classList.remove('student-mode');
       const selected = select.value || 'semua';
       const names = [...new Set(globalTugasList.map(task => String(task.namaSiswa || '').trim()).filter(Boolean))]
         .sort((a,b) => a.localeCompare(b, 'id'));
@@ -7774,7 +7790,8 @@ function normalizeTaskStatus(task) {
       const summary = document.getElementById('taskListSummary');
       if (summary) summary.textContent = `Menampilkan ${filtered.length} dari ${total} tugas`;
       if (filtered.length === 0) {
-        container.innerHTML = `<div class="task-empty"><strong>Belum ada tugas yang ditampilkan</strong><span>Coba ubah pencarian, nama siswa, atau filter status.</span></div>`;
+        const hint=currentUser.userType==='siswa'?'Coba ubah pencarian atau filter status.':'Coba ubah pencarian, nama siswa, atau filter status.';
+        container.innerHTML = `<div class="task-empty"><strong>Belum ada tugas yang ditampilkan</strong><span>${hint}</span></div>`;
         return;
       }
 
@@ -7842,6 +7859,7 @@ function normalizeTaskStatus(task) {
       } else {
         footer.innerHTML = '<button type="button" class="btn btn-primary" onclick="closeTaskDetailModal()">Selesai</button>';
       }
+      footer.classList.toggle('single-action',footer.children.length===1);
       modal.style.display = 'flex';
     }
 

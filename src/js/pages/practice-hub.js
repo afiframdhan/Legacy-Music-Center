@@ -4,6 +4,7 @@
     let practiceActiveEvaluation = '';
     let mediaEvalBrowseStudent = '';
     let mediaEvalBrowseSource = '';
+    let mediaEvalBrowseQuery = '';
     let practiceActiveTab = 'materials';
 
     const MEDIA_EVAL_ASPECT_PRESETS = {
@@ -208,11 +209,13 @@
     function phFilteredEvaluations() {
       const generalSid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
       const sid=mediaEvalBrowseStudent || generalSid;
-      const source=String(mediaEvalBrowseSource||'');
-      const q=String(document.getElementById('practiceSearch')?.value||'').trim().toLowerCase();
+      const q=String(mediaEvalBrowseQuery||'').trim().toLowerCase();
       return mediaEvaluations.filter(x => {
-        const sourceMatch=mediaEvalMatchesBrowseSource(x,source,sid);
-        return (!sid || String(x.studentID||'')===sid) && sourceMatch && (!q || [x.title,x.studentName,x.instrument,x.strength,x.improvement,x.sourceLabel].some(v=>String(v||'').toLowerCase().includes(q)));
+        const haystack=[
+          x.title,x.studentName,x.instrument,x.strength,x.improvement,x.nextTarget,
+          x.sourceLabel,x.teacherName,x.notes,phFormatDate(x.updatedAt||x.createdAt)
+        ].map(v=>String(v||'').toLowerCase()).join(' ');
+        return (!sid || String(x.studentID||'')===sid) && (!q || haystack.includes(q));
       });
     }
 
@@ -360,7 +363,8 @@
       document.addEventListener('keydown',event=>{if(event.key==='Escape')closePhStudentPickers();});
     }
 
-    function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');mediaEvalBrowseSource='';renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function setMediaEvalBrowseQuery(value){mediaEvalBrowseQuery=String(value||'');renderMediaEvaluations();}
     function chooseMediaEvalFormStudent(studentId){const sel=document.getElementById('mediaEvalStudent');if(sel)sel.value=studentId;document.getElementById('mediaEvalStudentPicker')?.classList.remove('open');syncEvaluationInstrument();renderStudentPicker('mediaEvalStudentPicker',studentId,'chooseMediaEvalFormStudent',false);}
 
     function closeMediaSourcePickers(){document.querySelectorAll('.media-source-picker.open').forEach(el=>el.classList.remove('open'));}
@@ -388,13 +392,13 @@
       const isStudent=currentUser.userType==='siswa';
       if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
+      const searchField=`<div><label>Cari / Filter Evaluasi</label><div class="media-eval-search-field"><span>⌕</span><input type="search" value="${phEsc(mediaEvalBrowseQuery)}" placeholder="Cari judul, materi, repertoire, instrumen..." oninput="setMediaEvalBrowseQuery(this.value)"></div></div>`;
       if(isStudent){
-        host.innerHTML=`<div class="media-eval-browse-grid student-only"><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid student-only">${searchField}</div>`;
       }else{
-        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
+        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div>${searchField}</div>`;
         renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
       }
-      renderMediaEvalBrowseSourcePicker(sid);
     }
 
     function renderMediaEvaluations() {

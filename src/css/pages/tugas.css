@@ -223,3 +223,37 @@ html[data-theme="dark"] .task-submit-form input[readonly]{background:#0c1627!imp
   .task-submit-form input[type=file]{font-size:14px}
   .task-submit-actions{position:fixed;left:0;right:0;bottom:0;z-index:1006;margin:0;padding:11px 14px calc(11px + env(safe-area-inset-bottom));grid-template-columns:.72fr 1.45fr;box-shadow:0 -10px 26px rgba(15,23,42,.18)}
 }
+
+/* === Release UI pass: tugas role-aware filters + unified mobile modals === */
+.task-toolbar.student-mode{grid-template-columns:minmax(220px,1fr) minmax(150px,190px)}
+.task-detail-footer.single-action{justify-content:flex-end}
+.task-detail-footer.single-action .btn{min-width:150px}
+
+@media(max-width:600px){
+  /* Keep header/body/footer as one full-screen surface instead of detached viewport bars. */
+  .task-detail-modal .modal-content,
+  .task-submit-modal-content{display:flex!important;flex-direction:column!important;overflow:hidden!important;background:var(--lmc-surface,#fff)!important}
+  .task-detail-modal .modal-header,
+  .task-submit-modal-content .modal-header{position:relative!important;top:auto!important;flex:0 0 auto!important;background:var(--lmc-surface,#fff)!important;box-shadow:none!important}
+  .task-detail-body{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;padding:14px 16px 18px!important}
+  .task-detail-footer{position:relative!important;left:auto!important;right:auto!important;bottom:auto!important;z-index:2!important;flex:0 0 auto!important;margin:0!important;padding:11px 14px calc(11px + env(safe-area-inset-bottom))!important;background:var(--lmc-surface,#fff)!important;border-top:1px solid var(--lmc-border,#e2e8f0)!important;box-shadow:0 -8px 18px rgba(15,23,42,.06)!important}
+  .task-detail-footer.single-action{grid-template-columns:1fr!important}
+  .task-detail-footer.single-action .btn{min-width:0!important}
+  .task-submit-form{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;padding:14px 16px 0!important}
+  .task-submit-actions{position:sticky!important;left:auto!important;right:auto!important;bottom:0!important;z-index:4!important;margin:18px -16px 0!important;padding:11px 14px calc(11px + env(safe-area-inset-bottom))!important;background:var(--lmc-surface,#fff)!important;border-top:1px solid var(--lmc-border,#e2e8f0)!important;box-shadow:0 -8px 18px rgba(15,23,42,.06)!important}
+  .task-toolbar.student-mode{grid-template-columns:1fr!important}
+  .task-toolbar.student-mode #taskSortFilter{width:100%}
+}
+
+html[data-theme="dark"] .task-detail-modal .modal-content,
+html[data-theme="dark"] .task-submit-modal-content,
+html[data-theme="dark"] .task-detail-modal .modal-header,
+html[data-theme="dark"] .task-submit-modal-content .modal-header,
+html[data-theme="dark"] .task-detail-footer,
+html[data-theme="dark"] .task-submit-actions{background:#111b2e!important;border-color:#31415a!important;color:#e8eef7!important}
+
+/* Mobile polish for file upload inside Kumpulkan Tugas */
+.task-submit-form input[type="file"]{width:100%;min-height:46px;border:1px solid var(--lmc-border,#d8e1eb);border-radius:12px;background:var(--lmc-input,#fff);color:var(--lmc-text,#17232d);padding:7px;font-size:12px}
+.task-submit-form input[type="file"]::file-selector-button{border:0;border-radius:9px;background:#fff0e9;color:#c2410c;font-weight:800;padding:9px 12px;margin-right:10px;cursor:pointer}
+html[data-theme="dark"] .task-submit-form input[type="file"]{background:#0c1627!important;color:#e8eef7!important;border-color:#34445e!important}
+html[data-theme="dark"] .task-submit-form input[type="file"]::file-selector-button{background:#3a2218;color:#ff9a68}

@@ -414,6 +414,12 @@
 
     function enhanceLmcPersonFilter(select) {
       if (!select || !LMC_PERSON_FILTERS[select.id]) return;
+      if (select.id==='taskStudentFilter' && currentUser?.userType==='siswa') {
+        select.classList.add('lmc-person-filter-native');
+        const oldHost=select.nextElementSibling;
+        if(oldHost?.classList?.contains('lmc-person-filter')) oldHost.remove();
+        return;
+      }
       if (select.nextElementSibling?.classList.contains('lmc-person-filter')) return refreshLmcPersonFilterPicker(select);
       const kind=LMC_PERSON_FILTERS[select.id];
       select.classList.add('lmc-person-filter-native');

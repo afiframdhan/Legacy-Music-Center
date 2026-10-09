@@ -220,12 +220,18 @@ function normalizeTaskStatus(task) {
     function updateTaskStudentFilter() {
       const select = document.getElementById('taskStudentFilter');
       if (!select) return;
+      const toolbar=select.closest('.task-toolbar');
+      const customPicker=select.nextElementSibling?.classList?.contains('lmc-person-filter') ? select.nextElementSibling : null;
       if (currentUser.userType === 'siswa') {
         select.style.display = 'none';
         select.value = 'semua';
+        if(customPicker) customPicker.style.display='none';
+        toolbar?.classList.add('student-mode');
         return;
       }
       select.style.display = '';
+      if(customPicker) customPicker.style.display='';
+      toolbar?.classList.remove('student-mode');
       const selected = select.value || 'semua';
       const names = [...new Set(globalTugasList.map(task => String(task.namaSiswa || '').trim()).filter(Boolean))]
         .sort((a,b) => a.localeCompare(b, 'id'));
@@ -274,7 +280,8 @@ function normalizeTaskStatus(task) {
       const summary = document.getElementById('taskListSummary');
       if (summary) summary.textContent = `Menampilkan ${filtered.length} dari ${total} tugas`;
       if (filtered.length === 0) {
-        container.innerHTML = `<div class="task-empty"><strong>Belum ada tugas yang ditampilkan</strong><span>Coba ubah pencarian, nama siswa, atau filter status.</span></div>`;
+        const hint=currentUser.userType==='siswa'?'Coba ubah pencarian atau filter status.':'Coba ubah pencarian, nama siswa, atau filter status.';
+        container.innerHTML = `<div class="task-empty"><strong>Belum ada tugas yang ditampilkan</strong><span>${hint}</span></div>`;
         return;
       }
 
@@ -342,6 +349,7 @@ function normalizeTaskStatus(task) {
       } else {
         footer.innerHTML = '<button type="button" class="btn btn-primary" onclick="closeTaskDetailModal()">Selesai</button>';
       }
+      footer.classList.toggle('single-action',footer.children.length===1);
       modal.style.display = 'flex';
     }
 
