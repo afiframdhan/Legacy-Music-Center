@@ -81,31 +81,27 @@
       if (!file || !file.url) return '';
       const name = escapeTaskHtml(file.name || 'File lampiran');
       const url = escapeTaskHtml(file.url);
-      const driveId = getTaskDriveFileId(file);
-      const previewRaw = driveId ? `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview` : (file.previewUrl || file.url);
-      const previewUrl = escapeTaskHtml(previewRaw);
       const downloadUrl = escapeTaskHtml(file.downloadUrl || file.url);
       const type = String(file.type || '').toLowerCase();
       const rawName = String(file.name || '').toLowerCase();
       const isAudio = type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/.test(rawName);
       const isVideo = type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv)$/.test(rawName);
       const isImage = type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|heic)$/.test(rawName);
+      const isPdf = type.includes('pdf') || /\.pdf$/.test(rawName);
+      const icon = isVideo ? '🎬' : isAudio ? '🎧' : isImage ? '🖼️' : isPdf ? '📄' : '📎';
+      const kind = isVideo ? 'Video' : isAudio ? 'Audio' : isImage ? 'Gambar' : isPdf ? 'PDF' : 'File';
       let preview = '';
-      if (isAudio) {
-        preview = `<iframe class="attachment-preview-frame" src="${previewUrl}" allow="autoplay" title="Putar ${name}"></iframe>`;
-      } else if (isVideo) {
-        preview = `<iframe class="attachment-preview-frame video" src="${previewUrl}" allow="autoplay; fullscreen" allowfullscreen title="Putar ${name}"></iframe>`;
-      } else if (isImage) {
+      if (isImage) {
         const candidates = taskAttachmentImageCandidates(file);
         if (candidates.length) {
           const first = escapeTaskHtml(candidates[0]);
           const fallbacks = escapeTaskHtml(JSON.stringify(candidates.slice(1)));
-          preview = `<img class="attachment-image" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
+          preview = `<img class="attachment-image compact" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
         }
       }
-      return `<div class="attachment-box">
+      return `<div class="attachment-box task-attachment-compact">
         <div class="attachment-head">
-          <div class="attachment-name">${name}</div>
+          <div class="task-attachment-file"><span class="task-attachment-icon">${icon}</span><span><b class="attachment-name">${name}</b><small>${kind} • Google Drive</small></span></div>
           <div class="attachment-actions">
             <a class="attachment-link" href="${url}" target="_blank" rel="noopener">Buka</a>
             <a class="attachment-link" href="${downloadUrl}" target="_blank" rel="noopener" download>Download</a>
@@ -224,17 +220,12 @@ function normalizeTaskStatus(task) {
     function updateTaskStudentFilter() {
       const select = document.getElementById('taskStudentFilter');
       if (!select) return;
-      const pickerHost = select.nextElementSibling?.classList?.contains('lmc-person-filter') ? select.nextElementSibling : null;
       if (currentUser.userType === 'siswa') {
         select.style.display = 'none';
         select.value = 'semua';
-        if (pickerHost) pickerHost.style.display = 'none';
-        select.closest('.task-toolbar')?.classList.add('task-toolbar-student');
         return;
       }
       select.style.display = '';
-      if (pickerHost) pickerHost.style.display = '';
-      select.closest('.task-toolbar')?.classList.remove('task-toolbar-student');
       const selected = select.value || 'semua';
       const names = [...new Set(globalTugasList.map(task => String(task.namaSiswa || '').trim()).filter(Boolean))]
         .sort((a,b) => a.localeCompare(b, 'id'));
@@ -343,8 +334,9 @@ function normalizeTaskStatus(task) {
       </div>`;
 
       const isSiswa = currentUser.userType === 'siswa';
-      if (isSiswa && String(task.status || '').toLowerCase() !== 'selesai') {
-        footer.innerHTML = `<button type="button" class="btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn btn-primary" onclick="closeTaskDetailModal();openKerjakanModal('${escapeTaskHtml(task.tugasID)}')">Kerjakan & Kumpulkan</button>`;
+      const hasSubmittedAnswer = Boolean(task.tanggalKirimSiswa || task.jawabanTeks || answers.length);
+      if (isSiswa && !hasSubmittedAnswer) {
+        footer.innerHTML = `<button type="button" class="btn task-detail-close-btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn btn-primary task-submit-open-btn" onclick="closeTaskDetailModal();openKerjakanModal('${escapeTaskHtml(task.tugasID)}')">Kumpulkan Tugas</button>`;
       } else if (!isSiswa) {
         footer.innerHTML = `<button type="button" class="btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn-action btn-delete" onclick="closeTaskDetailModal();handleDeleteTugas('${escapeTaskHtml(task.tugasID)}')">Hapus Tugas</button>`;
       } else {
@@ -438,7 +430,7 @@ function normalizeTaskStatus(task) {
           document.getElementById('taskMaterialSelection').innerHTML = '';
           document.getElementById('tugasYoutubePreview').innerHTML = '';
           toggleCreateTaskForm(false);
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
+          fetchDashboardData();
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Kirim Tugas ke Siswa';
@@ -448,6 +440,7 @@ function normalizeTaskStatus(task) {
 
     function openKerjakanModal(tugasID) {
       const task = globalTugasList.find(item => String(item.tugasID) === String(tugasID));
+      if (!task) { showAlert('alertDanger','Data tugas tidak ditemukan.'); return; }
       document.getElementById('modalTugasID').value = tugasID;
       document.getElementById('modalJudulTugas').value = task ? task.judulTugas : '';
       document.getElementById('modalJawabanTeks').value = '';
@@ -485,7 +478,7 @@ function normalizeTaskStatus(task) {
         google.script.run.withSuccessHandler(res => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if (res.success) { closeKerjakanModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']); }
+          if (res.success) { closeKerjakanModal(); fetchDashboardData(); }
         }).withFailureHandler(error => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert('alertDanger', 'Gagal mengunggah jawaban: ' + error.message);
@@ -500,7 +493,7 @@ function normalizeTaskStatus(task) {
       if(confirm('Apakah Anda yakin ingin menghapus tugas ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
+          if(res.success) fetchDashboardData();
         }).deleteTugas(id);
       }
     }

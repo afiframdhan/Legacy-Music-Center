@@ -358,14 +358,6 @@ let currentUser = { userType: '', userID: '', userName: '' };
     );
   }
 
-  function loadSheetJS() {
-    return loadScript(
-      'sheetjs',
-      'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-      () => Boolean(window.XLSX && window.XLSX.utils)
-    );
-  }
-
   function loadCropper() {
     loadStyle('cropper-css', 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css');
     return loadScript(
@@ -375,7 +367,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     );
   }
 
-  window.LegacyVendors = { loadFullCalendar, loadCropper, loadSheetJS };
+  window.LegacyVendors = { loadFullCalendar, loadCropper };
 })();
 
     function getThemePreference() {
@@ -709,11 +701,11 @@ let currentUser = { userType: '', userID: '', userName: '' };
       adminSelectGuruFilter:'teacher',
       lpPageTeacher:'teacher', lpPageStudent:'student',
       repertoireTeacherFilter:'teacher', repertoireStudentFilter:'student',
-      studentReportGuru:'teacher',
+      practiceStudentFilter:'student', studentReportGuru:'teacher',
       filterSiswaGuru:'teacher', filterJadwalGuru:'teacher',
       makeupFilterTeacher:'teacher', operationalCalendarTeacher:'teacher',
-      filterProgressGuru:'teacher', filterProgressSiswa:'student', absensiSiswa:'student',
-      taskStudentFilter:'student', practiceStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
+      filterProgressGuru:'teacher', filterProgressSiswa:'student', filterRiwayatSelect:'student',
+      taskStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
     };
 
     function lmcPersonInitials(name) {
@@ -758,45 +750,11 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return String(teacher.instrumen||'Guru Pengajar').trim() || 'Guru Pengajar';
     }
 
-    function lmcPersonPhotoCandidates(value) {
-      const raw=String(value||'').trim();
-      if(!raw)return [];
-      const list=[];
-      const push=url=>{const clean=String(url||'').trim();if(clean&&!list.includes(clean))list.push(clean);};
-      if(/^data:image\//i.test(raw)||/^blob:/i.test(raw)){push(raw);return list;}
-      let match=raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
-      if(!match)match=raw.match(/[?&]id=([^&#]+)/i);
-      if(!match)match=raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
-      if(match&&match[1]){
-        const id=decodeURIComponent(match[1]);
-        push(`https://lh3.googleusercontent.com/d/${id}`);
-        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w400`);
-        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
-      }
-      push(raw);
-      return list;
-    }
-
-    function lmcPersonAvatarFallback(img) {
-      if(!img)return;
-      try{
-        const list=JSON.parse(img.dataset.lmcPhotoFallbacks||'[]');
-        const index=Number(img.dataset.lmcPhotoFallbackIndex||0);
-        if(index<list.length){img.dataset.lmcPhotoFallbackIndex=String(index+1);img.src=list[index];return;}
-      }catch(_){}
-      img.style.display='none';
-      if(img.nextElementSibling)img.nextElementSibling.style.display='grid';
-    }
-
     function lmcPersonAvatar(person, kind, fallbackName) {
       const name=String(person?.nama||fallbackName||'').trim();
-      const photo=String(person?.foto||person?.photoUrl||person?.fotoProfil||person?.photo_url||'').trim();
+      const photo=String(person?.foto||person?.photoUrl||person?.fotoProfil||'').trim();
       const initials=lmcPersonInitials(name);
-      const candidates=lmcPersonPhotoCandidates(photo);
-      if(candidates.length){
-        const fallbacks=escapeTaskHtml(JSON.stringify(candidates.slice(1)));
-        return `<span class="lmc-person-avatar"><img src="${escapeTaskHtml(candidates[0])}" data-lmc-photo-fallbacks='${fallbacks}' data-lmc-photo-fallback-index="0" alt="${escapeTaskHtml(name)}" onerror="lmcPersonAvatarFallback(this)"><span style="display:none">${escapeTaskHtml(initials)}</span></span>`;
-      }
+      if (photo) return `<span class="lmc-person-avatar"><img src="${escapeTaskHtml(photo)}" alt="${escapeTaskHtml(name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span style="display:none">${escapeTaskHtml(initials)}</span></span>`;
       return `<span class="lmc-person-avatar"><span>${escapeTaskHtml(initials)}</span></span>`;
     }
 
@@ -1188,19 +1146,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
     function showLogin() { document.getElementById('appView').style.display = 'none'; document.getElementById('loginView').style.display = 'flex'; }
     
-
-    function hydrateFastIdentityShell() {
-      const name = String(currentUser?.userName || '').trim();
-      if (!name) return;
-      const top = document.getElementById('userName'); if (top) top.textContent = name;
-      const profile = document.getElementById('myProfileDisplayName'); if (profile) profile.textContent = name;
-      const guru = document.getElementById('dashGuruNama'); if (guru) guru.textContent = name;
-      const siswa = document.getElementById('dashSiswaNama'); if (siswa) siswa.textContent = name;
-    }
-
     function showApp() {
       document.getElementById('loginView').style.display = 'none'; document.getElementById('appView').style.display = 'block';
-      hydrateFastIdentityShell();
+      document.getElementById('userName').textContent = currentUser.userName;
+      document.getElementById('myProfileDisplayName').textContent = currentUser.userName;
       document.getElementById('selfProfileNama').value = currentUser.userName;
       
       let roleLabel = 'Siswa';
@@ -1852,7 +1801,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           </div>`);
         });
       } else {
-        container.innerHTML = `<div class="student-dashboard-empty">Belum ada jadwal pelajaran mendatang.</div>`;
+        container.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Belum ada jadwal pelajaran mendatang.</div>`;
       }
 
       if (typeof renderStudent360Access === 'function') renderStudent360Access(data);
@@ -2421,7 +2370,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           button.disabled = false;
           button.textContent = 'Simpan Progress';
           showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
+          if (response.success) { globalSelectedLearningProgressStudent = payload.namaSiswa; closeLearningProgressModal(); fetchDashboardData(); }
         }).withFailureHandler(error => {
           button.disabled = false;
           button.textContent = 'Simpan Progress';
@@ -2515,7 +2464,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!confirm(`Hapus Progress Belajar ${progress.namaSiswa} untuk ${formatLearningProgressPeriod(progress.periode)}?`)) return;
       google.script.run.withSuccessHandler(response => {
         showAlert(response.success ? 'alertSuccess' : 'alertDanger', response.message);
-        if (response.success) { closeLearningProgressDetailModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['progress']); }
+        if (response.success) { closeLearningProgressDetailModal(); fetchDashboardData(); }
       }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus progress: ' + error.message))
         .deleteLearningProgress(progress.progressID, currentUser.userName, currentUser.userType);
     }
@@ -2745,7 +2694,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
             if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
           }
           resetScheduleOverrideForm();
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
+          fetchDashboardData();
         }
       }).withFailureHandler(error => {
         if (btn) { btn.disabled = false; btn.textContent = 'Simpan Pergantian'; }
@@ -2812,7 +2761,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
           globalScheduleOverrides = (globalScheduleOverrides || []).filter(item => String(item.overrideID || '') !== String(id || ''));
           renderTabelJadwalPengganti();
           if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
+          fetchDashboardData();
         }
       }).withFailureHandler(error => showAlert('alertDanger','Gagal menghapus pergantian: ' + (error.message || error))).deleteScheduleOverride(id);
     }
@@ -2843,7 +2792,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if (res.success) {
           document.getElementById('formAddJadwalPengganti').reset();
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['schedules']);
+          fetchDashboardData();
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Simpan Jadwal Pergantian';
@@ -2924,13 +2873,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus jadwal pergantian ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) {
-            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
-            renderPengumumanList();
-            renderDashboardAcademyUpdates();
-            renderNotificationCenter();
-            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
-          }
+          if(res.success) fetchDashboardData();
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus jadwal: ' + (error.message || error))).deleteJadwalPengganti(id, currentUser.userType);
       }
     }
@@ -2990,14 +2933,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         if (res.success) {
           document.getElementById('formAddPengumuman').reset();
           togglePengumumanTargetDetail('');
-          if (res.announcement) {
-            const id = String(res.announcement.pengumumanID || '');
-            globalPengumumanList = (globalPengumumanList || []).filter(x => String(x.pengumumanID || '') !== id);
-            globalPengumumanList.unshift(res.announcement);
-            renderPengumumanList();
-            renderDashboardAcademyUpdates();
-            renderNotificationCenter();
-          } else if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
+          fetchDashboardData();
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Terbitkan Pengumuman';
@@ -3028,11 +2964,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus pengumuman ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) {
-            globalPengumumanList = (globalPengumumanList || []).filter(item => String(item.pengumumanID || '') !== String(id));
-            renderPengumumanList(); renderDashboardAcademyUpdates(); renderNotificationCenter();
-            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['announcements']);
-          }
+          if(res.success) fetchDashboardData();
         }).withFailureHandler(error => showAlert('alertDanger', 'Gagal menghapus pengumuman: ' + (error.message || error))).deletePengumuman(id, currentUser.userType);
       }
     }
@@ -3747,12 +3679,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function phStudentAvatar(student, size='md') {
       const name=String(student?.nama||'S').trim();
       const initial=phEsc(name.charAt(0).toUpperCase()||'S');
-      const photo=String(student?.foto||student?.photoUrl||student?.fotoProfil||student?.photo_url||'').trim();
-      const candidates=typeof lmcPersonPhotoCandidates==='function'?lmcPersonPhotoCandidates(photo):(photo?[photo]:[]);
-      if(candidates.length){
-        const fallbacks=phEsc(JSON.stringify(candidates.slice(1)));
-        return `<span class="ph-student-avatar ${size}"><img src="${phEsc(candidates[0])}" data-lmc-photo-fallbacks='${fallbacks}' data-lmc-photo-fallback-index="0" alt="${phEsc(name)}" onerror="if(typeof lmcPersonAvatarFallback==='function'){lmcPersonAvatarFallback(this)}else{this.style.display='none';this.nextElementSibling.style.display='grid'}"><span style="display:none">${initial}</span></span>`;
-      }
+      if (student?.foto) return `<span class="ph-student-avatar ${size}"><img src="${phEsc(student.foto)}" alt="${phEsc(name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span style="display:none">${initial}</span></span>`;
       return `<span class="ph-student-avatar ${size}"><span>${initial}</span></span>`;
     }
 
@@ -3803,65 +3730,13 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       return practiceResources.filter(x => (!sid || String(x.studentID||'')===sid) && (!q || [x.title,x.description,x.studentName,x.instrument].some(v=>String(v||'').toLowerCase().includes(q))));
     }
 
-    function mediaEvalBrowseSourceItem(studentId, value) {
-      const raw=String(value||'');
-      if(!raw)return null;
-      const idx=raw.indexOf(':');
-      if(idx<0)return null;
-      const type=raw.slice(0,idx), id=raw.slice(idx+1);
-      return mediaEvalSourceItems(studentId).find(x=>String(x.type)===type&&String(x.id)===id) || null;
-    }
-
-    function mediaEvalLegacyMediaKey(url) {
-      const raw=String(url||'').trim();
-      if(!raw)return '';
-      const yid=phYoutubeId(raw);
-      if(yid)return `youtube:${yid}`;
-      try {
-        const parsed=new URL(raw,window.location.origin);
-        return `${parsed.origin}${parsed.pathname}`.replace(/\/$/,'').toLowerCase();
-      } catch (_) {
-        return raw.split(/[?#]/)[0].replace(/\/$/,'').toLowerCase();
-      }
-    }
-
-    function mediaEvalMatchesBrowseSource(item, sourceValue, studentId) {
-      const source=String(sourceValue||'');
-      if(!source)return true;
-      const idx=source.indexOf(':');
-      const type=idx>-1?source.slice(0,idx):'';
-      const id=idx>-1?source.slice(idx+1):'';
-      if(String(item.sourceType||'')===type && String(item.sourceID||'')===id)return true;
-      if(type==='repertoire' && String(item.repertoireID||'')===id)return true;
-      const selected=mediaEvalBrowseSourceItem(studentId,source);
-      const selectedLabel=String(selected?.label||'').trim().toLowerCase();
-      const itemLabel=String(item.sourceLabel||'').trim().toLowerCase();
-      if(selectedLabel && itemLabel && selectedLabel===itemLabel)return true;
-
-      // Kompatibilitas evaluasi lama sebelum source_type/source_id disimpan.
-      // Jika evaluasi dan Materi Latihan memakai media yang sama, anggap tertaut.
-      const hasExplicitSource=!!(String(item.sourceType||'').trim() || String(item.sourceID||'').trim() || String(item.sourceLabel||'').trim() || String(item.repertoireID||'').trim());
-      if(!hasExplicitSource && type==='practice' && selected){
-        const resource=practiceResources.find(r=>String(r.resourceID||'')===id);
-        const evalMedia=mediaEvalLegacyMediaKey(item.mediaUrl);
-        const resourceMedia=mediaEvalLegacyMediaKey(resource?.youtubeUrl);
-        if(evalMedia && resourceMedia && evalMedia===resourceMedia)return true;
-
-        // Data sangat lama tidak punya metadata sumber. Bila siswa hanya punya satu
-        // Materi Latihan pada instrumen yang sama, itu adalah fallback paling aman.
-        const sameInstrumentResources=practiceResources.filter(r=>String(r.studentID||'')===String(studentId||'') && String(r.instrument||'').trim().toLowerCase()===String(item.instrument||'').trim().toLowerCase());
-        if(sameInstrumentResources.length===1 && String(sameInstrumentResources[0].resourceID||'')===id)return true;
-      }
-      return false;
-    }
-
     function phFilteredEvaluations() {
       const generalSid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
       const sid=mediaEvalBrowseStudent || generalSid;
       const source=String(mediaEvalBrowseSource||'');
       const q=String(document.getElementById('practiceSearch')?.value||'').trim().toLowerCase();
       return mediaEvaluations.filter(x => {
-        const sourceMatch=mediaEvalMatchesBrowseSource(x,source,sid);
+        const sourceMatch=!source || `${x.sourceType||''}:${x.sourceID||''}`===source;
         return (!sid || String(x.studentID||'')===sid) && sourceMatch && (!q || [x.title,x.studentName,x.instrument,x.strength,x.improvement,x.sourceLabel].some(v=>String(v||'').toLowerCase().includes(q)));
       });
     }
@@ -3874,8 +3749,6 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       document.getElementById('practiceTabEvaluations')?.classList.toggle('active', practiceActiveTab === 'evaluations');
       const addMaterial = document.getElementById('practiceAddMaterialBtn');
       const addEvaluation = document.getElementById('practiceAddEvaluationBtn');
-      const generalFilter = document.querySelector('.practice-filter-box');
-      if (generalFilter) generalFilter.style.display = practiceActiveTab === 'materials' ? '' : 'none';
       if (currentUser.userType === 'guru') {
         if (addMaterial) addMaterial.style.display = practiceActiveTab === 'materials' ? 'inline-flex' : 'none';
         if (addEvaluation) addEvaluation.style.display = practiceActiveTab === 'evaluations' ? 'inline-flex' : 'none';
@@ -3905,60 +3778,17 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const items=phFilteredResources();
       if(!items.length){host.innerHTML='<div class="practice-empty">Belum ada materi latihan untuk filter ini.</div>';return;}
       host.innerHTML=items.map(item=>{
+        const yid=phYoutubeId(item.youtubeUrl);
         const files=Array.isArray(item.attachments)?item.attachments:[];
-        const hasVideo=!!phYoutubeId(item.youtubeUrl);
-        const desc=String(item.description||'').trim();
-        return `<article class="practice-resource-card practice-resource-summary" tabindex="0" role="button" onclick="openPracticeResourceDetail('${phEsc(item.resourceID)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPracticeResourceDetail('${phEsc(item.resourceID)}');}">
-          <div class="practice-card-head">
-            <div class="practice-card-main">
-              <span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span>
-              <h3>${phEsc(item.title||'Materi Latihan')}</h3>
-              <p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')}</p>
-            </div>
-            ${currentUser.userType==='guru'?`<div class="practice-card-actions" onclick="event.stopPropagation()"><button class="btn btn-export" onclick="openPracticeResourceModal('${phEsc(item.resourceID)}')">Edit</button><button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(item.resourceID)}')">Hapus</button></div>`:''}
-          </div>
-          ${desc?`<p class="practice-description clamp-3">${phEsc(desc)}</p>`:'<p class="practice-description practice-description-muted">Belum ada deskripsi materi.</p>'}
-          <div class="practice-card-summary-meta">
-            <span class="practice-summary-pill ${hasVideo?'has-media':''}">▶ ${hasVideo?'Video tersedia':'Tanpa video'}</span>
-            <span class="practice-summary-pill ${files.length?'has-media':''}">📄 ${files.length} file</span>
-            <span class="practice-summary-pill">🕒 ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</span>
-          </div>
-          <div class="practice-card-footer"><span>Klik untuk membuka detail materi</span><span class="media-eval-arrow">›</span></div>
+        return `<article class="practice-resource-card">
+          <div class="practice-card-head"><div><span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span><h3>${phEsc(item.title||'Materi Latihan')}</h3><p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')}</p></div>${currentUser.userType==='guru'?`<div class="practice-card-actions"><button class="btn btn-export" onclick="openPracticeResourceModal('${phEsc(item.resourceID)}')">Edit</button><button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(item.resourceID)}')">Hapus</button></div>`:''}</div>
+          ${item.description?`<p class="practice-description">${phEsc(item.description)}</p>`:''}
+          ${yid?`<div class="practice-video"><iframe src="https://www.youtube.com/embed/${phEsc(yid)}" title="${phEsc(item.title)}" loading="lazy" allowfullscreen></iframe></div>`:''}
+          ${files.length?`<div class="practice-files">${files.map(f=>`<a class="practice-file" href="${phEsc(f.url||'#')}" target="_blank" rel="noopener"><span>📄</span><span><b>${phEsc(f.name||'File latihan')}</b><small>${phEsc(f.type||'File Google Drive')}</small></span></a>`).join('')}</div>`:''}
+          <div class="practice-meta">Diperbarui ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</div>
         </article>`;
       }).join('');
     }
-
-    function openPracticeResourceDetail(id){
-      const item=practiceResources.find(x=>String(x.resourceID)===String(id));if(!item)return;
-      const host=document.getElementById('practiceResourceDetailBody');if(!host)return;
-      const yid=phYoutubeId(item.youtubeUrl);
-      const files=Array.isArray(item.attachments)?item.attachments:[];
-      host.innerHTML=`<div class="practice-resource-detail-layout">
-        <div class="practice-resource-detail-main">
-          <div class="practice-resource-detail-head">
-            <div>
-              <span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span>
-              <h2>${phEsc(item.title||'Materi Latihan')}</h2>
-              <p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')} • Diperbarui ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</p>
-            </div>
-            <div class="practice-card-summary-meta">
-              <span class="practice-summary-pill ${yid?'has-media':''}">▶ ${yid?'Video tersedia':'Tanpa video'}</span>
-              <span class="practice-summary-pill ${files.length?'has-media':''}">📄 ${files.length} file</span>
-            </div>
-          </div>
-          <div class="media-player-card practice-resource-detail-copy">
-            <div class="practice-section-title"><div><h3>Deskripsi / Petunjuk</h3><p>Materi latihan mandiri untuk siswa.</p></div></div>
-            <div class="practice-description">${phEsc(item.description||'Belum ada deskripsi materi.')}</div>
-          </div>
-          ${yid?`<div class="media-player-card"><div class="practice-section-title"><div><h3>Video Tutorial</h3><p>YouTube Unlisted</p></div></div><div class="practice-video"><iframe src="https://www.youtube.com/embed/${phEsc(yid)}" title="${phEsc(item.title||'Video Tutorial')}" loading="lazy" allowfullscreen></iframe></div></div>`:''}
-          ${files.length?`<div class="media-player-card"><div class="practice-section-title"><div><h3>File / PDF</h3><p>Lampiran latihan mandiri.</p></div></div><div class="practice-files">${files.map(f=>`<a class="practice-file" href="${phEsc(f.url||'#')}" target="_blank" rel="noopener"><span>📄</span><span><b>${phEsc(f.name||'File latihan')}</b><small>${phEsc(f.type||'File Google Drive')}</small></span></a>`).join('')}</div></div>`:''}
-        </div>
-      </div>`;
-      const actions=document.getElementById('practiceResourceDetailActions');
-      if(actions){actions.innerHTML=currentUser.userType==='guru'?`<button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(id)}');closePracticeResourceDetail()">Hapus</button><button class="btn btn-export" onclick="closePracticeResourceDetail();openPracticeResourceModal('${phEsc(id)}')">Edit Materi</button><button class="btn btn-primary" onclick="closePracticeResourceDetail()">Tutup</button>`:`<button class="btn btn-primary" onclick="closePracticeResourceDetail()">Tutup</button>`;}
-      document.getElementById('modalPracticeResourceDetail').style.display='flex';
-    }
-    function closePracticeResourceDetail(){document.getElementById('modalPracticeResourceDetail').style.display='none';}
 
     function phScoreLabel(score) {
       const n=Number(score||0); if(n>=85)return 'Sangat Baik'; if(n>=70)return 'Baik'; if(n>=60)return 'Cukup'; return 'Perlu Latihan';
@@ -4013,38 +3843,13 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');mediaEvalBrowseSource='';renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
     function chooseMediaEvalFormStudent(studentId){const sel=document.getElementById('mediaEvalStudent');if(sel)sel.value=studentId;document.getElementById('mediaEvalStudentPicker')?.classList.remove('open');syncEvaluationInstrument();renderStudentPicker('mediaEvalStudentPicker',studentId,'chooseMediaEvalFormStudent',false);}
 
-    function closeMediaSourcePickers(){document.querySelectorAll('.media-source-picker.open').forEach(el=>el.classList.remove('open'));}
-    function toggleMediaSourcePicker(event){event?.stopPropagation();const host=document.getElementById('mediaEvalBrowseSourcePicker');if(!host||host.classList.contains('disabled'))return;const open=!host.classList.contains('open');closeMediaSourcePickers();closePhStudentPickers();if(open)host.classList.add('open');}
-    function chooseMediaEvalBrowseSource(value){mediaEvalBrowseSource=String(value||'');closeMediaSourcePickers();renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
-    function renderMediaEvalBrowseSourcePicker(studentId){
-      const host=document.getElementById('mediaEvalBrowseSourcePicker');if(!host)return;
-      const items=mediaEvalSourceItems(studentId);
-      const selected=mediaEvalBrowseSourceItem(studentId,mediaEvalBrowseSource);
-      const label=selected?.label||'Semua / Tanpa sumber khusus';
-      const groups=[['practice','Latihan Mandiri'],['assignment','Tugas'],['repertoire','Repertoire']];
-      const options=groups.map(([type,groupLabel])=>{const rows=items.filter(x=>x.type===type);if(!rows.length)return '';return `<div class="media-source-group"><div class="media-source-group-label">${phEsc(groupLabel)}</div>${rows.map(x=>{const value=`${x.type}:${x.id}`;return `<button type="button" class="media-source-option ${value===mediaEvalBrowseSource?'active':''}" onclick="chooseMediaEvalBrowseSource('${phEsc(value)}')"><span class="media-source-option-icon">${type==='practice'?'📚':type==='assignment'?'📝':'🎵'}</span><span><b>${phEsc(x.label)}</b><small>${phEsc(x.meta||groupLabel)}</small></span><span class="media-source-check">${value===mediaEvalBrowseSource?'✓':''}</span></button>`;}).join('')}</div>`;}).join('');
-      host.classList.toggle('disabled',!studentId);
-      host.innerHTML=`<button type="button" class="media-source-trigger" aria-haspopup="listbox" onclick="toggleMediaSourcePicker(event)" ${studentId?'':'disabled'}><span><b>${phEsc(label)}</b><small>${studentId?'Filter berdasarkan tugas, latihan, atau repertoire':'Pilih siswa terlebih dahulu'}</small></span><span class="ph-picker-chevron">⌄</span></button><button type="button" class="media-source-backdrop" aria-label="Tutup pilihan" onclick="closeMediaSourcePickers()"></button><div class="media-source-menu"><div class="media-source-menu-head"><div><b>Pilih Tugas / Latihan</b><small>Materi latihan, tugas, atau repertoire siswa.</small></div><button type="button" class="ph-picker-close" onclick="closeMediaSourcePickers()">×</button></div><div class="media-source-options"><button type="button" class="media-source-option ${!mediaEvalBrowseSource?'active':''}" onclick="chooseMediaEvalBrowseSource('')"><span class="media-source-option-icon">◎</span><span><b>Semua / Tanpa sumber khusus</b><small>Tampilkan seluruh evaluasi</small></span><span class="media-source-check">${!mediaEvalBrowseSource?'✓':''}</span></button>${options||'<div class="ph-picker-empty">Belum ada tugas, latihan, atau repertoire.</div>'}</div></div>`;
-    }
-
-    if(!window.__lmcMediaSourcePickerOutsideBound){
-      window.__lmcMediaSourcePickerOutsideBound=true;
-      document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('.media-source-picker'))closeMediaSourcePickers();},true);
-      document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMediaSourcePickers();});
-    }
-
     function renderMediaEvaluationBrowseFilters(){
       const host=document.getElementById('mediaEvaluationBrowseFilters');if(!host)return;
-      const isStudent=currentUser.userType==='siswa';
-      if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
+      if(currentUser.userType==='siswa')mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
-      if(isStudent){
-        host.innerHTML=`<div class="media-eval-browse-grid student-only"><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
-      }else{
-        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div></div>`;
-        renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
-      }
-      renderMediaEvalBrowseSourcePicker(sid);
+      host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
+      const picker=document.getElementById('mediaEvalBrowseStudentPicker');if(picker){if(currentUser.userType==='siswa'){const student=phStudent(sid);picker.innerHTML=`<div class="ph-picker-trigger readonly"><span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||currentUser.userName||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span></div>`;}else renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);}
+      const select=document.getElementById('mediaEvalBrowseSource');if(select)select.disabled=!sid;
     }
 
     function renderMediaEvaluations() {
@@ -4053,18 +3858,9 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if(!items.length){host.innerHTML='<div class="practice-empty">Belum ada Evaluasi Audio/Video untuk pilihan ini.</div>';return;}
       host.innerHTML=items.map(item=>{
         const score=Math.round(Number(item.averageScore||0));
-        const hasMedia=!!String(item.mediaUrl||'').trim();
-        return `<button type="button" class="media-eval-card media-eval-card-compact" onclick="openMediaEvaluationDetail('${phEsc(item.evaluationID)}')">
-          <div class="media-eval-card-top">
-            <div class="media-eval-score" style="--score:${score}%"><strong>${score}%</strong><span>${phEsc(phScoreLabel(score))}</span></div>
-            <div class="media-eval-copy"><span class="practice-kicker">${phEsc(item.instrument||'Evaluasi')}</span><h3>${phEsc(item.title||'Evaluasi Audio / Video')}</h3><p>${phEsc(item.studentName||'')}</p></div>
-          </div>
-          <div class="practice-card-summary-meta">
-            <span class="practice-summary-pill ${hasMedia?'has-media':''}">🎬 ${hasMedia?'Media tersedia':'Belum ada media'}</span>
-            <span class="practice-summary-pill">🎵 ${phEsc(item.sourceLabel||item.teacherName||'Evaluasi')}</span>
-            <span class="practice-summary-pill">🕒 ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</span>
-          </div>
-          <div class="practice-card-footer"><span>Lihat detail evaluasi</span><span class="media-eval-arrow">›</span></div>
+        return `<button type="button" class="media-eval-card" onclick="openMediaEvaluationDetail('${phEsc(item.evaluationID)}')">
+          <div class="media-eval-score" style="--score:${score}%"><strong>${score}%</strong><span>${phEsc(phScoreLabel(score))}</span></div>
+          <div class="media-eval-copy"><span class="practice-kicker">${phEsc(item.instrument||'Evaluasi')}</span><h3>${phEsc(item.title||'Evaluasi Audio / Video')}</h3><p>${phEsc(item.studentName||'')} • ${phEsc(item.sourceLabel||item.teacherName||'')} • ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</p></div><span class="media-eval-arrow">›</span>
         </button>`;
       }).join('');
     }
@@ -4609,206 +4405,6 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       adminOperationalCalendarInstance.removeAllEvents();
       adminOperationalCalendarInstance.addEventSource(events);
       adminOperationalCalendarInstance.render();
-    }
-
-
-    // ==========================================================
-    // ADMIN EXPORT & BACKUP — read-only, Supabase source
-    // ==========================================================
-    const ADMIN_EXPORT_DATASETS = {
-      students:{ label:'Siswa', sheet:'Siswa', file:'siswa' },
-      teachers:{ label:'Guru', sheet:'Guru', file:'guru' },
-      schedules:{ label:'Jadwal', sheet:'Jadwal', file:'jadwal' },
-      attendance:{ label:'Absensi', sheet:'Absensi', file:'absensi' },
-      progress:{ label:'Progress', sheet:'Progress', file:'progress' },
-      repertoire:{ label:'Repertoire', sheet:'Repertoire', file:'repertoire' },
-      exams:{ label:'Ujian', sheet:'Ujian', file:'ujian' },
-      overrides:{ label:'Jadwal Pergantian', sheet:'Jadwal Pergantian', file:'jadwal-pergantian' }
-    };
-
-    function initAdminExportBackup() {
-      if (!currentUser || currentUser.userType !== 'admin') return;
-      const result = document.getElementById('exportBackupResult');
-      if (result && !result.dataset.ready) {
-        result.dataset.ready = '1';
-        result.innerHTML = '';
-      }
-    }
-
-    function toggleAllExportDatasets(checked) {
-      document.querySelectorAll('#exportBackupDatasetGrid input[type="checkbox"]').forEach(input => { input.checked = Boolean(checked); });
-    }
-
-    function getSelectedExportDatasets() {
-      return Array.from(document.querySelectorAll('#exportBackupDatasetGrid input[type="checkbox"]:checked'))
-        .map(input => input.value)
-        .filter(key => ADMIN_EXPORT_DATASETS[key]);
-    }
-
-    function setExportBackupBusy(busy, title = '', detail = '', percent = 0) {
-      const excelBtn = document.getElementById('btnExportBackupExcel');
-      const csvBtn = document.getElementById('btnExportBackupCsv');
-      if (excelBtn) excelBtn.disabled = Boolean(busy);
-      if (csvBtn) csvBtn.disabled = Boolean(busy);
-      const box = document.getElementById('exportBackupProgress');
-      if (!box) return;
-      box.style.display = busy ? 'block' : 'none';
-      const pct = Math.max(0, Math.min(100, Number(percent) || 0));
-      const titleEl = document.getElementById('exportBackupProgressTitle');
-      const detailEl = document.getElementById('exportBackupProgressDetail');
-      const pctEl = document.getElementById('exportBackupProgressPercent');
-      const bar = document.getElementById('exportBackupProgressBar');
-      if (titleEl) titleEl.textContent = title || 'Menyiapkan backup...';
-      if (detailEl) detailEl.textContent = detail || 'Menghubungkan ke Supabase...';
-      if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
-      if (bar) bar.style.width = `${pct}%`;
-    }
-
-    function showExportBackupResult(message, type = 'success') {
-      const box = document.getElementById('exportBackupResult');
-      if (!box) return;
-      box.style.display = 'block';
-      box.className = `export-backup-result ${type === 'error' ? 'error' : 'success'}`;
-      box.textContent = message;
-      clearTimeout(showExportBackupResult._timer);
-      showExportBackupResult._timer = setTimeout(() => { box.style.display = 'none'; }, 7000);
-    }
-
-    async function fetchAdminExportDataset(dataset) {
-      const result = await LegacyAPI.rpc('getAdminExportBackup', [{ dataset }]);
-      if (!result || result.success === false) throw new Error((result && result.message) || 'Data backup gagal dimuat.');
-      return Array.isArray(result.rows) ? result.rows : [];
-    }
-
-    function exportDateStamp() {
-      const now = new Date();
-      const two = n => String(n).padStart(2, '0');
-      return `${now.getFullYear()}-${two(now.getMonth()+1)}-${two(now.getDate())}_${two(now.getHours())}-${two(now.getMinutes())}`;
-    }
-
-    function normalizeExportValue(value) {
-      if (value === null || value === undefined) return '';
-      if (typeof value === 'object') {
-        try { return JSON.stringify(value); } catch (_) { return String(value); }
-      }
-      return value;
-    }
-
-    const EXCEL_CELL_TEXT_LIMIT = 32000;
-
-    function splitExcelCellValue(value) {
-      const normalized = normalizeExportValue(value);
-      if (typeof normalized !== 'string' || normalized.length <= EXCEL_CELL_TEXT_LIMIT) return [normalized];
-      const parts = [];
-      for (let i = 0; i < normalized.length; i += EXCEL_CELL_TEXT_LIMIT) {
-        parts.push(normalized.slice(i, i + EXCEL_CELL_TEXT_LIMIT));
-      }
-      return parts;
-    }
-
-    function rowsForSpreadsheet(rows) {
-      return (rows || []).map(row => {
-        const clean = {};
-        Object.entries(row || {}).forEach(([key, value]) => {
-          const parts = splitExcelCellValue(value);
-          clean[key] = parts[0] ?? '';
-          for (let i = 1; i < parts.length; i++) clean[`${key}__part${i + 1}`] = parts[i];
-        });
-        return clean;
-      });
-    }
-
-    function downloadBlobFile(blob, filename) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    }
-
-    function csvEscape(value) {
-      const text = String(normalizeExportValue(value));
-      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-    }
-
-    function rowsToCsv(rows) {
-      if (!rows.length) return '\uFEFF';
-      const columns = Array.from(rows.reduce((set, row) => { Object.keys(row || {}).forEach(key => set.add(key)); return set; }, new Set()));
-      const lines = [columns.map(csvEscape).join(',')];
-      rows.forEach(row => lines.push(columns.map(col => csvEscape(row ? row[col] : '')).join(',')));
-      return '\uFEFF' + lines.join('\r\n');
-    }
-
-    async function exportAdminBackupCsv() {
-      if (!currentUser || currentUser.userType !== 'admin') return;
-      const select = document.getElementById('exportCsvDataset');
-      const dataset = select ? select.value : 'students';
-      const meta = ADMIN_EXPORT_DATASETS[dataset];
-      if (!meta) return;
-      try {
-        setExportBackupBusy(true, `Export CSV ${meta.label}`, 'Mengambil data terbaru dari Supabase...', 25);
-        const rows = await fetchAdminExportDataset(dataset);
-        setExportBackupBusy(true, `Export CSV ${meta.label}`, `${rows.length.toLocaleString('id-ID')} baris siap dibuat.`, 75);
-        const csv = rowsToCsv(rows);
-        downloadBlobFile(new Blob([csv], { type:'text/csv;charset=utf-8;' }), `Legacy-Music-Center_${meta.file}_${exportDateStamp()}.csv`);
-        setExportBackupBusy(false);
-        showExportBackupResult(`Export ${meta.label} berhasil • ${rows.length.toLocaleString('id-ID')} baris.`);
-      } catch (error) {
-        setExportBackupBusy(false);
-        showExportBackupResult(`Export CSV gagal: ${error.message || error}`, 'error');
-      }
-    }
-
-    async function exportAdminBackupExcel() {
-      if (!currentUser || currentUser.userType !== 'admin') return;
-      const selected = getSelectedExportDatasets();
-      if (!selected.length) {
-        showExportBackupResult('Pilih minimal satu kategori data untuk dibuatkan backup Excel.', 'error');
-        return;
-      }
-      try {
-        setExportBackupBusy(true, 'Menyiapkan Excel', 'Memuat mesin export Excel...', 3);
-        await LegacyVendors.loadSheetJS();
-        const wb = XLSX.utils.book_new();
-        const summary = [
-          ['LEGACY MUSIC CENTER — BACKUP DATA'],
-          ['Dibuat pada', new Date().toLocaleString('id-ID')],
-          ['Dibuat oleh', currentUser.userName || 'Admin'],
-          ['Sumber data', 'Supabase'],
-          ['Jumlah kategori', selected.length],
-          [],
-          ['Kategori', 'Jumlah Baris']
-        ];
-        let totalRows = 0;
-        for (let i = 0; i < selected.length; i++) {
-          const key = selected[i];
-          const meta = ADMIN_EXPORT_DATASETS[key];
-          const startPct = 8 + (i / selected.length) * 82;
-          setExportBackupBusy(true, `Mengambil ${meta.label}`, `Kategori ${i+1} dari ${selected.length} • membaca Supabase...`, startPct);
-          const rows = rowsForSpreadsheet(await fetchAdminExportDataset(key));
-          totalRows += rows.length;
-          summary.push([meta.label, rows.length]);
-          let ws;
-          if (rows.length) ws = XLSX.utils.json_to_sheet(rows, { cellDates:true });
-          else ws = XLSX.utils.aoa_to_sheet([['Tidak ada data']]);
-          ws['!autofilter'] = rows.length && ws['!ref'] ? { ref: ws['!ref'] } : undefined;
-          ws['!cols'] = rows.length ? Object.keys(rows[0]).map(keyName => ({ wch: Math.min(34, Math.max(12, String(keyName).length + 3)) })) : [{wch:20}];
-          XLSX.utils.book_append_sheet(wb, ws, meta.sheet.slice(0, 31));
-        }
-        const summaryWs = XLSX.utils.aoa_to_sheet(summary);
-        summaryWs['!cols'] = [{wch:28},{wch:24}];
-        XLSX.utils.book_append_sheet(wb, summaryWs, 'Ringkasan');
-        // Keep Ringkasan as first sheet for easier archive review.
-        wb.SheetNames = ['Ringkasan', ...wb.SheetNames.filter(name => name !== 'Ringkasan')];
-        setExportBackupBusy(true, 'Membuat file Excel', `${totalRows.toLocaleString('id-ID')} total baris • menyiapkan file download...`, 95);
-        XLSX.writeFile(wb, `Legacy-Music-Center_Backup_${exportDateStamp()}.xlsx`, { compression:true });
-        setExportBackupBusy(false);
-        showExportBackupResult(`Backup Excel berhasil • ${selected.length} kategori • ${totalRows.toLocaleString('id-ID')} total baris.`);
-      } catch (error) {
-        console.error('Export backup Excel gagal', error);
-        setExportBackupBusy(false);
-        showExportBackupResult(`Backup Excel gagal: ${error.message || error}`, 'error');
-      }
     }
 
     function filterAdminByGuru() {
@@ -6120,7 +5716,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length
           ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(285px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, true)).join('')}</div>`
-          : `<div class="student360-empty-state">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
+          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
         applyStudent360TeacherFilters();
         return;
       }
@@ -6128,7 +5724,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if (filters) filters.style.display = 'none';
       historyBox.innerHTML = reports.length
         ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, false)).join('')}</div>`
-        : `<div class="student360-empty-state">Belum ada laporan perkembangan yang dikirim.</div>`;
+        : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
     }
 
     function applyJadwalFilters() {
@@ -7009,6 +6605,7 @@ Guru: ${props.guru}`);
     function refreshAbsensiStudentOptions() {
       const select = document.getElementById('absensiSiswa');
       if (!select || currentUser.userType === 'siswa') return;
+      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
       const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
       const day = formDay;
       const currentValue = select.value;
@@ -7028,6 +6625,7 @@ Guru: ${props.guru}`);
       const students = (globalSiswaList || []).filter(student => {
         const name = String(student.nama || '').trim();
         if (!name) return false;
+        if (search && !name.toLowerCase().includes(search)) return false;
         if (day && !scheduleNames.has(name.toLowerCase())) return false;
         return true;
       }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
@@ -7082,21 +6680,37 @@ Guru: ${props.guru}`);
 
 
     function configureAdminAttendanceLiveSync() {
-      // The old implementation downloaded 250 complete attendance records (including
-      // base64 signatures) every 3 seconds. That made Admin progressively slower and
-      // could never detect deletions because it only merged records. Attendance now
-      // follows the lightweight global sync-version mechanism instead.
       if (adminAttendanceSyncTimer) {
         clearInterval(adminAttendanceSyncTimer);
         adminAttendanceSyncTimer = null;
       }
       if (currentUser.userType !== 'admin') return;
-      if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+      refreshAdminAttendanceLive();
+      adminAttendanceSyncTimer = setInterval(() => {
+        if (document.visibilityState === 'visible' && currentUser.userType === 'admin') refreshAdminAttendanceLive();
+      }, 3000);
     }
 
     function refreshAdminAttendanceLive() {
       if (currentUser.userType !== 'admin') return;
-      if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+      google.script.run.withSuccessHandler(result => {
+        if (!result || result.success === false || !Array.isArray(result.items)) return;
+        const byId = new Map((globalAbsensiList || []).map(item => [String(item.absensiID || ''), item]));
+        let changed = false;
+        result.items.forEach(item => {
+          const key = String(item.absensiID || '');
+          if (!key) return;
+          const previous = byId.get(key);
+          if (!previous || JSON.stringify(previous) !== JSON.stringify(item)) {
+            byId.set(key, item);
+            changed = true;
+          }
+        });
+        if (!changed) return;
+        globalAbsensiList = Array.from(byId.values());
+        setupFilterDropdown();
+        renderTabelRiwayat();
+      }).withFailureHandler(() => {}).getRecentAttendance();
     }
 
     function setupFilterDropdown() {
@@ -7406,14 +7020,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
       google.script.run.withSuccessHandler(res => {
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-        if(res.success) {
-          const localItem = typeof mapAttendanceMutationForUi === 'function'
-            ? mapAttendanceMutationForUi(res.attendance || res.item || null, payload)
-            : null;
-          if (localItem && typeof upsertAttendanceLocally === 'function') upsertAttendanceLocally(localItem);
-          closeEditAbsensiModal();
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
-        }
+        if(res.success) { closeEditAbsensiModal(); fetchDashboardData(); }
       }).updateAbsensi(payload);
     }
 
@@ -7421,14 +7028,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if(confirm('Apakah Anda yakin ingin menghapus absensi ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success) {
-            const key = String(id || '');
-            globalAbsensiList = (globalAbsensiList || []).filter(item => String(item.absensiID || '') !== key);
-            setupFilterDropdown();
-            renderTabelRiwayat();
-            if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
-            if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
-          }
+          if(res.success) fetchDashboardData();
         }).deleteAbsensi(id);
       }
     }
@@ -7517,31 +7117,27 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if (!file || !file.url) return '';
       const name = escapeTaskHtml(file.name || 'File lampiran');
       const url = escapeTaskHtml(file.url);
-      const driveId = getTaskDriveFileId(file);
-      const previewRaw = driveId ? `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview` : (file.previewUrl || file.url);
-      const previewUrl = escapeTaskHtml(previewRaw);
       const downloadUrl = escapeTaskHtml(file.downloadUrl || file.url);
       const type = String(file.type || '').toLowerCase();
       const rawName = String(file.name || '').toLowerCase();
       const isAudio = type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/.test(rawName);
       const isVideo = type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv)$/.test(rawName);
       const isImage = type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|heic)$/.test(rawName);
+      const isPdf = type.includes('pdf') || /\.pdf$/.test(rawName);
+      const icon = isVideo ? '🎬' : isAudio ? '🎧' : isImage ? '🖼️' : isPdf ? '📄' : '📎';
+      const kind = isVideo ? 'Video' : isAudio ? 'Audio' : isImage ? 'Gambar' : isPdf ? 'PDF' : 'File';
       let preview = '';
-      if (isAudio) {
-        preview = `<iframe class="attachment-preview-frame" src="${previewUrl}" allow="autoplay" title="Putar ${name}"></iframe>`;
-      } else if (isVideo) {
-        preview = `<iframe class="attachment-preview-frame video" src="${previewUrl}" allow="autoplay; fullscreen" allowfullscreen title="Putar ${name}"></iframe>`;
-      } else if (isImage) {
+      if (isImage) {
         const candidates = taskAttachmentImageCandidates(file);
         if (candidates.length) {
           const first = escapeTaskHtml(candidates[0]);
           const fallbacks = escapeTaskHtml(JSON.stringify(candidates.slice(1)));
-          preview = `<img class="attachment-image" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
+          preview = `<img class="attachment-image compact" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
         }
       }
-      return `<div class="attachment-box">
+      return `<div class="attachment-box task-attachment-compact">
         <div class="attachment-head">
-          <div class="attachment-name">${name}</div>
+          <div class="task-attachment-file"><span class="task-attachment-icon">${icon}</span><span><b class="attachment-name">${name}</b><small>${kind} • Google Drive</small></span></div>
           <div class="attachment-actions">
             <a class="attachment-link" href="${url}" target="_blank" rel="noopener">Buka</a>
             <a class="attachment-link" href="${downloadUrl}" target="_blank" rel="noopener" download>Download</a>
@@ -7660,17 +7256,12 @@ function normalizeTaskStatus(task) {
     function updateTaskStudentFilter() {
       const select = document.getElementById('taskStudentFilter');
       if (!select) return;
-      const pickerHost = select.nextElementSibling?.classList?.contains('lmc-person-filter') ? select.nextElementSibling : null;
       if (currentUser.userType === 'siswa') {
         select.style.display = 'none';
         select.value = 'semua';
-        if (pickerHost) pickerHost.style.display = 'none';
-        select.closest('.task-toolbar')?.classList.add('task-toolbar-student');
         return;
       }
       select.style.display = '';
-      if (pickerHost) pickerHost.style.display = '';
-      select.closest('.task-toolbar')?.classList.remove('task-toolbar-student');
       const selected = select.value || 'semua';
       const names = [...new Set(globalTugasList.map(task => String(task.namaSiswa || '').trim()).filter(Boolean))]
         .sort((a,b) => a.localeCompare(b, 'id'));
@@ -7779,8 +7370,9 @@ function normalizeTaskStatus(task) {
       </div>`;
 
       const isSiswa = currentUser.userType === 'siswa';
-      if (isSiswa && String(task.status || '').toLowerCase() !== 'selesai') {
-        footer.innerHTML = `<button type="button" class="btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn btn-primary" onclick="closeTaskDetailModal();openKerjakanModal('${escapeTaskHtml(task.tugasID)}')">Kerjakan & Kumpulkan</button>`;
+      const hasSubmittedAnswer = Boolean(task.tanggalKirimSiswa || task.jawabanTeks || answers.length);
+      if (isSiswa && !hasSubmittedAnswer) {
+        footer.innerHTML = `<button type="button" class="btn task-detail-close-btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn btn-primary task-submit-open-btn" onclick="closeTaskDetailModal();openKerjakanModal('${escapeTaskHtml(task.tugasID)}')">Kumpulkan Tugas</button>`;
       } else if (!isSiswa) {
         footer.innerHTML = `<button type="button" class="btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn-action btn-delete" onclick="closeTaskDetailModal();handleDeleteTugas('${escapeTaskHtml(task.tugasID)}')">Hapus Tugas</button>`;
       } else {
@@ -7874,7 +7466,7 @@ function normalizeTaskStatus(task) {
           document.getElementById('taskMaterialSelection').innerHTML = '';
           document.getElementById('tugasYoutubePreview').innerHTML = '';
           toggleCreateTaskForm(false);
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
+          fetchDashboardData();
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Kirim Tugas ke Siswa';
@@ -7884,6 +7476,7 @@ function normalizeTaskStatus(task) {
 
     function openKerjakanModal(tugasID) {
       const task = globalTugasList.find(item => String(item.tugasID) === String(tugasID));
+      if (!task) { showAlert('alertDanger','Data tugas tidak ditemukan.'); return; }
       document.getElementById('modalTugasID').value = tugasID;
       document.getElementById('modalJudulTugas').value = task ? task.judulTugas : '';
       document.getElementById('modalJawabanTeks').value = '';
@@ -7921,7 +7514,7 @@ function normalizeTaskStatus(task) {
         google.script.run.withSuccessHandler(res => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if (res.success) { closeKerjakanModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']); }
+          if (res.success) { closeKerjakanModal(); fetchDashboardData(); }
         }).withFailureHandler(error => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert('alertDanger', 'Gagal mengunggah jawaban: ' + error.message);
@@ -7936,7 +7529,7 @@ function normalizeTaskStatus(task) {
       if(confirm('Apakah Anda yakin ingin menghapus tugas ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
+          if(res.success) fetchDashboardData();
         }).deleteTugas(id);
       }
     }
@@ -8624,9 +8217,8 @@ function normalizeTaskStatus(task) {
             clearSignature('canvasTtdGuru');
             clearSignature('canvasTtdSiswa');
           }
-          // Do not reload the whole dashboard after one attendance mutation.
-          // The local row is already visible; only the attendance module is reconciled.
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+          // Rekonsiliasi penuh tetap berjalan setelah UI lokal sudah diperbarui.
+          setTimeout(fetchDashboardData, 150);
         }
       }).recordAbsensi(payload);
     }

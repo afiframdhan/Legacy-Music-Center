@@ -172,3 +172,54 @@ html[data-theme="dark"] .attachment-image {
   background:#f8fafc;
 }
 html[data-theme="dark"] .attachment-image-error { background:#0b1424 !important; color:#94a3b8 !important; }
+
+
+/* === Tugas siswa: reliable submit flow + compact mobile detail === */
+.task-attachment-file{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.task-attachment-file>span:last-child{min-width:0;display:block}
+.task-attachment-file small{display:block;margin-top:3px;color:#94a3b8;font-size:10px}
+.task-attachment-icon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:#fff3ec;flex:0 0 38px;font-size:18px}
+.task-attachment-compact .attachment-head{margin-bottom:0}
+.task-attachment-compact .attachment-image.compact{margin-top:10px;max-height:180px;border-radius:10px}
+.task-detail-footer{position:sticky;bottom:0;z-index:6;box-shadow:0 -8px 22px rgba(15,23,42,.08)}
+.task-detail-footer .btn{min-height:42px;padding:10px 16px}
+.task-submit-open-btn{min-width:180px}
+.task-submit-modal{align-items:center;justify-content:center;overflow:hidden}
+.task-submit-modal-content{width:min(620px,94vw);max-width:620px;max-height:min(90dvh,760px);padding:0;overflow:hidden;display:flex;flex-direction:column}
+.task-submit-modal-content .modal-header{margin:0;padding:18px 20px;border-bottom:1px solid #edf1f5;flex:0 0 auto}
+.task-submit-form{padding:18px 20px 20px;overflow:auto;min-height:0;display:flex;flex-direction:column;gap:2px}
+.task-submit-form .form-group{margin-bottom:14px}
+.task-submit-form textarea{min-height:130px;resize:vertical}
+.task-submit-actions{position:sticky;bottom:-20px;z-index:4;display:grid;grid-template-columns:.8fr 1.35fr;gap:10px;margin:8px -20px -20px;padding:12px 20px calc(12px + env(safe-area-inset-bottom));background:#fbfcfd;border-top:1px solid #edf1f5}
+.task-submit-actions .btn{width:100%;min-width:0;margin:0;min-height:44px}
+html[data-theme="dark"] .task-attachment-icon{background:#2b211e}
+html[data-theme="dark"] .task-attachment-file small{color:#9aaac0}
+html[data-theme="dark"] .task-submit-modal-content,html[data-theme="dark"] .task-submit-modal-content .modal-header{background:#111b2e!important;color:#e8eef7!important;border-color:#31415a!important}
+html[data-theme="dark"] .task-submit-actions{background:#0b1424!important;border-color:#31415a!important}
+html[data-theme="dark"] .task-submit-form input[readonly]{background:#0c1627!important;color:#e8eef7!important;border-color:#34445e!important}
+
+@media(max-width:600px){
+  .task-detail-modal{padding:0!important;align-items:stretch!important;overflow:hidden!important}
+  .task-detail-modal .modal-content{width:100%!important;max-width:none!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important;margin:0!important}
+  .task-detail-modal .modal-header{position:sticky;top:0;z-index:7;padding:15px 16px;background:inherit}
+  .task-detail-body{padding:14px 16px 110px!important;flex:1;min-height:0;overflow-y:auto!important}
+  .task-detail-heading{gap:10px;margin-bottom:13px}
+  .task-detail-heading h3{font-size:18px;line-height:1.3}
+  .task-detail-grid{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .task-detail-info:first-child{grid-column:1/-1}
+  .task-detail-section{margin-top:14px}
+  .task-detail-description{font-size:12px;padding:11px}
+  .task-youtube-preview img,.task-youtube-frame{aspect-ratio:16/9}
+  .attachment-head{align-items:flex-start;flex-direction:column;gap:9px}
+  .attachment-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .attachment-link{text-align:center;min-height:38px;display:flex;align-items:center;justify-content:center;font-size:11px}
+  .task-detail-footer{position:fixed;left:0;right:0;bottom:0;z-index:1005;display:grid;grid-template-columns:.72fr 1.45fr;gap:10px;padding:11px 14px calc(11px + env(safe-area-inset-bottom));box-shadow:0 -10px 26px rgba(15,23,42,.18)}
+  .task-detail-footer .btn,.task-detail-footer .btn-action{width:100%;min-width:0;margin:0;min-height:46px}
+  .task-submit-modal{padding:0!important;align-items:stretch!important}
+  .task-submit-modal-content{width:100%!important;max-width:none!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important;margin:0!important}
+  .task-submit-modal-content .modal-header{position:sticky;top:0;z-index:7;padding:15px 16px}
+  .task-submit-form{padding:14px 16px 105px;flex:1;overflow-y:auto}
+  .task-submit-form textarea{min-height:150px;font-size:16px}
+  .task-submit-form input[type=file]{font-size:14px}
+  .task-submit-actions{position:fixed;left:0;right:0;bottom:0;z-index:1006;margin:0;padding:11px 14px calc(11px + env(safe-area-inset-bottom));grid-template-columns:.72fr 1.45fr;box-shadow:0 -10px 26px rgba(15,23,42,.18)}
+}
