@@ -2886,3 +2886,187 @@ html[data-theme="dark"] .task-detail-modal .task-detail-footer{
   background:var(--lmc-surface,#111b2e)!important;
   border-color:var(--lmc-border,#31415a)!important;
 }
+
+/* =========================================================
+   Release follow-up: filter popover + practice form actions + reports
+   2026-10-09
+   ========================================================= */
+
+/* Materi & Absensi: allow the custom person picker to escape the filter card.
+   The table itself keeps its own responsive overflow wrapper. */
+.attendance-list-box{
+  overflow:visible!important;
+}
+.attendance-list-box .attendance-filter-panel{
+  position:relative;
+  z-index:20;
+  overflow:visible!important;
+}
+.attendance-list-box .attendance-responsive-table{
+  position:relative;
+  z-index:1;
+  overflow-x:auto;
+  overflow-y:visible;
+}
+.attendance-list-box .lmc-person-filter.open{
+  z-index:120!important;
+}
+.attendance-list-box .lmc-person-filter-menu{
+  z-index:125!important;
+}
+
+/* Tambah/Edit Materi Latihan: actions belong to the end of the form,
+   directly below File/PDF, never as an overlay/sticky footer. */
+#modalPracticeResource .practice-modal-content{
+  display:flex!important;
+  flex-direction:column!important;
+  overflow:hidden!important;
+}
+#modalPracticeResource .practice-modal-content > form{
+  min-height:0!important;
+  overflow:auto!important;
+  overscroll-behavior:contain;
+  padding-bottom:calc(18px + env(safe-area-inset-bottom))!important;
+}
+#modalPracticeResource .practice-modal-actions{
+  position:static!important;
+  inset:auto!important;
+  z-index:auto!important;
+  margin:18px 0 0!important;
+  padding:0!important;
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+  display:grid!important;
+  grid-template-columns:minmax(120px,.42fr) minmax(170px,.58fr)!important;
+  gap:10px!important;
+}
+#modalPracticeResource .practice-modal-actions .btn{
+  width:100%!important;
+  min-width:0!important;
+  min-height:46px!important;
+  margin:0!important;
+}
+
+/* Laporan: remove inline 4-column squeeze on narrow screens. */
+#section-laporan{
+  min-width:0;
+}
+#section-laporan .task-page-head{
+  gap:12px;
+  flex-wrap:wrap;
+}
+#section-laporan #student360TeacherFilters{
+  min-width:0;
+  width:100%;
+}
+#section-laporan #student360TeacherFilters .form-group{
+  min-width:0;
+}
+#section-laporan #student360TeacherFilters :where(input,select){
+  width:100%!important;
+  min-width:0!important;
+  box-sizing:border-box!important;
+}
+#section-laporan #student360ReportHistory{
+  min-width:0;
+  overflow:hidden;
+}
+#section-laporan .student360-report-card{
+  min-width:0!important;
+  box-sizing:border-box!important;
+}
+#section-laporan .student360-report-card button{
+  max-width:100%;
+}
+
+@media(max-width:900px){
+  #section-laporan #student360TeacherFilters{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+}
+
+@media(max-width:700px){
+  /* Practice resource modal: one contained card with normal-flow actions. */
+  #modalPracticeResource{
+    padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))!important;
+    align-items:stretch!important;
+  }
+  #modalPracticeResource .practice-modal-content{
+    width:100%!important;
+    max-width:none!important;
+    height:100%!important;
+    max-height:100%!important;
+    border-radius:18px!important;
+  }
+  #modalPracticeResource .practice-modal-content > .modal-header{
+    flex:0 0 auto!important;
+    padding:16px!important;
+  }
+  #modalPracticeResource .practice-modal-content > form{
+    padding:16px!important;
+    padding-bottom:calc(18px + env(safe-area-inset-bottom))!important;
+  }
+  #modalPracticeResource .practice-modal-actions{
+    grid-template-columns:1fr 1.55fr!important;
+    margin-top:16px!important;
+  }
+  #modalPracticeResource .practice-modal-actions .btn{
+    min-height:48px!important;
+    font-size:14px!important;
+  }
+
+  /* Reports: two columns on normal phones/tablets, readable labels and buttons. */
+  #section-laporan .task-page-head{
+    align-items:flex-start!important;
+  }
+  #section-laporan .task-page-head > div:first-child{
+    width:100%;
+    min-width:0;
+  }
+  #section-laporan #student360TeacherFilters{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:10px!important;
+    padding:12px!important;
+  }
+  #section-laporan #student360FilterResult{
+    grid-column:1/-1!important;
+  }
+  #section-laporan .student360-report-card{
+    padding:14px!important;
+    border-radius:16px!important;
+  }
+  #section-laporan .student360-report-card > div:first-child{
+    gap:8px!important;
+  }
+  #section-laporan .student360-report-card > div:last-child{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:8px!important;
+  }
+  #section-laporan .student360-report-card > div:last-child button{
+    min-height:44px!important;
+    padding:10px 12px!important;
+    font-size:12px!important;
+  }
+}
+
+@media(max-width:480px){
+  #section-laporan #student360TeacherFilters{
+    grid-template-columns:1fr!important;
+  }
+  #section-laporan .task-page-head > div:last-child{
+    width:100%;
+    justify-content:flex-start!important;
+  }
+  #section-laporan .student360-report-card > div:last-child{
+    grid-template-columns:1fr!important;
+  }
+  #section-laporan .student360-report-card > div:last-child button{
+    width:100%!important;
+  }
+}
+
+html[data-theme="dark"] #modalPracticeResource .practice-modal-actions{
+  background:transparent!important;
+}
