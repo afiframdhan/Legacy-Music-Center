@@ -313,10 +313,15 @@
 
     function renderMediaEvaluationBrowseFilters(){
       const host=document.getElementById('mediaEvaluationBrowseFilters');if(!host)return;
-      if(currentUser.userType==='siswa')mediaEvalBrowseStudent=String(currentUser.userID||'');
+      const isStudent=currentUser.userType==='siswa';
+      if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
-      host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
-      const picker=document.getElementById('mediaEvalBrowseStudentPicker');if(picker){if(currentUser.userType==='siswa'){const student=phStudent(sid);picker.innerHTML=`<div class="ph-picker-trigger readonly"><span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||currentUser.userName||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span></div>`;}else renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);}
+      if(isStudent){
+        host.innerHTML=`<div class="media-eval-browse-grid media-eval-browse-grid-student"><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
+      }else{
+        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
+        renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
+      }
       const select=document.getElementById('mediaEvalBrowseSource');if(select)select.disabled=!sid;
     }
 

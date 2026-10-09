@@ -224,12 +224,17 @@ function normalizeTaskStatus(task) {
     function updateTaskStudentFilter() {
       const select = document.getElementById('taskStudentFilter');
       if (!select) return;
+      const pickerHost = select.nextElementSibling?.classList?.contains('lmc-person-filter') ? select.nextElementSibling : null;
       if (currentUser.userType === 'siswa') {
         select.style.display = 'none';
         select.value = 'semua';
+        if (pickerHost) pickerHost.style.display = 'none';
+        select.closest('.task-toolbar')?.classList.add('task-toolbar-student');
         return;
       }
       select.style.display = '';
+      if (pickerHost) pickerHost.style.display = '';
+      select.closest('.task-toolbar')?.classList.remove('task-toolbar-student');
       const selected = select.value || 'semua';
       const names = [...new Set(globalTugasList.map(task => String(task.namaSiswa || '').trim()).filter(Boolean))]
         .sort((a,b) => a.localeCompare(b, 'id'));

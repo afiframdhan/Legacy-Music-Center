@@ -1852,7 +1852,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           </div>`);
         });
       } else {
-        container.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Belum ada jadwal pelajaran mendatang.</div>`;
+        container.innerHTML = `<div class="student-dashboard-empty">Belum ada jadwal pelajaran mendatang.</div>`;
       }
 
       if (typeof renderStudent360Access === 'function') renderStudent360Access(data);
@@ -3963,10 +3963,15 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
 
     function renderMediaEvaluationBrowseFilters(){
       const host=document.getElementById('mediaEvaluationBrowseFilters');if(!host)return;
-      if(currentUser.userType==='siswa')mediaEvalBrowseStudent=String(currentUser.userID||'');
+      const isStudent=currentUser.userType==='siswa';
+      if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
       const sid=mediaEvalBrowseStudent;
-      host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
-      const picker=document.getElementById('mediaEvalBrowseStudentPicker');if(picker){if(currentUser.userType==='siswa'){const student=phStudent(sid);picker.innerHTML=`<div class="ph-picker-trigger readonly"><span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||currentUser.userName||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span></div>`;}else renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);}
+      if(isStudent){
+        host.innerHTML=`<div class="media-eval-browse-grid media-eval-browse-grid-student"><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
+      }else{
+        host.innerHTML=`<div class="media-eval-browse-grid"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div><div><label>Pilih Tugas / Latihan</label><select id="mediaEvalBrowseSource" onchange="mediaEvalBrowseSource=this.value;renderMediaEvaluations()">${mediaEvalSourceOptions(sid,mediaEvalBrowseSource)}</select></div></div>`;
+        renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
+      }
       const select=document.getElementById('mediaEvalBrowseSource');if(select)select.disabled=!sid;
     }
 
@@ -6043,7 +6048,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length
           ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(285px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, true)).join('')}</div>`
-          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
+          : `<div class="student360-empty-state">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
         applyStudent360TeacherFilters();
         return;
       }
@@ -6051,7 +6056,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if (filters) filters.style.display = 'none';
       historyBox.innerHTML = reports.length
         ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, false)).join('')}</div>`
-        : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
+        : `<div class="student360-empty-state">Belum ada laporan perkembangan yang dikirim.</div>`;
     }
 
     function applyJadwalFilters() {
@@ -7583,12 +7588,17 @@ function normalizeTaskStatus(task) {
     function updateTaskStudentFilter() {
       const select = document.getElementById('taskStudentFilter');
       if (!select) return;
+      const pickerHost = select.nextElementSibling?.classList?.contains('lmc-person-filter') ? select.nextElementSibling : null;
       if (currentUser.userType === 'siswa') {
         select.style.display = 'none';
         select.value = 'semua';
+        if (pickerHost) pickerHost.style.display = 'none';
+        select.closest('.task-toolbar')?.classList.add('task-toolbar-student');
         return;
       }
       select.style.display = '';
+      if (pickerHost) pickerHost.style.display = '';
+      select.closest('.task-toolbar')?.classList.remove('task-toolbar-student');
       const selected = select.value || 'semua';
       const names = [...new Set(globalTugasList.map(task => String(task.namaSiswa || '').trim()).filter(Boolean))]
         .sort((a,b) => a.localeCompare(b, 'id'));

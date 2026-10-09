@@ -1998,3 +1998,46 @@ html[data-theme="dark"] :where(
 html[data-theme="dark"] :where(.modern-data-table tbody tr,.dashboard-student-table tbody tr,.attendance-responsive-table tbody tr){background:var(--lmc-surface)!important;border-color:var(--lmc-border)!important;}
 html[data-theme="dark"] :where(.modern-data-table td,.dashboard-student-table td,.attendance-responsive-table td){color:var(--lmc-text-2)!important;border-color:var(--lmc-border)!important;}
 html[data-theme="dark"] .practice-filter-box select{background:var(--lmc-input)!important;color:var(--lmc-text)!important;border-color:var(--lmc-border-strong)!important;}
+
+
+/* V4.4 — Student dark-mode completion + role-aware filters */
+.task-toolbar.task-toolbar-student{grid-template-columns:minmax(0,1fr) minmax(150px,190px)!important;}
+.media-eval-browse-grid.media-eval-browse-grid-student{grid-template-columns:minmax(260px,1fr);}
+.student360-empty-state,.student-dashboard-empty{
+  padding:30px 18px;text-align:center;border:1px dashed var(--lmc-border-strong);border-radius:13px;
+  background:var(--lmc-surface-soft);color:var(--lmc-text-3);
+}
+html[data-theme="dark"] #dashboard-siswa :where(
+  .siswa-card-title,.coach-title-label,.coach-name-label,.dashboard-update-label,.dashboard-update-card strong,
+  .widget-title,.stat-card-title,.stat-card-val,.lp-widget-title,.lp-ring-value,.lp-summary-info h3,.lp-section-label
+){color:var(--lmc-text)!important;}
+html[data-theme="dark"] #dashboard-siswa :where(
+  .siswa-detail-row,.siswa-detail-row span,.siswa-card-details,.dashboard-update-card p,.stat-card-sub,
+  .banner-text p,.coach-name-label,.lp-score-hint,.lp-minimal-info span
+){color:var(--lmc-text-2)!important;}
+html[data-theme="dark"] #dashboard-siswa .siswa-detail-row svg{stroke:var(--lmc-text-3)!important;}
+html[data-theme="dark"] #dashboard-siswa :where(.siswa-card-schedule,.dashboard-update-card,#student360LatestCard){
+  background:var(--lmc-surface)!important;border-color:var(--lmc-border)!important;
+}
+html[data-theme="dark"] #student360LatestCard [style*="color:#17232d"],
+html[data-theme="dark"] #student360LatestCard [style*="color: #17232d"],
+html[data-theme="dark"] #student360ReportHistory [style*="color:#17232d"],
+html[data-theme="dark"] #student360ReportHistory [style*="color: #17232d"]{color:var(--lmc-text)!important;}
+html[data-theme="dark"] #student360LatestCard [style*="color:#718096"],
+html[data-theme="dark"] #student360LatestCard [style*="color: #718096"],
+html[data-theme="dark"] #student360LatestCard [style*="color:#64748b"],
+html[data-theme="dark"] #student360ReportHistory [style*="color:#64748b"],
+html[data-theme="dark"] #student360ReportHistory [style*="color:#94a3b8"]{color:var(--lmc-text-2)!important;}
+html[data-theme="dark"] .student360-report-card{
+  background:linear-gradient(135deg,var(--lmc-surface),var(--lmc-surface-soft))!important;
+  border-color:var(--lmc-border-strong)!important;
+}
+html[data-theme="dark"] .student360-report-card [style*="color:#334155"]{color:var(--lmc-text)!important;}
+html[data-theme="dark"] .student360-report-card [style*="background:#fff"]{background:var(--lmc-surface-muted)!important;}
+html[data-theme="dark"] .student360-empty-state,html[data-theme="dark"] .student-dashboard-empty{
+  background:var(--lmc-surface-soft)!important;border-color:var(--lmc-border-strong)!important;color:var(--lmc-text-3)!important;
+}
+html[data-theme="dark"] #section-laporan #student360ReportHistory{
+  background:var(--lmc-surface)!important;border-color:var(--lmc-border)!important;
+}
+@media(max-width:700px){.task-toolbar.task-toolbar-student{grid-template-columns:1fr!important}.media-eval-browse-grid.media-eval-browse-grid-student{grid-template-columns:1fr}}

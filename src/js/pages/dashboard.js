@@ -1307,7 +1307,7 @@
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length
           ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(285px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, true)).join('')}</div>`
-          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
+          : `<div class="student360-empty-state">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
         applyStudent360TeacherFilters();
         return;
       }
@@ -1315,7 +1315,7 @@
       if (filters) filters.style.display = 'none';
       historyBox.innerHTML = reports.length
         ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, false)).join('')}</div>`
-        : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
+        : `<div class="student360-empty-state">Belum ada laporan perkembangan yang dikirim.</div>`;
     }
 
     function applyJadwalFilters() {
