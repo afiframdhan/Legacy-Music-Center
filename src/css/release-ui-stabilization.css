@@ -500,3 +500,169 @@ html[data-theme="dark"] .task-detail-modal .task-detail-footer{
   background:var(--lmc-surface,#111b2e)!important;
   border-color:var(--lmc-border,#31415a)!important;
 }
+
+/* ======================================================================
+   RELEASE FIX 2026-10-09 — Task Detail modal containment & action sizing
+   - Keep sidebar/profile below modal overlay
+   - Make Detail Tugas a single visual card on desktop and mobile
+   - Keep footer inside modal card, after answer/file content
+   - Equal-size teacher actions
+   ====================================================================== */
+
+/* All release modals must sit above sticky sidebar/header/footer layers. */
+.modal,
+.task-detail-modal,
+.media-eval-form-modal,
+.media-eval-detail-modal,
+.practice-resource-detail-modal,
+.practice-modal{
+  z-index:12000!important;
+}
+
+.task-detail-modal{
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100dvh!important;
+  min-height:100dvh!important;
+  padding:16px!important;
+  overflow:hidden!important;
+  align-items:center!important;
+  justify-content:center!important;
+  background:rgba(2,8,23,.58)!important;
+}
+
+.task-detail-modal > .modal-content{
+  position:relative!important;
+  z-index:12001!important;
+  width:min(820px,calc(100vw - 32px))!important;
+  max-width:820px!important;
+  height:auto!important;
+  max-height:calc(100dvh - 32px)!important;
+  margin:0!important;
+  padding:0!important;
+  border-radius:20px!important;
+  overflow:hidden!important;
+  display:flex!important;
+  flex-direction:column!important;
+  background:var(--lmc-surface,#fff)!important;
+  border:1px solid var(--lmc-border,#e2e8f0)!important;
+  box-shadow:0 24px 70px rgba(15,23,42,.28)!important;
+}
+
+.task-detail-modal > .modal-content > .modal-header{
+  position:relative!important;
+  top:auto!important;
+  flex:0 0 auto!important;
+  margin:0!important;
+  padding:18px 20px!important;
+  background:var(--lmc-surface,#fff)!important;
+  border-bottom:1px solid var(--lmc-border,#e2e8f0)!important;
+  box-shadow:none!important;
+}
+
+.task-detail-modal > .modal-content > .modal-header h3{
+  margin:0!important;
+}
+
+.task-detail-modal .task-detail-body{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior:contain!important;
+  padding:18px 20px!important;
+  background:var(--lmc-surface,#fff)!important;
+}
+
+.task-detail-modal .task-detail-footer{
+  position:relative!important;
+  inset:auto!important;
+  flex:0 0 auto!important;
+  margin:0!important;
+  padding:12px 20px calc(14px + env(safe-area-inset-bottom))!important;
+  background:var(--lmc-surface,#fff)!important;
+  border-top:1px solid var(--lmc-border,#e2e8f0)!important;
+  box-shadow:0 -8px 20px rgba(15,23,42,.05)!important;
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:10px!important;
+}
+
+.task-detail-modal .task-detail-footer.single-action{
+  grid-template-columns:1fr!important;
+}
+
+.task-detail-modal .task-detail-footer .btn,
+.task-detail-modal .task-detail-footer .btn-action{
+  width:100%!important;
+  min-width:0!important;
+  min-height:46px!important;
+  height:46px!important;
+  margin:0!important;
+  padding:0 16px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  border-radius:10px!important;
+  line-height:1!important;
+  font-weight:800!important;
+}
+
+/* Prevent app chrome (including Profil Saya) from ever painting above an open modal. */
+body:has(.modal[style*="display: flex"]) .sidebar,
+body:has(.modal[style*="display:flex"]) .sidebar,
+body:has(.modal.show) .sidebar,
+body:has(.modal.open) .sidebar,
+body:has(.modal[aria-hidden="false"]) .sidebar{
+  z-index:100!important;
+}
+
+@media(max-width:700px){
+  .task-detail-modal{
+    padding:max(10px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom))!important;
+    align-items:stretch!important;
+  }
+
+  .task-detail-modal > .modal-content{
+    width:100%!important;
+    max-width:none!important;
+    height:100%!important;
+    max-height:100%!important;
+    border-radius:18px!important;
+  }
+
+  .task-detail-modal > .modal-content > .modal-header{
+    padding:16px!important;
+  }
+
+  .task-detail-modal > .modal-content > .modal-header h3{
+    font-size:clamp(24px,7vw,34px)!important;
+    line-height:1.1!important;
+  }
+
+  .task-detail-modal .task-detail-body{
+    padding:14px 16px!important;
+  }
+
+  .task-detail-modal .task-detail-footer{
+    padding:11px 14px calc(11px + env(safe-area-inset-bottom))!important;
+    gap:9px!important;
+  }
+
+  .task-detail-modal .task-detail-footer .btn,
+  .task-detail-modal .task-detail-footer .btn-action{
+    min-height:48px!important;
+    height:48px!important;
+    font-size:14px!important;
+  }
+}
+
+html[data-theme="dark"] .task-detail-modal > .modal-content,
+html[data-theme="dark"] .task-detail-modal > .modal-content > .modal-header,
+html[data-theme="dark"] .task-detail-modal .task-detail-body,
+html[data-theme="dark"] .task-detail-modal .task-detail-footer{
+  background:var(--lmc-surface,#111b2e)!important;
+  border-color:var(--lmc-border,#31415a)!important;
+}
