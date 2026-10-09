@@ -3070,3 +3070,318 @@ html[data-theme="dark"] .task-detail-modal .task-detail-footer{
 html[data-theme="dark"] #modalPracticeResource .practice-modal-actions{
   background:transparent!important;
 }
+
+/* ======================================================================
+   RELEASE UI FINAL GUARD — 2026-10-10
+   Global modal containment + Progress Belajar + Ujian Tahunan responsive
+   Business logic untouched.
+   ====================================================================== */
+
+/* Every application modal must own the complete visual viewport.
+   This prevents header/sidebar/Profile Saya from appearing above or below
+   an open dialog and provides one predictable stacking context. */
+.modal{
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100dvh!important;
+  min-height:100dvh!important;
+  max-height:none!important;
+  z-index:30000!important;
+  isolation:isolate;
+  box-sizing:border-box!important;
+}
+.modal > .modal-content{
+  position:relative!important;
+  z-index:1!important;
+  min-width:0!important;
+  box-sizing:border-box!important;
+}
+.modal :where(form,fieldset,.form-group,input,select,textarea,button,.widget-box){
+  min-width:0;
+  box-sizing:border-box;
+}
+.modal :where(img,video,iframe,canvas){max-width:100%}
+
+/* Keep app chrome far below an open modal. */
+.header,.sidebar,.sidebar-footer,.notification-panel,.sidebar-overlay{isolation:auto}
+body:has(.modal[style*="display: flex"]) :where(.header,.sidebar,.sidebar-footer),
+body:has(.modal[style*="display:flex"]) :where(.header,.sidebar,.sidebar-footer),
+body:has(.modal.show) :where(.header,.sidebar,.sidebar-footer),
+body:has(.modal.open) :where(.header,.sidebar,.sidebar-footer){
+  z-index:100!important;
+}
+
+/* -------------------------- Progress Belajar -------------------------- */
+#modalLearningProgress{
+  padding:16px!important;
+  align-items:center!important;
+  justify-content:center!important;
+  overflow:hidden!important;
+}
+#modalLearningProgress > .modal-content{
+  width:min(920px,calc(100vw - 32px))!important;
+  max-width:920px!important;
+  height:min(900px,calc(100dvh - 32px))!important;
+  max-height:calc(100dvh - 32px)!important;
+  display:flex!important;
+  flex-direction:column!important;
+  overflow:hidden!important;
+  border-radius:20px!important;
+}
+#modalLearningProgress > .modal-content > .modal-header{
+  flex:0 0 auto!important;
+}
+#modalLearningProgress #formLearningProgress{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  padding:0!important;
+  overflow:hidden!important;
+}
+#modalLearningProgress .lp-modal-body{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  padding:18px 20px!important;
+  scrollbar-gutter:stable;
+}
+#modalLearningProgress .lp-modal-footer{
+  flex:0 0 auto!important;
+  position:relative!important;
+  inset:auto!important;
+  display:grid!important;
+  grid-template-columns:minmax(120px,.8fr) minmax(170px,1.2fr)!important;
+  gap:10px!important;
+  width:100%!important;
+  padding:12px 20px calc(12px + env(safe-area-inset-bottom))!important;
+  margin:0!important;
+  background:var(--lmc-surface,#fff)!important;
+  border-top:1px solid var(--lmc-border,#e2e8f0)!important;
+  box-shadow:0 -8px 22px rgba(15,23,42,.06)!important;
+}
+#modalLearningProgress .lp-modal-footer .btn{
+  width:100%!important;
+  min-width:0!important;
+  min-height:46px!important;
+  margin:0!important;
+}
+#modalLearningProgress :where(.lp-form-top,.lp-form-components,.lp-evaluation-grid,.lp-signature-grid){
+  min-width:0!important;
+}
+#modalLearningProgress .lp-form-component,
+#modalLearningProgress .lp-signature-upload{
+  min-width:0!important;
+  overflow:hidden;
+}
+#modalLearningProgress .lp-component-controls{
+  grid-template-columns:minmax(0,1fr) 76px!important;
+}
+#modalLearningProgress :where(select,input,textarea){
+  max-width:100%!important;
+}
+
+/* ------------------------- Ujian Tahunan ------------------------------ */
+.annual-exam-modal{
+  padding:16px!important;
+  align-items:center!important;
+  justify-content:center!important;
+  overflow:hidden!important;
+}
+.annual-exam-modal > .modal-content{
+  width:min(1100px,calc(100vw - 32px))!important;
+  max-width:1100px!important;
+  height:min(920px,calc(100dvh - 32px))!important;
+  max-height:calc(100dvh - 32px)!important;
+  display:flex!important;
+  flex-direction:column!important;
+  overflow:hidden!important;
+  border-radius:20px!important;
+}
+.annual-exam-modal .annual-exam-modal-body{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+}
+.annual-exam-modal .annual-exam-modal-footer{
+  flex:0 0 auto!important;
+  position:relative!important;
+  inset:auto!important;
+  width:100%!important;
+  margin:0!important;
+  background:var(--lmc-surface,#fff)!important;
+}
+.annual-exam-modal :where(.annual-exam-form-grid,.annual-exam-total-strip,.annual-exam-signature-uploads,.annual-exam-notes){
+  min-width:0!important;
+}
+.annual-exam-modal .annual-exam-score-table input[type="number"]{
+  box-sizing:border-box!important;
+}
+
+/* Mobile score cards: Penguji 1, Penguji 2, Rata-rata must use exactly
+   the same visual footprint. */
+@media(max-width:700px){
+  #modalLearningProgress{
+    padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))!important;
+    align-items:stretch!important;
+  }
+  #modalLearningProgress > .modal-content{
+    width:100%!important;
+    max-width:none!important;
+    height:100%!important;
+    max-height:100%!important;
+    border-radius:18px!important;
+  }
+  #modalLearningProgress > .modal-content > .modal-header{
+    padding:16px!important;
+  }
+  #modalLearningProgress > .modal-content > .modal-header h3{
+    font-size:clamp(24px,7vw,34px)!important;
+    line-height:1.08!important;
+  }
+  #modalLearningProgress .lp-modal-body{
+    padding:16px!important;
+    overflow-x:hidden!important;
+  }
+  #modalLearningProgress :where(.lp-form-top,.lp-form-components,.lp-evaluation-grid,.lp-signature-grid){
+    grid-template-columns:1fr!important;
+    gap:12px!important;
+  }
+  #modalLearningProgress .lp-evaluation-grid .lp-full{grid-column:auto!important}
+  #modalLearningProgress .lp-component-controls{
+    grid-template-columns:minmax(0,1fr) 72px!important;
+    gap:8px!important;
+  }
+  #modalLearningProgress .lp-component-controls :where(select,input){
+    width:100%!important;
+    min-height:48px!important;
+    font-size:16px!important;
+  }
+  #modalLearningProgress :where(.lp-form-component textarea,.lp-evaluation-grid textarea){
+    width:100%!important;
+    min-height:92px!important;
+    font-size:16px!important;
+  }
+  #modalLearningProgress .lp-signature-upload input{
+    width:100%!important;
+    font-size:16px!important;
+  }
+  #modalLearningProgress .lp-modal-footer{
+    grid-template-columns:.85fr 1.15fr!important;
+    padding:11px 14px calc(11px + env(safe-area-inset-bottom))!important;
+  }
+  #modalLearningProgress .lp-modal-footer .btn{
+    min-height:50px!important;
+    font-size:15px!important;
+  }
+
+  .annual-exam-modal{
+    padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))!important;
+    align-items:stretch!important;
+  }
+  .annual-exam-modal > .modal-content{
+    width:100%!important;
+    max-width:none!important;
+    height:100%!important;
+    max-height:100%!important;
+    border-radius:18px!important;
+  }
+  .annual-exam-modal .modal-header{
+    position:relative!important;
+    top:auto!important;
+    flex:0 0 auto!important;
+    padding:16px!important;
+  }
+  .annual-exam-modal .modal-header h3{
+    font-size:clamp(24px,7vw,34px)!important;
+    line-height:1.08!important;
+    padding-right:0!important;
+  }
+  .annual-exam-modal .annual-exam-modal-body{
+    padding:14px!important;
+    overflow-x:hidden!important;
+  }
+  .annual-exam-modal .annual-exam-form-grid,
+  .annual-exam-modal .annual-exam-signature-uploads,
+  .annual-exam-modal .annual-exam-notes{
+    grid-template-columns:1fr!important;
+  }
+  .annual-exam-modal .annual-exam-span-2{grid-column:auto!important}
+  .annual-exam-modal .annual-exam-score-table tr{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    align-items:stretch!important;
+    gap:8px!important;
+  }
+  .annual-exam-modal .annual-exam-score-table td:nth-child(n+3){
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    justify-content:flex-start!important;
+    min-width:0!important;
+    padding:6px 2px!important;
+  }
+  .annual-exam-modal .annual-exam-score-table td:nth-child(n+3)::before{
+    min-height:22px!important;
+    display:flex!important;
+    align-items:flex-end!important;
+    justify-content:center!important;
+    margin-bottom:6px!important;
+  }
+  .annual-exam-modal .annual-exam-score-table input[type="number"],
+  .annual-exam-modal .annual-score-avg{
+    width:100%!important;
+    min-width:0!important;
+    height:48px!important;
+    min-height:48px!important;
+    padding:0 6px!important;
+    border:1px solid var(--lmc-border,#dfe6ee)!important;
+    border-radius:10px!important;
+    background:var(--lmc-input,#fff)!important;
+    color:var(--lmc-text,#17232d)!important;
+    font-size:18px!important;
+    font-weight:700!important;
+    line-height:48px!important;
+    text-align:center!important;
+    box-sizing:border-box!important;
+  }
+  .annual-exam-modal .annual-score-avg{
+    display:grid!important;
+    place-items:center!important;
+    color:#f15a24!important;
+    line-height:1!important;
+  }
+  .annual-exam-modal .annual-exam-modal-footer{
+    display:grid!important;
+    grid-template-columns:.85fr 1.15fr!important;
+    gap:10px!important;
+    padding:11px 14px calc(11px + env(safe-area-inset-bottom))!important;
+    box-shadow:0 -8px 22px rgba(15,23,42,.06)!important;
+  }
+  .annual-exam-modal .annual-exam-modal-footer .btn{
+    width:100%!important;
+    min-width:0!important;
+    min-height:50px!important;
+    margin:0!important;
+    font-size:15px!important;
+  }
+}
+
+@media(max-width:420px){
+  #modalLearningProgress .lp-modal-footer,
+  .annual-exam-modal .annual-exam-modal-footer{
+    grid-template-columns:1fr 1.35fr!important;
+  }
+  .annual-exam-modal .annual-exam-score-table tr{
+    padding:10px 8px!important;
+    gap:6px!important;
+  }
+}
+
+html[data-theme="dark"] .annual-exam-modal .annual-score-avg{
+  background:var(--lmc-input,#0c1627)!important;
+  border-color:var(--lmc-border,#34445e)!important;
+  color:#ff8a3d!important;
+}
