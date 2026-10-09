@@ -30,7 +30,8 @@ const cssSources = [
   'src/css/pages/tugas.css',
   'src/css/pages/progress-and-pages.css',
   'src/css/responsive-theme-admin.css',
-  'src/css/theme-system.css'
+  'src/css/theme-system.css',
+  'src/css/release-ui-stabilization.css'
 ];
 
 async function concat(files) {
