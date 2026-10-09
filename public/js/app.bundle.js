@@ -3814,17 +3814,60 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const items=phFilteredResources();
       if(!items.length){host.innerHTML='<div class="practice-empty">Belum ada materi latihan untuk filter ini.</div>';return;}
       host.innerHTML=items.map(item=>{
-        const yid=phYoutubeId(item.youtubeUrl);
         const files=Array.isArray(item.attachments)?item.attachments:[];
-        return `<article class="practice-resource-card">
-          <div class="practice-card-head"><div><span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span><h3>${phEsc(item.title||'Materi Latihan')}</h3><p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')}</p></div>${currentUser.userType==='guru'?`<div class="practice-card-actions"><button class="btn btn-export" onclick="openPracticeResourceModal('${phEsc(item.resourceID)}')">Edit</button><button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(item.resourceID)}')">Hapus</button></div>`:''}</div>
-          ${item.description?`<p class="practice-description">${phEsc(item.description)}</p>`:''}
-          ${yid?`<div class="practice-video"><iframe src="https://www.youtube.com/embed/${phEsc(yid)}" title="${phEsc(item.title)}" loading="lazy" allowfullscreen></iframe></div>`:''}
-          ${files.length?`<div class="practice-files">${files.map(f=>`<a class="practice-file" href="${phEsc(f.url||'#')}" target="_blank" rel="noopener"><span>📄</span><span><b>${phEsc(f.name||'File latihan')}</b><small>${phEsc(f.type||'File Google Drive')}</small></span></a>`).join('')}</div>`:''}
-          <div class="practice-meta">Diperbarui ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</div>
+        const hasVideo=!!phYoutubeId(item.youtubeUrl);
+        const desc=String(item.description||'').trim();
+        return `<article class="practice-resource-card practice-resource-summary" tabindex="0" role="button" onclick="openPracticeResourceDetail('${phEsc(item.resourceID)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPracticeResourceDetail('${phEsc(item.resourceID)}');}">
+          <div class="practice-card-head">
+            <div class="practice-card-main">
+              <span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span>
+              <h3>${phEsc(item.title||'Materi Latihan')}</h3>
+              <p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')}</p>
+            </div>
+            ${currentUser.userType==='guru'?`<div class="practice-card-actions" onclick="event.stopPropagation()"><button class="btn btn-export" onclick="openPracticeResourceModal('${phEsc(item.resourceID)}')">Edit</button><button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(item.resourceID)}')">Hapus</button></div>`:''}
+          </div>
+          ${desc?`<p class="practice-description clamp-3">${phEsc(desc)}</p>`:'<p class="practice-description practice-description-muted">Belum ada deskripsi materi.</p>'}
+          <div class="practice-card-summary-meta">
+            <span class="practice-summary-pill ${hasVideo?'has-media':''}">▶ ${hasVideo?'Video tersedia':'Tanpa video'}</span>
+            <span class="practice-summary-pill ${files.length?'has-media':''}">📄 ${files.length} file</span>
+            <span class="practice-summary-pill">🕒 ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</span>
+          </div>
+          <div class="practice-card-footer"><span>Klik untuk membuka detail materi</span><span class="media-eval-arrow">›</span></div>
         </article>`;
       }).join('');
     }
+
+    function openPracticeResourceDetail(id){
+      const item=practiceResources.find(x=>String(x.resourceID)===String(id));if(!item)return;
+      const host=document.getElementById('practiceResourceDetailBody');if(!host)return;
+      const yid=phYoutubeId(item.youtubeUrl);
+      const files=Array.isArray(item.attachments)?item.attachments:[];
+      host.innerHTML=`<div class="practice-resource-detail-layout">
+        <div class="practice-resource-detail-main">
+          <div class="practice-resource-detail-head">
+            <div>
+              <span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span>
+              <h2>${phEsc(item.title||'Materi Latihan')}</h2>
+              <p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')} • Diperbarui ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</p>
+            </div>
+            <div class="practice-card-summary-meta">
+              <span class="practice-summary-pill ${yid?'has-media':''}">▶ ${yid?'Video tersedia':'Tanpa video'}</span>
+              <span class="practice-summary-pill ${files.length?'has-media':''}">📄 ${files.length} file</span>
+            </div>
+          </div>
+          <div class="media-player-card practice-resource-detail-copy">
+            <div class="practice-section-title"><div><h3>Deskripsi / Petunjuk</h3><p>Materi latihan mandiri untuk siswa.</p></div></div>
+            <div class="practice-description">${phEsc(item.description||'Belum ada deskripsi materi.')}</div>
+          </div>
+          ${yid?`<div class="media-player-card"><div class="practice-section-title"><div><h3>Video Tutorial</h3><p>YouTube Unlisted</p></div></div><div class="practice-video"><iframe src="https://www.youtube.com/embed/${phEsc(yid)}" title="${phEsc(item.title||'Video Tutorial')}" loading="lazy" allowfullscreen></iframe></div></div>`:''}
+          ${files.length?`<div class="media-player-card"><div class="practice-section-title"><div><h3>File / PDF</h3><p>Lampiran latihan mandiri.</p></div></div><div class="practice-files">${files.map(f=>`<a class="practice-file" href="${phEsc(f.url||'#')}" target="_blank" rel="noopener"><span>📄</span><span><b>${phEsc(f.name||'File latihan')}</b><small>${phEsc(f.type||'File Google Drive')}</small></span></a>`).join('')}</div></div>`:''}
+        </div>
+      </div>`;
+      const actions=document.getElementById('practiceResourceDetailActions');
+      if(actions){actions.innerHTML=currentUser.userType==='guru'?`<button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(id)}');closePracticeResourceDetail()">Hapus</button><button class="btn btn-export" onclick="closePracticeResourceDetail();openPracticeResourceModal('${phEsc(id)}')">Edit Materi</button><button class="btn btn-primary" onclick="closePracticeResourceDetail()">Tutup</button>`:`<button class="btn btn-primary" onclick="closePracticeResourceDetail()">Tutup</button>`;}
+      document.getElementById('modalPracticeResourceDetail').style.display='flex';
+    }
+    function closePracticeResourceDetail(){document.getElementById('modalPracticeResourceDetail').style.display='none';}
 
     function phScoreLabel(score) {
       const n=Number(score||0); if(n>=85)return 'Sangat Baik'; if(n>=70)return 'Baik'; if(n>=60)return 'Cukup'; return 'Perlu Latihan';
@@ -3894,9 +3937,18 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if(!items.length){host.innerHTML='<div class="practice-empty">Belum ada Evaluasi Audio/Video untuk pilihan ini.</div>';return;}
       host.innerHTML=items.map(item=>{
         const score=Math.round(Number(item.averageScore||0));
-        return `<button type="button" class="media-eval-card" onclick="openMediaEvaluationDetail('${phEsc(item.evaluationID)}')">
-          <div class="media-eval-score" style="--score:${score}%"><strong>${score}%</strong><span>${phEsc(phScoreLabel(score))}</span></div>
-          <div class="media-eval-copy"><span class="practice-kicker">${phEsc(item.instrument||'Evaluasi')}</span><h3>${phEsc(item.title||'Evaluasi Audio / Video')}</h3><p>${phEsc(item.studentName||'')} • ${phEsc(item.sourceLabel||item.teacherName||'')} • ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</p></div><span class="media-eval-arrow">›</span>
+        const hasMedia=!!String(item.mediaUrl||'').trim();
+        return `<button type="button" class="media-eval-card media-eval-card-compact" onclick="openMediaEvaluationDetail('${phEsc(item.evaluationID)}')">
+          <div class="media-eval-card-top">
+            <div class="media-eval-score" style="--score:${score}%"><strong>${score}%</strong><span>${phEsc(phScoreLabel(score))}</span></div>
+            <div class="media-eval-copy"><span class="practice-kicker">${phEsc(item.instrument||'Evaluasi')}</span><h3>${phEsc(item.title||'Evaluasi Audio / Video')}</h3><p>${phEsc(item.studentName||'')}</p></div>
+          </div>
+          <div class="practice-card-summary-meta">
+            <span class="practice-summary-pill ${hasMedia?'has-media':''}">🎬 ${hasMedia?'Media tersedia':'Belum ada media'}</span>
+            <span class="practice-summary-pill">🎵 ${phEsc(item.sourceLabel||item.teacherName||'Evaluasi')}</span>
+            <span class="practice-summary-pill">🕒 ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</span>
+          </div>
+          <div class="practice-card-footer"><span>Lihat detail evaluasi</span><span class="media-eval-arrow">›</span></div>
         </button>`;
       }).join('');
     }
