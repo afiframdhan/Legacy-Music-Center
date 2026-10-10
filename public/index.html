@@ -1477,6 +1477,14 @@
   </div>
 
   <!-- MODAL DETAIL TUGAS & JAWABAN -->
+  <div id="modalExitedStudentArchive" class="modal student-archive-modal" onclick="handleExitedStudentArchiveBackdrop(event)">
+    <div class="modal-content student-archive-modal-content" role="dialog" aria-modal="true" aria-labelledby="exitedStudentArchiveTitle">
+      <div class="modal-header"><h3 id="exitedStudentArchiveTitle">Arsip Siswa</h3><button type="button" class="modal-close" onclick="closeExitedStudentArchive()" aria-label="Tutup">&times;</button></div>
+      <div id="exitedStudentArchiveBody" class="student-archive-body"></div>
+      <div class="student-archive-footer"><button type="button" class="btn btn-primary" onclick="closeExitedStudentArchive()">Tutup</button></div>
+    </div>
+  </div>
+
   <div id="modalDetailTugas" class="modal task-detail-modal" onclick="handleTaskDetailBackdrop(event)">
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="taskDetailModalTitle">
       <div class="modal-header">

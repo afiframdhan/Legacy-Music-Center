@@ -28,7 +28,7 @@ const ADMIN = new Set([
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance',
   'deleteExitedStudentRecord',
-  'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
+  'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup', 'getExitedStudentArchive'
 ]);
 
 const AUDIT_METHODS = new Set([
@@ -476,6 +476,37 @@ async function handleRpc(request, env, ctx) {
     }
   }
 
+
+  if (method === 'getExitedStudentArchive') {
+    try {
+      if (session.userType !== 'admin') return json({ ok:true, data:{ success:false, message:'Hanya admin yang dapat membuka arsip siswa keluar.' } });
+      const studentId = String(args[0] || '').trim();
+      if (!studentId) return json({ ok:true, data:{ success:false, message:'ID siswa tidak ditemukan.' } });
+      const base = await buildStudent360ReportSupabase(env, session, studentId, { ignorePublication:true });
+      if (!base?.student || String(base.student.status || '').trim().toLowerCase() !== 'keluar') {
+        return json({ ok:true, data:{ success:false, message:'Arsip hanya tersedia untuk siswa dengan status Keluar.' } });
+      }
+      const [repertoireRows, practiceRows, evaluationRows, examRows, publicationRows] = await Promise.all([
+        sbRowsSafe(env, 'student_repertoire', { student_id:`eq.${studentId}`, active:'eq.true', order:'updated_at.desc.nullslast,created_at.desc', limit:'200' }),
+        sbRowsSafe(env, 'practice_resources', { student_id:`eq.${studentId}`, active:'eq.true', order:'updated_at.desc.nullslast,created_at.desc', limit:'200' }),
+        sbRowsSafe(env, 'media_evaluations', { student_id:`eq.${studentId}`, active:'eq.true', order:'updated_at.desc.nullslast,created_at.desc', limit:'200' }),
+        sbRowsSafe(env, 'annual_exam_assessments', { student_public_id:`eq.${studentId}`, active:'eq.true', order:'exam_date.desc.nullslast,created_at.desc', limit:'100' }),
+        sbRowsSafe(env, 'student_report_publications', { student_public_id:`eq.${studentId}`, active:'eq.true', order:'sent_at.desc.nullslast,created_at.desc', limit:'100' })
+      ]);
+      return json({ ok:true, data:{
+        success:true,
+        student:base.student, classes:base.classes||[], schedules:base.schedules||[], attendance:base.attendance||[], assignments:base.assignments||[], progress:base.progress||[],
+        repertoire:repertoireRows.map(mapRepertoire),
+        practiceResources:practiceRows.map(mapPracticeResource),
+        evaluations:evaluationRows.map(mapMediaEvaluation),
+        exams:examRows.map(mapAnnualExamRow),
+        reports:publicationRows.map(mapStudent360Publication).filter(Boolean)
+      }});
+    } catch (error) {
+      console.error('Exited student archive error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
 
   if (method === 'getStudent360Report') {
     try {
