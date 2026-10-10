@@ -1476,79 +1476,98 @@
       body.innerHTML = records.length ? records.map((item, index) => {
         const statusLabel = item.statusSesudah || (String(item.jenis).toLowerCase() === 'keluar' ? 'Keluar' : 'Aktif');
         const statusClass = String(statusLabel).toLowerCase() === 'keluar' ? 'badge-danger' : (String(statusLabel).toLowerCase() === 'cuti' ? 'badge-warning' : 'badge-success');
-        const deleteAction = isExitView ? `<td data-label="Aksi"><div class="student-archive-actions"><button type="button" class="btn student-archive-open" onclick="event.stopPropagation();openExitedStudentArchive(decodeURIComponent('${encodeURIComponent(item.siswaID || item.nama || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Lihat Arsip</button><button type="button" class="btn student-archive-delete" onclick="event.stopPropagation();deleteExitedStudentRecord(decodeURIComponent('${encodeURIComponent(item.siswaID || item.nama || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Hapus Data</button></div></td>` : '';
+        const deleteAction = isExitView ? `<td data-label="Aksi"><div class="student-archive-actions"><button type="button" class="btn student-archive-open" onclick="event.stopPropagation();openExitedStudentArchive(decodeURIComponent('${encodeURIComponent(item.siswaID || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Lihat Arsip</button><button type="button" class="btn student-archive-delete" onclick="event.stopPropagation();deleteExitedStudentRecord(decodeURIComponent('${encodeURIComponent(item.siswaID || item.nama || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Hapus Data</button></div></td>` : '';
         return `<tr class="student-report-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td class="student-report-no" data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td class="student-report-name" data-label="Nama Siswa"><b>${escapeTaskHtml(item.nama || '-')}</b></td><td data-label="Jenis"><span class="badge ${String(item.jenis).toLowerCase() === 'keluar' ? 'badge-danger' : 'badge-success'}">${escapeTaskHtml(item.jenis)}</span></td><td class="student-report-instrument" data-label="Instrumen">${escapeTaskHtml(item.instrumen || '-')}</td><td data-label="Guru">${escapeTaskHtml(item.guru || '-')}</td><td class="student-report-status" data-label="Status"><span class="badge ${statusClass}">${escapeTaskHtml(statusLabel)}</span><span class="student-report-chevron">⌄</span></td><td data-label="Keterangan">${escapeTaskHtml(item.keterangan || '-')}</td>${deleteAction}</tr>`;
       }).join('') : `<tr><td class="student-report-empty" colspan="${isExitView ? 9 : 8}">Tidak ada data ${escapeTaskHtml(studentReportView.toLowerCase())} pada periode ini.</td></tr>`;
     }
 
     function ensureExitedStudentArchiveModal() {
-      let overlay = document.getElementById('exitedStudentArchiveOverlay');
-      if (overlay) return overlay;
-      overlay = document.createElement('div');
-      overlay.id = 'exitedStudentArchiveOverlay';
-      overlay.className = 'student-archive-overlay';
-      overlay.innerHTML = `<section class="student-archive-modal" role="dialog" aria-modal="true" aria-labelledby="studentArchiveTitle">
-        <header class="student-archive-header"><div><div class="student-archive-eyebrow">ARSIP SISWA</div><h2 id="studentArchiveTitle">Detail Arsip Siswa</h2></div><button type="button" class="student-archive-close" aria-label="Tutup" onclick="closeExitedStudentArchive()">×</button></header>
-        <div class="student-archive-body" id="studentArchiveBody"><div class="student-archive-loading">Memuat arsip siswa...</div></div>
-        <footer class="student-archive-footer"><button type="button" class="btn" onclick="closeExitedStudentArchive()">Tutup</button></footer>
-      </section>`;
-      overlay.addEventListener('click', event => { if (event.target === overlay) closeExitedStudentArchive(); });
-      document.body.appendChild(overlay);
-      return overlay;
+      let modal = document.getElementById('modalExitedStudentArchive');
+      if (modal) return modal;
+      modal = document.createElement('div');
+      modal.id = 'modalExitedStudentArchive';
+      modal.className = 'modal exited-student-archive-modal';
+      modal.innerHTML = `<div class="modal-content exited-student-archive-content" role="dialog" aria-modal="true" aria-labelledby="exitedStudentArchiveTitle">
+        <div class="modal-header exited-student-archive-header">
+          <div><h2 id="exitedStudentArchiveTitle" style="margin:0">Arsip Siswa</h2><div id="exitedStudentArchiveSubtitle" class="exited-student-archive-subtitle"></div></div>
+          <button type="button" class="modal-close" aria-label="Tutup arsip siswa" onclick="closeExitedStudentArchive()">&times;</button>
+        </div>
+        <div id="exitedStudentArchiveBody" class="exited-student-archive-body"><div class="archive-loading">Memuat arsip siswa...</div></div>
+        <div class="exited-student-archive-footer"><button type="button" class="btn btn-primary" onclick="closeExitedStudentArchive()">Tutup</button></div>
+      </div>`;
+      modal.addEventListener('click', event => { if (event.target === modal) closeExitedStudentArchive(); });
+      document.body.appendChild(modal);
+      return modal;
     }
 
     function closeExitedStudentArchive() {
-      const overlay = document.getElementById('exitedStudentArchiveOverlay');
-      if (overlay) overlay.classList.remove('show');
-      document.body.classList.remove('student-archive-open-body');
+      const modal = document.getElementById('modalExitedStudentArchive');
+      if (modal) modal.style.display = 'none';
     }
 
-    function archiveListHtml(title, items, formatter, emptyText) {
-      const rows = Array.isArray(items) ? items : [];
-      return `<details class="student-archive-section" ${rows.length ? '' : 'open'}><summary><span>${escapeTaskHtml(title)}</span><b>${rows.length}</b></summary><div class="student-archive-section-body">${rows.length ? rows.map(formatter).join('') : `<div class="student-archive-empty">${escapeTaskHtml(emptyText || 'Tidak ada data.')}</div>`}</div></details>`;
+    function archiveDate(value) {
+      if (!value) return '-';
+      const raw = String(value);
+      const iso = raw.slice(0,10);
+      return formatAcademyDate(iso) || raw;
+    }
+
+    function archiveEmpty(label) {
+      return `<div class="archive-empty">Belum ada ${escapeTaskHtml(label)} yang tersimpan.</div>`;
+    }
+
+    function archiveTable(headers, rows) {
+      if (!rows || !rows.length) return '';
+      return `<div class="archive-table-wrap"><table class="archive-table"><thead><tr>${headers.map(h=>`<th>${escapeTaskHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
     }
 
     function renderExitedStudentArchive(data) {
-      const body = document.getElementById('studentArchiveBody');
+      const body = document.getElementById('exitedStudentArchiveBody');
+      const subtitle = document.getElementById('exitedStudentArchiveSubtitle');
       if (!body) return;
-      const profile = data?.profile || {};
-      const deleted = Boolean(data?.deletedFromMaster);
-      const badge = deleted ? '<span class="badge badge-danger">Data master sudah dihapus</span>' : '<span class="badge badge-danger">Keluar</span>';
-      const notice = deleted ? '<div class="student-archive-notice">Data siswa utama sudah tidak ada di Supabase. Arsip yang masih tersisa ditampilkan dari riwayat/snapshot. Data akademik yang pernah dihapus permanen memang tidak dapat dipulihkan dari aplikasi.</div>' : '';
-      const info = `<div class="student-archive-profile"><div><span>Nama</span><strong>${escapeTaskHtml(profile.nama || '-')}</strong></div><div><span>Status</span><strong>${badge}</strong></div><div><span>Instrumen</span><strong>${escapeTaskHtml(profile.instrumen || '-')}</strong></div><div><span>Guru</span><strong>${escapeTaskHtml(profile.guru || '-')}</strong></div><div><span>Grade</span><strong>${escapeTaskHtml(profile.grade || '-')}</strong></div><div><span>Tanggal Keluar</span><strong>${escapeTaskHtml(formatAcademyDate(profile.tglKeluar) || '-')}</strong></div><div class="wide"><span>Alasan/Keterangan</span><strong>${escapeTaskHtml(profile.alasanKeluar || '-')}</strong></div></div>`;
-      const stats = data?.counts || {};
-      const summary = `<div class="student-archive-stats">${[['Kelas',stats.classes],['Jadwal',stats.schedules],['Absensi',stats.attendance],['Tugas',stats.assignments],['Progress',stats.progress],['Repertoire',stats.repertoire],['Latihan',stats.practice],['Evaluasi',stats.evaluations],['Ujian',stats.exams],['Laporan',stats.reports]].map(([label,value])=>`<div><span>${label}</span><b>${Number(value||0)}</b></div>`).join('')}</div>`;
-      const row = (a,b,c='') => `<div class="student-archive-row"><div><b>${escapeTaskHtml(a || '-')}</b><span>${escapeTaskHtml(b || '')}</span></div>${c ? `<em>${escapeTaskHtml(c)}</em>` : ''}</div>`;
-      body.innerHTML = `${notice}${info}${summary}<div class="student-archive-sections">
-        ${archiveListHtml('Riwayat Status', data?.history, x => row(`${x.jenis || 'Riwayat'} • ${formatAcademyDate(x.tanggal)}`, x.keterangan || '', x.statusSesudah || ''), 'Belum ada riwayat status.')}
-        ${archiveListHtml('Riwayat Kelas', data?.classes, x => row(`${x.instrumen || '-'} • ${x.grade || '-'}`, x.guru || '', x.startedOn ? `Mulai ${formatAcademyDate(x.startedOn)}` : ''), 'Tidak ada riwayat kelas.')}
-        ${archiveListHtml('Absensi', data?.attendance, x => row(`${formatAcademyDate(x.tanggal)} • ${x.status || '-'}`, x.materi || x.catatan || '', x.guru || ''), 'Tidak ada data absensi.')}
-        ${archiveListHtml('Tugas', data?.assignments, x => row(x.judulTugas || '-', x.status || '', x.deadline ? `Deadline ${formatAcademyDate(x.deadline)}` : ''), 'Tidak ada data tugas.')}
-        ${archiveListHtml('Progress Belajar', data?.progress, x => row(`${x.periode || '-'} • ${x.overallProgress || 0}%`, x.targetBerikutnya || x.perluDitingkatkan || '', x.guru || ''), 'Tidak ada data progress.')}
-        ${archiveListHtml('Repertoire', data?.repertoire, x => row(x.judulLagu || '-', `${x.status || ''}${x.progress !== undefined ? ` • ${x.progress}%` : ''}`, x.instrumen || ''), 'Tidak ada data repertoire.')}
-        ${archiveListHtml('Materi Latihan', data?.practice, x => row(x.title || '-', x.description || '', x.instrument || ''), 'Tidak ada materi latihan.')}
-        ${archiveListHtml('Evaluasi Audio/Video', data?.evaluations, x => row(`${x.title || '-'} • ${x.averageScore || 0}%`, x.nextTarget || x.improvement || '', x.instrument || ''), 'Tidak ada evaluasi.')}
-        ${archiveListHtml('Ujian Tahunan', data?.exams, x => row(`${x.gradeExam || '-'} • ${x.finalScore || 0}`, x.predicate || x.resultStatus || '', x.examDate ? formatAcademyDate(x.examDate) : ''), 'Tidak ada data ujian.')}
-        ${archiveListHtml('Laporan', data?.reports, x => row(x.reportID || 'Laporan', x.sentBy || '', x.sentAt || ''), 'Tidak ada laporan.')}
-      </div>`;
+      if (!data || data.success !== true) {
+        body.innerHTML = `<div class="archive-error">${escapeTaskHtml(data?.message || 'Arsip siswa tidak dapat dibuka.')}</div>`;
+        if (subtitle) subtitle.textContent = '';
+        return;
+      }
+      const p = data.profile || {};
+      if (subtitle) subtitle.textContent = `${p.nama || '-'} • ${p.instrumen || '-'} • ${p.status || 'Keluar'}`;
+      const limited = data.limited ? `<div class="archive-warning"><b>Arsip historis terbatas.</b> Data utama siswa sudah tidak ada di tabel siswa, jadi hanya data riwayat yang masih tersimpan di database yang dapat ditampilkan.</div>` : '';
+      const counts = data.counts || {};
+      const statLabels = [
+        ['Absensi','absensi'],['Tugas','tugas'],['Repertoire','repertoire'],['Progress','progress'],['Materi Latihan','materiLatihan'],['Evaluasi','evaluasi'],['Ujian','ujian'],['Laporan','laporan']
+      ];
+      const stats = statLabels.map(([label,key])=>`<div class="archive-stat"><span>${escapeTaskHtml(label)}</span><b>${Number(counts[key]||0)}</b></div>`).join('');
+      const historyRows = (data.history||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(x.jenis||'-')}</td><td>${escapeTaskHtml(x.statusSesudah||x.statusSebelum||'-')}</td><td>${escapeTaskHtml(x.keterangan||'-')}</td></tr>`);
+      const attendanceRows = (data.attendance||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(String(x.pertemuan||'-'))}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${escapeTaskHtml(x.materi||'-')}</td></tr>`);
+      const taskRows = (data.assignments||[]).map(x=>`<tr><td>${escapeTaskHtml(x.judul||'-')}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${escapeTaskHtml(archiveDate(x.deadline))}</td><td>${escapeTaskHtml(x.jawaban ? 'Ada jawaban' : '-')}</td></tr>`);
+      const repertoireRows = (data.repertoire||[]).map(x=>`<tr><td>${escapeTaskHtml(x.judul||'-')}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${Number(x.progress||0)}%</td><td>${escapeTaskHtml(x.guru||'-')}</td></tr>`);
+      const progressRows = (data.progress||[]).map(x=>`<tr><td>${escapeTaskHtml(x.periode||'-')}</td><td>${escapeTaskHtml(x.level||'-')}</td><td>${Number(x.nilai||0)}%</td><td>${escapeTaskHtml(x.guru||'-')}</td></tr>`);
+      const examRows = (data.exams||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(x.grade||'-')}</td><td>${Number(x.nilai||0)}</td><td>${escapeTaskHtml(x.status||x.predikat||'-')}</td></tr>`);
+      body.innerHTML = `${limited}
+        <section class="archive-profile"><div><span>Nama</span><b>${escapeTaskHtml(p.nama||'-')}</b></div><div><span>ID Siswa</span><b>${escapeTaskHtml(p.siswaID||'-')}</b></div><div><span>Instrumen</span><b>${escapeTaskHtml(p.instrumen||'-')}</b></div><div><span>Guru</span><b>${escapeTaskHtml(p.guru||'-')}</b></div><div><span>Grade</span><b>${escapeTaskHtml(p.grade||'-')}</b></div><div><span>Status</span><b>${escapeTaskHtml(p.status||'Keluar')}</b></div><div><span>Tanggal Masuk</span><b>${escapeTaskHtml(archiveDate(p.tanggalMasuk))}</b></div><div><span>Tanggal Keluar</span><b>${escapeTaskHtml(archiveDate(p.tanggalKeluar))}</b></div><div class="wide"><span>Alasan/Keterangan Keluar</span><b>${escapeTaskHtml(p.alasanKeluar||'-')}</b></div></section>
+        <div class="archive-stats">${stats}</div>
+        <details class="archive-section" open><summary>Riwayat Status (${(data.history||[]).length})</summary>${historyRows.length ? archiveTable(['Tanggal','Jenis','Status','Keterangan'],historyRows) : archiveEmpty('riwayat status')}</details>
+        <details class="archive-section"><summary>Absensi (${(data.attendance||[]).length})</summary>${attendanceRows.length ? archiveTable(['Tanggal','Pertemuan','Status','Materi'],attendanceRows) : archiveEmpty('data absensi')}</details>
+        <details class="archive-section"><summary>Tugas (${(data.assignments||[]).length})</summary>${taskRows.length ? archiveTable(['Judul','Status','Deadline','Jawaban'],taskRows) : archiveEmpty('data tugas')}</details>
+        <details class="archive-section"><summary>Repertoire (${(data.repertoire||[]).length})</summary>${repertoireRows.length ? archiveTable(['Judul','Status','Progress','Guru'],repertoireRows) : archiveEmpty('repertoire')}</details>
+        <details class="archive-section"><summary>Progress Belajar (${(data.progress||[]).length})</summary>${progressRows.length ? archiveTable(['Periode','Level','Nilai','Guru'],progressRows) : archiveEmpty('progress belajar')}</details>
+        <details class="archive-section"><summary>Ujian Tahunan (${(data.exams||[]).length})</summary>${examRows.length ? archiveTable(['Tanggal','Grade','Nilai','Status'],examRows) : archiveEmpty('ujian tahunan')}</details>`;
     }
 
     function openExitedStudentArchive(identifier, nama) {
       if (currentUser.userType !== 'admin') return;
-      const overlay = ensureExitedStudentArchiveModal();
-      const body = document.getElementById('studentArchiveBody');
-      if (body) body.innerHTML = '<div class="student-archive-loading">Memuat arsip siswa...</div>';
-      overlay.classList.add('show');
-      document.body.classList.add('student-archive-open-body');
+      const modal = ensureExitedStudentArchiveModal();
+      const body = document.getElementById('exitedStudentArchiveBody');
+      const subtitle = document.getElementById('exitedStudentArchiveSubtitle');
+      if (subtitle) subtitle.textContent = nama || identifier || '';
+      if (body) body.innerHTML = '<div class="archive-loading">Memuat arsip siswa...</div>';
+      modal.style.display = 'flex';
       google.script.run.withSuccessHandler(res => {
-        if (!res || res.success !== true) {
-          if (body) body.innerHTML = `<div class="student-archive-error">${escapeTaskHtml(res?.message || 'Arsip siswa tidak dapat dimuat.')}</div>`;
-          return;
-        }
         renderExitedStudentArchive(res);
       }).withFailureHandler(error => {
-        if (body) body.innerHTML = `<div class="student-archive-error">${escapeTaskHtml(error?.message || 'Arsip siswa tidak dapat dimuat.')}</div>`;
-      }).getExitedStudentArchive(identifier, nama, currentUser.userType);
+        if (body) body.innerHTML = `<div class="archive-error">${escapeTaskHtml(error?.message || String(error || 'Gagal membuka arsip siswa.'))}</div>`;
+      }).getExitedStudentArchive(identifier || '', nama || '');
     }
 
     function printStudentReport(mode) {

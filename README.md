@@ -1,24 +1,27 @@
-# LMC — Arsip Siswa Keluar + Orphan Cleanup
+# LMC FIX — Arsip Siswa Keluar Robust
 
-Patch dibuat dari baseline `Legacy-Music-Center(5).zip` + patch status siswa Aktif/Cuti/Keluar.
+Patch khusus arsip siswa keluar. Tidak mengubah database/schema dan tidak memerlukan SQL baru.
 
 ## Perbaikan
-- Tab Siswa Keluar memiliki tombol `Lihat Arsip` untuk seluruh record.
-- Arsip siswa tetap dapat dibuka jika master siswa masih ada.
-- Jika master siswa sudah dihapus dari Supabase tetapi `student_history` masih tersisa, arsip membuka snapshot/riwayat yang masih tersedia dan memberi penjelasan bahwa detail akademik yang telah dipurge tidak dapat dipulihkan.
-- `Hapus Data` sekarang dapat membersihkan orphan/ghost record yang master siswanya sudah tidak ada di Supabase.
-- Permanent purge siswa Keluar sekarang ikut membersihkan Materi Latihan, Evaluasi Audio/Video, laporan berdasarkan `student_public_id`, riwayat berdasarkan ID maupun nama snapshot, dan data terkait lain yang sebelumnya belum lengkap.
-- Tidak ada migration SQL baru.
+- Lihat Arsip tidak lagi bergantung pada record `students` yang masih aktif.
+- Jika siswa lama sudah terhapus dari tabel `students`, arsip tetap dapat dibuka dari `student_history` dan data terkait yang masih tersisa.
+- Arsip penuh menampilkan ringkasan profil, absensi, tugas, repertoire, progress, materi latihan, evaluasi, ujian, laporan, dan riwayat status yang masih tersedia.
+- Untuk siswa lama yang sudah pernah dihapus permanen, modal menampilkan `Arsip historis terbatas` jika hanya riwayat yang tersisa.
+- Hapus Data sekarang tetap berhasil bila record utama siswa sudah tidak ada di Supabase: orphan history/data dibersihkan dan baris langsung hilang dari UI.
+- Tombol Lihat Arsip + Hapus Data tersedia pada tab Siswa Keluar.
 
-## File yang direplace
+## File replace
 - src/js/pages/dashboard.js
 - src/js/pages/admin.js
-- src/css/base-layout.css
+- src/css/release-ui-stabilization.css
 - public/js/app.bundle.js
 - public/css/app.bundle.css
 - worker/index.js
 
-## Verifikasi
+## Database
+Tidak ada SQL/migration baru.
+
+## Build check
 - npm run build: PASS
 - node --check worker/index.js: PASS
-- static parity: PASS
+- Static parity: PASS

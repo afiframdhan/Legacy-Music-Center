@@ -27,7 +27,7 @@ const ADMIN = new Set([
   'addPengumuman', 'deletePengumuman',
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance',
-  'deleteExitedStudentRecord',
+  'deleteExitedStudentRecord', 'getExitedStudentArchive',
   'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
 ]);
 
@@ -1265,20 +1265,24 @@ async function handleRpc(request, env, ctx) {
   }
 
   if (method === 'getExitedStudentArchive') {
+    let result;
     try {
-      if (session.userType !== 'admin') return json({ ok:false, error:'Akses hanya untuk admin.' }, 403);
-      const result = await getExitedStudentArchiveSupabase(env, session, String(safeArgs[0] || '').trim(), String(safeArgs[1] || '').trim());
-      return json({ ok:true, data:result });
+      result = await getExitedStudentArchiveSupabase(
+        env,
+        String(safeArgs[0] || '').trim(),
+        String(safeArgs[1] || '').trim()
+      );
     } catch (error) {
-      console.error('Exited student archive read failed:', error);
-      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+      console.error('Exited-student archive read failed:', error);
+      result = { success:false, message:'Gagal membuka arsip siswa: ' + String(error && error.message ? error.message : error) };
     }
+    return json({ ok:true, data:result });
   }
 
   if (method === 'deleteExitedStudentRecord') {
     let result;
     try {
-      result = await purgeExitedStudentSupabase(env, String(safeArgs[0] || '').trim(), String(safeArgs[1] || '').trim());
+      result = await purgeExitedStudentSupabase(env, String(safeArgs[0] || '').trim());
     } catch (error) {
       console.error('Permanent exited-student purge failed:', error);
       result = { success:false, message:'Gagal menghapus permanen siswa: ' + String(error && error.message ? error.message : error) };
@@ -1301,127 +1305,154 @@ async function handleRpc(request, env, ctx) {
 
 
 
-async function getExitedStudentArchiveSupabase(env, session, identifier, nameHint) {
-  if (session.userType !== 'admin') throw new Error('Akses hanya untuk admin.');
+async function getExitedStudentArchiveSupabase(env, identifier, fallbackName = '') {
   const key = String(identifier || '').trim();
-  const hint = String(nameHint || '').trim();
-  if (!key && !hint) throw new Error('ID siswa arsip tidak ditemukan.');
+  const nameHint = String(fallbackName || '').trim();
+  if (!key && !nameHint) throw new Error('Identitas siswa arsip kosong.');
 
-  let students = key ? await sbRows(env, 'students', { student_id:`eq.${key}`, limit:'1' }) : [];
-  if (!students.length && hint) students = await sbRows(env, 'students', { name:`eq.${hint}`, limit:'1' });
-  if (!students.length && key && key !== hint) students = await sbRows(env, 'students', { name:`eq.${key}`, limit:'1' });
-  const student = students[0] || null;
+  const first = async (table, filters) => {
+    try { const rows = await sbRowsSafe(env, table, { ...filters, limit:'1' }); return rows[0] || null; }
+    catch (_) { return null; }
+  };
+  const listSafe = async (table, filters) => {
+    try { return await sbRowsSafe(env, table, filters); }
+    catch (_) { return []; }
+  };
 
-  let history = [];
-  if (student?.student_id) history = await sbRowsSafe(env, 'student_history', { student_id:`eq.${student.student_id}`, order:'event_at.desc.nullslast,created_at.desc', limit:'200' });
-  if (!history.length && key) history = await sbRowsSafe(env, 'student_history', { student_id:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'200' });
-  const lookupName = String(student?.name || hint || key || '').trim();
-  if (!history.length && lookupName) history = await sbRowsSafe(env, 'student_history', { student_name_snapshot:`eq.${lookupName}`, order:'event_at.desc.nullslast,created_at.desc', limit:'200' });
+  let student = null;
+  if (key) student = await first('students', { student_id:`eq.${key}` });
+  if (!student && nameHint) student = await first('students', { name:`eq.${nameHint}` });
+  if (!student && key && key !== nameHint) student = await first('students', { name:`eq.${key}` });
 
-  const historyId = String(history.find(row => row.student_id)?.student_id || '').trim();
-  const publicId = String(student?.student_id || historyId || (key && key !== lookupName ? key : '')).trim();
-  const deletedFromMaster = !student;
-  const latestExit = history.find(row => String(row.event_type || '').trim().toLowerCase() === 'keluar') || history[0] || null;
+  let historySeed = null;
+  if (!student && key) historySeed = await first('student_history', { student_id:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc' });
+  if (!historySeed && nameHint) historySeed = await first('student_history', { student_name_snapshot:`eq.${nameHint}`, order:'event_at.desc.nullslast,created_at.desc' });
+  if (!historySeed && key && key !== nameHint) historySeed = await first('student_history', { student_name_snapshot:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc' });
 
-  let classes=[], schedules=[], attendance=[], assignments=[], progress=[], repertoire=[], exams=[], reports=[], practice=[], evaluations=[];
-  if (publicId) {
-    [classes, schedules, attendance, assignments, progress, repertoire, exams, reports, practice, evaluations] = await Promise.all([
-      sbRowsSafe(env,'student_classes',{student_id:`eq.${publicId}`,order:'created_at.asc'}),
-      sbRowsSafe(env,'schedules',{student_id:`eq.${publicId}`,order:'created_at.asc'}),
-      sbRowsSafe(env,'student_attendance',{student_id:`eq.${publicId}`,order:'attendance_date.desc,created_at.desc',limit:'500'}),
-      sbRowsSafe(env,'assignments',{student_id:`eq.${publicId}`,order:'created_at.desc',limit:'500'}),
-      sbRowsSafe(env,'learning_progress',{student_id:`eq.${publicId}`,order:'last_updated_at.desc.nullslast,created_at.desc',limit:'500'}),
-      sbRowsSafe(env,'student_repertoire',{student_id:`eq.${publicId}`,order:'updated_at.desc.nullslast,created_at.desc',limit:'500'}),
-      sbRowsSafe(env,'annual_exam_assessments',{student_public_id:`eq.${publicId}`,order:'exam_date.desc,created_at.desc',limit:'200'}),
-      sbRowsSafe(env,'student_report_publications',{student_public_id:`eq.${publicId}`,order:'sent_at.desc,created_at.desc',limit:'200'}),
-      sbRowsSafe(env,'practice_resources',{student_id:`eq.${publicId}`,order:'updated_at.desc.nullslast,created_at.desc',limit:'300'}),
-      sbRowsSafe(env,'media_evaluations',{student_id:`eq.${publicId}`,order:'updated_at.desc.nullslast,created_at.desc',limit:'300'})
-    ]);
+  if (!student && !historySeed) {
+    return { success:false, message:'Arsip siswa tidak ditemukan. Data utama dan riwayat siswa sudah tidak tersedia.' };
   }
 
+  const studentId = String(student?.student_id || historySeed?.student_id || key || '').trim();
+  const studentName = String(student?.name || historySeed?.student_name_snapshot || nameHint || key || '').trim();
+  const byId = studentId ? { student_id:`eq.${studentId}` } : null;
+  const byName = studentName ? { student_name_snapshot:`eq.${studentName}` } : null;
+
+  const rowsFor = async (table, idColumn='student_id', nameColumn='student_name_snapshot', extra={}) => {
+    let rows = [];
+    if (studentId) rows = await listSafe(table, { [idColumn]:`eq.${studentId}`, ...extra });
+    if (!rows.length && studentName && nameColumn) rows = await listSafe(table, { [nameColumn]:`eq.${studentName}`, ...extra });
+    return rows;
+  };
+
+  const [classes, schedules, attendance, assignments, progress, repertoire, practice, evaluations, exams, reportsById, history] = await Promise.all([
+    rowsFor('student_classes','student_id','student_name_snapshot',{order:'created_at.desc',limit:'100'}),
+    rowsFor('schedules','student_id','student_name_snapshot',{order:'created_at.desc',limit:'100'}),
+    rowsFor('student_attendance','student_id','student_name_snapshot',{order:'attendance_date.desc,created_at.desc',limit:'300'}),
+    rowsFor('assignments','student_id','student_name_snapshot',{order:'created_at.desc',limit:'200'}),
+    rowsFor('learning_progress','student_id','student_name_snapshot',{order:'last_updated_at.desc.nullslast,created_at.desc',limit:'100'}),
+    rowsFor('student_repertoire','student_id','student_name_snapshot',{order:'updated_at.desc',limit:'100'}),
+    rowsFor('practice_resources','student_id','student_name_snapshot',{order:'updated_at.desc',limit:'100'}),
+    rowsFor('media_evaluations','student_id','student_name_snapshot',{order:'updated_at.desc',limit:'100'}),
+    rowsFor('annual_exam_assessments','student_public_id','student_name_snapshot',{order:'exam_date.desc,created_at.desc',limit:'100'}),
+    studentId ? listSafe('student_report_publications',{student_id:`eq.${studentId}`,order:'sent_at.desc',limit:'100'}) : [],
+    rowsFor('student_history','student_id','student_name_snapshot',{order:'event_at.desc.nullslast,created_at.desc',limit:'300'})
+  ]);
+
+  const exitRow = history.find(row => String(row.event_type||'').trim().toLowerCase()==='keluar') || historySeed || null;
   const profile = {
-    siswaID: publicId,
-    nama: student?.name || latestExit?.student_name_snapshot || lookupName || '-',
-    status: student?.status || latestExit?.new_status || 'Keluar',
-    instrumen: student?.instrument || latestExit?.instrument || '',
-    guru: student?.teacher_name_snapshot || latestExit?.teacher_name_snapshot || '',
-    grade: student?.grade || '',
-    tglDaftar: formatDbDateIso(student?.registered_on),
-    tglKeluar: formatDbDateIso(student?.left_on || latestExit?.event_at),
-    alasanKeluar: student?.exit_reason || latestExit?.description || ''
+    siswaID: studentId,
+    nama: studentName || '-',
+    status: student?.status || exitRow?.new_status || 'Keluar',
+    email: student?.email || '',
+    noHp: student?.phone || '',
+    instrumen: student?.instrument || exitRow?.instrument || classes[0]?.instrument || '-',
+    guru: student?.teacher_name_snapshot || exitRow?.teacher_name_snapshot || classes[0]?.teacher_name_snapshot || '-',
+    grade: student?.grade || classes[0]?.grade || '-',
+    tanggalMasuk: formatDbDateIso(student?.registered_on || ''),
+    tanggalKeluar: formatDbDateIso(student?.left_on || exitRow?.event_at || ''),
+    alasanKeluar: student?.exit_reason || exitRow?.description || ''
   };
 
   return {
     success:true,
-    deletedFromMaster,
+    limited:!student,
     profile,
-    counts:{classes:classes.length,schedules:schedules.length,attendance:attendance.length,assignments:assignments.length,progress:progress.length,repertoire:repertoire.length,practice:practice.length,evaluations:evaluations.length,exams:exams.length,reports:reports.length},
-    history:history.map(row=>({jenis:row.event_type||'',tanggal:formatDbDateIso(row.event_at),statusSebelum:row.previous_status||'',statusSesudah:row.new_status||'',instrumen:row.instrument||'',guru:row.teacher_name_snapshot||'',keterangan:row.description||''})),
-    classes:classes.map(row=>({instrumen:row.instrument||'',grade:row.grade||'',guru:row.teacher_name_snapshot||'',startedOn:formatDbDateIso(row.started_on),status:row.status||''})),
-    schedules:schedules.map(row=>mapSchedule(row,true)),
-    attendance:attendance.map(mapAttendance),
-    assignments:assignments.map(mapAssignment),
-    progress:progress.map(mapProgress),
-    repertoire:repertoire.map(mapRepertoire),
-    practice:practice.map(mapPracticeResource),
-    evaluations:evaluations.map(mapMediaEvaluation),
-    exams:exams.map(mapAnnualExamRow),
-    reports:reports.map(mapStudent360Publication).filter(Boolean)
+    counts:{
+      kelas:classes.length, jadwal:schedules.length, absensi:attendance.length, tugas:assignments.length,
+      progress:progress.length, repertoire:repertoire.length, materiLatihan:practice.length,
+      evaluasi:evaluations.length, ujian:exams.length, laporan:reportsById.length, riwayat:history.length
+    },
+    classes:classes.map(r=>({instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',grade:r.grade||'',status:r.status||'',mulai:formatDbDateIso(r.started_on),selesai:formatDbDateIso(r.ended_on)})),
+    attendance:attendance.map(r=>({tanggal:formatDbDateIso(r.attendance_date),pertemuan:r.meeting_number??'',status:r.status||'',materi:r.material||'',lagu:r.song||'',guru:r.teacher_name_snapshot||''})),
+    assignments:assignments.map(r=>({judul:r.title||'',status:r.status||'',deadline:formatDbDateIso(r.deadline),dibuat:formatDbDateIso(r.created_on),dikirim:formatDbDateIso(r.sent_on),jawaban:r.answer_text||''})),
+    progress:progress.map(r=>({periode:r.period||'',level:r.level||'',nilai:Number(r.overall_progress||0),guru:r.teacher_name_snapshot||'',target:r.next_target||''})),
+    repertoire:repertoire.map(r=>({judul:r.song_title||'',status:r.status||'',progress:Number(r.progress_percent||0),instrumen:r.instrument||'',guru:r.teacher_name_snapshot||''})),
+    practice:practice.map(r=>({judul:r.title||'',instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',updated:r.updated_at||r.created_at||''})),
+    evaluations:evaluations.map(r=>({judul:r.title||'',instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',updated:r.updated_at||r.created_at||''})),
+    exams:exams.map(r=>({tanggal:formatDbDateIso(r.exam_date),grade:r.grade_exam||'',nilai:Number(r.final_score||0),predikat:r.predicate||'',status:r.result_status||'',published:Boolean(r.published)})),
+    reports:reportsById.map(r=>({tanggal:r.sent_at||'',pengirim:r.sent_by_name||'',aktif:r.active!==false,progressID:r.progress_id||''})),
+    history:history.map(r=>({tanggal:formatDbDateIso(r.event_at),jenis:r.event_type||'',statusSebelum:r.previous_status||'',statusSesudah:r.new_status||'',instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',keterangan:r.description||''}))
   };
 }
 
-async function purgeExitedStudentSupabase(env, identifier, nameHint) {
+async function purgeExitedStudentSupabase(env, identifier) {
   const key = String(identifier || '').trim();
-  const hint = String(nameHint || '').trim();
-  if (!key && !hint) throw new Error('Identitas siswa kosong.');
+  if (!key) throw new Error('Identitas siswa kosong.');
 
-  let rows = key ? await sbRows(env, 'students', { student_id:`eq.${key}`, limit:'1' }) : [];
-  if (!rows.length && hint) rows = await sbRows(env, 'students', { name:`eq.${hint}`, limit:'1' });
-  if (!rows.length && key && key !== hint) rows = await sbRows(env, 'students', { name:`eq.${key}`, limit:'1' });
+  let rows = await sbRowsSafe(env, 'students', { student_id:`eq.${key}`, limit:'1' });
+  if (!rows.length) rows = await sbRowsSafe(env, 'students', { name:`eq.${key}`, limit:'1' });
   const student = rows[0] || null;
+
+  let historyRows = [];
+  if (!student) historyRows = await sbRowsSafe(env, 'student_history', { student_id:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
+  if (!student && !historyRows.length) historyRows = await sbRowsSafe(env, 'student_history', { student_name_snapshot:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
+
+  if (student && String(student.status || '').trim().toLowerCase() !== 'keluar') {
+    throw new Error('Hanya siswa berstatus Keluar yang dapat dihapus permanen.');
+  }
+
+  const history = historyRows[0] || null;
+  const id = String(student?.student_id || history?.student_id || (historyRows.length ? key : '')).trim();
+  const name = String(student?.name || history?.student_name_snapshot || (!id ? key : '')).trim();
+
+  // Jika record utama sudah terhapus, anggap sebagai orphan archive dan bersihkan sisa riwayat/data.
   const del = async (table, filter) => {
+    if (!filter) return;
     try { await supabaseRest(env, `/rest/v1/${table}?${filter}`, { method:'DELETE', headers:{Prefer:'return=minimal'} }); }
     catch (e) { console.error(`Purge ${table} skipped:`, e); }
   };
 
-  if (!student) {
-    const name = hint || key;
-    let histories = key ? await sbRowsSafe(env,'student_history',{student_id:`eq.${key}`,limit:'100'}) : [];
-    if (!histories.length && name) histories = await sbRowsSafe(env,'student_history',{student_name_snapshot:`eq.${name}`,limit:'100'});
-    const orphanIds = [...new Set(histories.map(row=>String(row.student_id||'').trim()).filter(Boolean))];
-    for (const id of orphanIds) {
-      await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
-      await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
-    }
-    if (name) await del('student_history', `student_name_snapshot=eq.${encodeURIComponent(name)}`);
-    return { success:true, siswaID:key, orphanCleanup:true, message:`Data master ${name || key} sudah tidak ada di Supabase. Sisa arsip/riwayat yang masih tampil berhasil dibersihkan.` };
+  if (id) {
+    await del('push_delivery_events', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
+    await del('push_subscriptions', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
+    await del('media_evaluations', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('practice_resources', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_repertoire', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('annual_exam_assessments', `student_public_id=eq.${encodeURIComponent(id)}`);
+    await del('student_report_publications', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('learning_progress', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('assignments', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_attendance', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('schedule_overrides', `absent_student_id=eq.${encodeURIComponent(id)}`);
+    await del('schedule_overrides', `slot_student_id=eq.${encodeURIComponent(id)}`);
+    await del('replacement_schedules', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('schedules', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_classes', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
+    await del('students', `student_id=eq.${encodeURIComponent(id)}`);
+  }
+  if (name) {
+    await del('learning_progress', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(name)}`);
+    if (!id) await del('student_history', `student_name_snapshot=eq.${encodeURIComponent(name)}`);
   }
 
-  if (String(student.status || '').trim().toLowerCase() !== 'keluar') throw new Error('Hanya siswa berstatus Keluar yang dapat dihapus permanen.');
-  const id = String(student.student_id || '').trim();
-  const dbId = String(student.id || '').trim();
-  const name = String(student.name || hint || '').trim();
-  await del('push_delivery_events', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-  await del('push_subscriptions', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-  await del('media_evaluations', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('practice_resources', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('student_repertoire', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('annual_exam_assessments', `student_public_id=eq.${encodeURIComponent(id)}`);
-  await del('student_report_publications', `student_public_id=eq.${encodeURIComponent(id)}`);
-  if (dbId) await del('student_report_publications', `student_id=eq.${encodeURIComponent(dbId)}`);
-  await del('learning_progress', `student_id=eq.${encodeURIComponent(id)}`);
-  if (name) await del('learning_progress', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(name)}`);
-  await del('assignments', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('student_attendance', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('schedule_overrides', `absent_student_id=eq.${encodeURIComponent(id)}`);
-  await del('schedule_overrides', `slot_student_id=eq.${encodeURIComponent(id)}`);
-  await del('schedules', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('student_classes', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
-  if (name) await del('student_history', `student_name_snapshot=eq.${encodeURIComponent(name)}`);
-  await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
-  await supabaseRest(env, `/rest/v1/students?student_id=eq.${encodeURIComponent(id)}`, { method:'DELETE', headers:{Prefer:'return=minimal'} });
-  return { success:true, siswaID:id, message:`Siswa ${student.name || ''} dan seluruh data terkait berhasil dihapus permanen.` };
+  if (!student && !historyRows.length) {
+    return { success:true, alreadyDeleted:true, siswaID:key, message:'Data siswa sudah tidak ada di Supabase. Tidak ada arsip tersisa untuk dihapus.' };
+  }
+
+  return { success:true, siswaID:id || key, message:`${student ? `Siswa ${student.name || name || ''}` : `Arsip ${name || key}`} dan seluruh data terkait berhasil dihapus permanen.` };
 }
 
 // ============================================================================

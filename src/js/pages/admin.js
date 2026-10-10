@@ -263,12 +263,22 @@
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus data siswa keluar.');
         if (res && res.success) {
+          const idKey = String(identifier || '').trim();
+          const nameKey = String(nama || '').trim().toLowerCase();
+          if (Array.isArray(globalStudentHistory)) {
+            globalStudentHistory = globalStudentHistory.filter(item => {
+              const sameId = idKey && String(item.siswaID || '').trim() === idKey;
+              const sameName = nameKey && String(item.nama || '').trim().toLowerCase() === nameKey;
+              return !(sameId || sameName);
+            });
+          }
           closeExitedStudentArchive?.();
+          renderStudentReports?.();
           fetchDashboardData();
         }
       }).withFailureHandler(error => {
-        showAlert('alertDanger', error?.message || 'Gagal menghapus data siswa keluar.');
-      }).deleteExitedStudentRecord(identifier, nama, currentUser.userType);
+        showAlert('alertDanger', 'Gagal menghapus data siswa keluar: ' + (error?.message || error));
+      }).deleteExitedStudentRecord(identifier, currentUser.userType);
     }
 
     function openAdminTeacherForm() {
