@@ -3956,6 +3956,14 @@ async function dashboardTimedQuery(env, role, label, fetcher) {
   }
 }
 
+// Exclude large inline base64 signatures from the initial dashboard snapshot.
+// The existing attendance lazy loader fetches detail when attendance is opened.
+const DASHBOARD_ATTENDANCE_SELECT = [
+  'attendance_id','student_id','student_name_snapshot','teacher_id',
+  'teacher_name_snapshot','attendance_date','meeting_number','status',
+  'material','song','notes'
+].join(',');
+
 async function buildTeacherDashboardSupabase(env, session) {
   const id = session.userID;
 
@@ -3968,7 +3976,7 @@ async function buildTeacherDashboardSupabase(env, session) {
       dashboardTimedQuery(env, 'guru', 'student_classes', () => sbPagedRows(env, 'student_classes', { teacher_id:`eq.${id}`, order:'created_at.asc' })),
       dashboardTimedQuery(env, 'guru', 'students', () => sbPagedRows(env, 'students', { teacher_id:`eq.${id}`, order:'name.asc' })),
       dashboardTimedQuery(env, 'guru', 'schedules', () => sbPagedRows(env, 'schedules', { teacher_id:`eq.${id}`, order:'created_at.asc' })),
-      dashboardTimedQuery(env, 'guru', 'student_attendance', () => sbRows(env, 'student_attendance', { teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'guru', 'student_attendance', () => sbRows(env, 'student_attendance', { select:DASHBOARD_ATTENDANCE_SELECT, teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'220' })),
       dashboardTimedQuery(env, 'guru', 'assignments', () => sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc', limit:'160' })),
       dashboardTimedQuery(env, 'guru', 'learning_progress', () => sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'120' })),
       dashboardTimedQuery(env, 'guru', 'replacement_schedules', () => sbRowsSafe(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' })),
@@ -4113,7 +4121,7 @@ async function buildAdminDashboardSupabase(env, session) {
       dashboardTimedQuery(env, 'admin', 'teachers', () => sbPagedRows(env, 'teachers', { order:'name.asc' })),
       dashboardTimedQuery(env, 'admin', 'student_classes', () => sbPagedRows(env, 'student_classes', { order:'created_at.asc' })),
       dashboardTimedQuery(env, 'admin', 'schedules', () => sbPagedRows(env, 'schedules', { order:'created_at.asc' })),
-      dashboardTimedQuery(env, 'admin', 'student_attendance', () => sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc', limit:'240' })),
+      dashboardTimedQuery(env, 'admin', 'student_attendance', () => sbRows(env, 'student_attendance', { select:DASHBOARD_ATTENDANCE_SELECT, order:'attendance_date.desc,created_at.desc', limit:'240' })),
       dashboardTimedQuery(env, 'admin', 'learning_progress', () => sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc', limit:'220' })),
       dashboardTimedQuery(env, 'admin', 'replacement_schedules', () => sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' })),
       dashboardTimedQuery(env, 'admin', 'announcements', () => sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' })),
