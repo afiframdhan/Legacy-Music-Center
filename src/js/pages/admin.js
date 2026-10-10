@@ -262,8 +262,13 @@
       if (!confirm(message)) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus data siswa keluar.');
-        if (res && res.success) fetchDashboardData();
-      }).deleteExitedStudentRecord(identifier, currentUser.userType);
+        if (res && res.success) {
+          closeExitedStudentArchive?.();
+          fetchDashboardData();
+        }
+      }).withFailureHandler(error => {
+        showAlert('alertDanger', error?.message || 'Gagal menghapus data siswa keluar.');
+      }).deleteExitedStudentRecord(identifier, nama, currentUser.userType);
     }
 
     function openAdminTeacherForm() {

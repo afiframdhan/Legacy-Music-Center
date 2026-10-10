@@ -1,39 +1,24 @@
-# Arsip Siswa Keluar — Legacy Music Center
+# LMC — Arsip Siswa Keluar + Orphan Cleanup
 
-Fitur baru khusus Admin.
+Patch dibuat dari baseline `Legacy-Music-Center(5).zip` + patch status siswa Aktif/Cuti/Keluar.
 
-## Cara membuka
-Dashboard Admin → Statistik & Laporan Siswa → tab **Siswa Keluar** → **Lihat Arsip**.
+## Perbaikan
+- Tab Siswa Keluar memiliki tombol `Lihat Arsip` untuk seluruh record.
+- Arsip siswa tetap dapat dibuka jika master siswa masih ada.
+- Jika master siswa sudah dihapus dari Supabase tetapi `student_history` masih tersisa, arsip membuka snapshot/riwayat yang masih tersedia dan memberi penjelasan bahwa detail akademik yang telah dipurge tidak dapat dipulihkan.
+- `Hapus Data` sekarang dapat membersihkan orphan/ghost record yang master siswanya sudah tidak ada di Supabase.
+- Permanent purge siswa Keluar sekarang ikut membersihkan Materi Latihan, Evaluasi Audio/Video, laporan berdasarkan `student_public_id`, riwayat berdasarkan ID maupun nama snapshot, dan data terkait lain yang sebelumnya belum lengkap.
+- Tidak ada migration SQL baru.
 
-## Isi arsip
-- Profil dan alasan keluar
-- Riwayat kelas & jadwal
-- Absensi
-- Tugas & status pengumpulan
-- Progress Belajar
-- Repertoire
-- Latihan Mandiri & Evaluasi Audio/Video
-- Ujian Tahunan
-- Laporan resmi
-
-Semua data arsip bersifat read-only.
-
-## Perilaku
-- Tidak mengubah status siswa.
-- Tidak menghapus data.
-- Tidak membuat migration/SQL baru.
-- Tombol Hapus Data lama tetap tersedia dan tetap manual oleh Admin.
-- Fitur operasional Aktif/Cuti/Keluar dari patch sebelumnya tetap dipertahankan.
-
-## File yang perlu direplace
+## File yang direplace
 - src/js/pages/dashboard.js
-- src/css/release-ui-stabilization.css
-- public/index.html
+- src/js/pages/admin.js
+- src/css/base-layout.css
 - public/js/app.bundle.js
 - public/css/app.bundle.css
 - worker/index.js
 
-## Validasi
+## Verifikasi
 - npm run build: PASS
 - node --check worker/index.js: PASS
-- Static parity checks: PASS
+- static parity: PASS
