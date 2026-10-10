@@ -864,7 +864,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const avatar=item.generic?`<span class="lmc-person-avatar generic">${kind==='teacher'?'🎓':'◎'}</span>`:lmcPersonAvatar(item.person,kind,item.label);
         const active=String(item.value)===String(select.value)?' active':'';
         const search=escapeTaskHtml(`${item.label} ${item.meta}`.toLowerCase());
-        return `<button type="button" class="lmc-person-filter-option${active}" data-search="${search}" onclick="lmcPersonFilterChoose('${escapeTaskHtml(select.id)}','${encodeURIComponent(item.value)}')">${avatar}<span><b>${escapeTaskHtml(item.label)}</b><small>${escapeTaskHtml(item.meta||'')}</small></span></button>`;
+        return `<button type="button" class="lmc-person-filter-option${active}" data-search="${search}" data-choice="${encodeURIComponent(item.value)}">${avatar}<span><b>${escapeTaskHtml(item.label)}</b><small>${escapeTaskHtml(item.meta||'')}</small></span></button>`;
       }).join('')+`<div class="lmc-person-filter-empty" hidden>Tidak ada ${kind==='teacher'?'guru':'siswa'} yang cocok.</div>`;
     }
 
@@ -884,6 +884,15 @@ let currentUser = { userType: '', userID: '', userName: '' };
       select.insertAdjacentElement('afterend',host);
       const trigger=host.querySelector('.lmc-person-filter-trigger');
       trigger.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();refreshLmcPersonFilterPicker(select);if(select.disabled)return;const open=!host.classList.contains('open');closeLmcPersonFilterPickers(host);host.classList.toggle('open',open);trigger.setAttribute('aria-expanded',open?'true':'false');if(open)setTimeout(()=>host.querySelector('input[type="search"]')?.focus(),20);});
+      // Use a delegated listener instead of inline onclick. On iOS, option buttons
+      // live inside a fixed bottom sheet and must be handled within this picker.
+      host.querySelector('.lmc-person-filter-options').addEventListener('click', event => {
+        const option = event.target.closest('.lmc-person-filter-option');
+        if (!option || !host.contains(option)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        lmcPersonFilterChoose(select.id, option.dataset.choice || '');
+      });
       host.querySelector('.lmc-person-filter-close').addEventListener('click',()=>closeLmcPersonFilterPickers());
       host.querySelector('.lmc-person-filter-backdrop').addEventListener('click',()=>closeLmcPersonFilterPickers());
       host.querySelector('input[type="search"]').addEventListener('input',event=>lmcPersonFilterSearch(host,event.target.value));
@@ -7253,16 +7262,20 @@ Guru: ${props.guru}`);
       const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
       const currentValue = String(select.value || '').trim();
 
+      // The teacher dashboard already contains schedules scoped to the logged-in teacher.
+      // Use those assignments when choosing a student: a child enrolled in two
+      // instruments must not be included just because of an unrelated class.
       const allowedNames = new Set((globalJadwalList || [])
         .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
         .map(item => String(item.namaSiswa || '').trim().toLowerCase())
         .filter(Boolean));
+      const restrictToTeacherSchedule = currentUser.userType === 'guru' && allowedNames.size > 0;
 
       const students = (globalSiswaList || [])
         .filter(student => {
           const name = String(student.nama || '').trim();
           if (!name) return false;
-          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
+          if ((selectedDay || restrictToTeacherSchedule) && !allowedNames.has(name.toLowerCase())) return false;
           return true;
         })
         .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));

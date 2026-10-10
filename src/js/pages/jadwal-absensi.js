@@ -256,16 +256,20 @@ Guru: ${props.guru}`);
       const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
       const currentValue = String(select.value || '').trim();
 
+      // The teacher dashboard already contains schedules scoped to the logged-in teacher.
+      // Use those assignments when choosing a student: a child enrolled in two
+      // instruments must not be included just because of an unrelated class.
       const allowedNames = new Set((globalJadwalList || [])
         .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
         .map(item => String(item.namaSiswa || '').trim().toLowerCase())
         .filter(Boolean));
+      const restrictToTeacherSchedule = currentUser.userType === 'guru' && allowedNames.size > 0;
 
       const students = (globalSiswaList || [])
         .filter(student => {
           const name = String(student.nama || '').trim();
           if (!name) return false;
-          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
+          if ((selectedDay || restrictToTeacherSchedule) && !allowedNames.has(name.toLowerCase())) return false;
           return true;
         })
         .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
