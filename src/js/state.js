@@ -2,6 +2,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let loginType = 'siswa';
     let globalSiswaList = [];
     let globalJadwalList = [];
+
+    function isOperationalStudent(student) {
+      return String(student?.status || '').trim().toLowerCase() === 'aktif';
+    }
     let globalAbsensiList = [];
     let globalTugasList = [];
     let globalGuruList = [];

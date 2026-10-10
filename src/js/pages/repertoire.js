@@ -307,7 +307,7 @@
       let students = (globalSiswaList || []).slice();
       if (currentUser.userType === 'guru') {
         // globalSiswaList pada dashboard guru memang hanya berisi siswa yang dapat diakses guru tersebut.
-        students = students.filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+        students = students.filter(isOperationalStudent);
       }
       students.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
       select.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');

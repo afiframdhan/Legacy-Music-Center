@@ -2422,7 +2422,7 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
           sbRowsSafe(env,'replacement_schedules',{order:'scheduled_date.desc.nullslast,created_at.desc'}),
         getScheduleOverrideRowsForSession(env, session).catch(()=>[])
       ]);
-      out.schedules = rows.map(row => mapSchedule(row, true));
+      out.schedules = (await filterOperationalScheduleRowsFromDb(env, rows)).map(row => mapSchedule(row, true));
       out.replacements = replacements.map(mapReplacement);
       out.scheduleOverrides = overrides.map(mapScheduleOverride);
       return;
@@ -2450,6 +2450,39 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
     }
   }));
   return out;
+}
+
+function isOperationalStudentStatus(value) {
+  return String(value || '').trim().toLowerCase() === 'aktif';
+}
+
+function filterOperationalScheduleRows(rows, students) {
+  const activeIds = new Set((students || []).filter(student => isOperationalStudentStatus(student.status)).map(student => String(student.student_id || '').trim()).filter(Boolean));
+  const activeNames = new Set((students || []).filter(student => isOperationalStudentStatus(student.status)).map(student => String(student.name || '').trim().toLowerCase()).filter(Boolean));
+  return (rows || []).filter(row => {
+    const studentId = String(row.student_id || '').trim();
+    if (studentId) return activeIds.has(studentId);
+    const name = String(row.student_name_snapshot || '').trim().toLowerCase();
+    return !!name && activeNames.has(name);
+  });
+}
+
+async function filterOperationalScheduleRowsFromDb(env, rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return [];
+  const ids = [...new Set(list.map(row => String(row.student_id || '').trim()).filter(Boolean))];
+  const students = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50).map(value => value.replace(/[(),"]/g, '')).filter(Boolean);
+    if (!chunk.length) continue;
+    students.push(...await sbRows(env, 'students', { select:'student_id,name,status', student_id:`in.(${chunk.join(',')})` }));
+  }
+  if (list.some(row => !String(row.student_id || '').trim())) {
+    students.push(...await sbPagedRows(env, 'students', { select:'student_id,name,status' }));
+  }
+  const unique = new Map();
+  students.forEach(student => unique.set(String(student.student_id || student.name || ''), student));
+  return filterOperationalScheduleRows(list, [...unique.values()]);
 }
 
 async function getDashboardDataSupabase(env, session) {
@@ -3756,11 +3789,11 @@ async function buildStudentDashboardSupabase(env, session) {
       guru:teacherNames.join(', ') || student.teacher_name_snapshot || '',
       kelasList
     },
-    schedules:schedules
+    schedules:(isOperationalStudentStatus(student.status) ? schedules : [])
       .filter(row => String(row.status || 'Aktif').toLowerCase() === 'aktif')
       .map(row => mapSchedule(row, false)),
     absensiList:attendance.map(mapAttendance),
-    absensiProgress:{ hadir, total:calculateMonthlyExpectedClasses(schedules, scheduleOverrides, student.student_id) },
+    absensiProgress:{ hadir, total:isOperationalStudentStatus(student.status) ? calculateMonthlyExpectedClasses(schedules, scheduleOverrides, student.student_id) : 0 },
     tugasList:assignments.map(mapAssignment),
     learningProgressList:mappedProgressList,
     studentReports,
@@ -3816,6 +3849,7 @@ async function buildTeacherDashboardSupabase(env, session) {
     if (student && student.student_id) studentMap.set(String(student.student_id), student);
   });
   const students = [...studentMap.values()].sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'id'));
+  const operationalSchedules = filterOperationalScheduleRows(schedules, students);
 
   const classMap = new Map();
   for (const row of teacherClasses) {
@@ -3855,7 +3889,7 @@ async function buildTeacherDashboardSupabase(env, session) {
   }
 
   const todayName = jakartaWeekday();
-  const todayCount = schedules.filter(row =>
+  const todayCount = operationalSchedules.filter(row =>
     String(row.status || 'Aktif') === 'Aktif' &&
     String(row.day_name || '').trim().toLowerCase() === todayName
   ).length;
@@ -3906,7 +3940,7 @@ async function buildTeacherDashboardSupabase(env, session) {
       foto:teacher.photo_url || ''
     },
     siswaList:teacherStudents,
-    jadwal:schedules.map(row => mapSchedule(row, true)),
+    jadwal:operationalSchedules.map(row => mapSchedule(row, true)),
     absensiList:attendance.map(mapAttendance),
     stats:{ totalSiswa:teacherStudents.length, sesiJadwalAktif:todayCount },
     tugasList:assignments.map(mapAssignment),
@@ -3939,6 +3973,7 @@ async function buildAdminDashboardSupabase(env, session) {
     ]);
 
   const admin = admins[0] || null;
+  const operationalSchedules = filterOperationalScheduleRows(schedules, students);
 
   const classMap = new Map();
   for (const row of classes) {
@@ -4026,7 +4061,7 @@ async function buildAdminDashboardSupabase(env, session) {
     },
     siswaList,
     guruList,
-    jadwal:schedules
+    jadwal:operationalSchedules
       .filter(row => knownNames.has(String(row.student_name_snapshot || '').trim().toLowerCase()))
       .map(row => mapSchedule(row, true)),
     absensiList:attendance.map(mapAttendance),

@@ -89,7 +89,7 @@
       const currentAbsent = absentSelect.value;
       const currentSlot = slotSelect.value;
       const students = (globalSiswaList || [])
-        .filter(item => String(item.status || '').toLowerCase() !== 'keluar')
+        .filter(isOperationalStudent)
         .filter(item => scheduleOverrideStudentHasInstrument(item, instrument))
         .sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
       const instrumentSuffix = instrument ? ` • ${escapeTaskHtml(instrument)}` : '';

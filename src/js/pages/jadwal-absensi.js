@@ -229,6 +229,7 @@ Guru: ${props.guru}`);
         });
       }
       const students = (globalSiswaList || []).filter(student => {
+        if (!isOperationalStudent(student)) return false;
         const name = String(student.nama || '').trim();
         if (!name) return false;
         if (day && !scheduleNames.has(name.toLowerCase())) return false;

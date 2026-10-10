@@ -316,7 +316,7 @@
     function openLearningProgressModal() {
       if (currentUser.userType !== 'guru') return;
       const select = document.getElementById('lpStudent');
-      const students = (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+      const students = (globalSiswaList || []).filter(isOperationalStudent);
       select.innerHTML = students.map(item => `<option value="${escapeTaskHtml(item.nama)}">${escapeTaskHtml(item.nama)} (${escapeTaskHtml(item.instrumen || 'Kelas Musik')})</option>`).join('');
       const selected = globalSelectedLearningProgressStudent && students.some(item => item.nama === globalSelectedLearningProgressStudent) ? globalSelectedLearningProgressStudent : (students[0] ? students[0].nama : '');
       if (!selected) { showAlert('alertDanger', 'Belum ada siswa yang dapat diisi progressnya.'); return; }

@@ -250,10 +250,13 @@
     function renderGuruSiswaBody(list) {
       const sBody = document.getElementById('guruSiswaBody'); sBody.innerHTML = '';
 
-      const selects = document.querySelectorAll('#absensiSiswa, #editJadwalSiswa, #tugasPilihSiswa, #penggantiSiswaSelect, #pengumumanSiswaDetailSelect');
-      let options = '<option value="">Pilih Siswa...</option>';
-      globalSiswaList.forEach(s => options += `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`);
-      selects.forEach(sel => sel.innerHTML = options);
+      const allStudentSelects = document.querySelectorAll('#editJadwalSiswa, #pengumumanSiswaDetailSelect');
+      const operationalStudentSelects = document.querySelectorAll('#absensiSiswa, #tugasPilihSiswa, #penggantiSiswaSelect');
+      const buildStudentOptions = students => '<option value="">Pilih Siswa...</option>' + students.map(s => `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`).join('');
+      const allOptions = buildStudentOptions(globalSiswaList || []);
+      const operationalOptions = buildStudentOptions((globalSiswaList || []).filter(isOperationalStudent));
+      allStudentSelects.forEach(sel => sel.innerHTML = allOptions);
+      operationalStudentSelects.forEach(sel => sel.innerHTML = operationalOptions);
 
       if (list.length === 0) {
         sBody.innerHTML = `<tr class="table-empty-row"><td class="table-empty-cell" colspan="9">Data siswa tidak ditemukan.</td></tr>`;
@@ -1760,7 +1763,7 @@
       if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
-      const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');
+      const students=(globalSiswaList||[]).filter(isOperationalStudent);
       const studentOptions=students.map(s=>`<option value="${annualExamEscape(s.siswaID||'')}">${annualExamEscape(s.nama)} — ${annualExamEscape(s.instrumen||'Musik')}</option>`).join('');
       const examinerOptions=(globalGuruList||[]).map(g=>`<option value="${annualExamEscape(g.nama)}">${annualExamEscape(g.nama)}${g.instrumen?' — '+annualExamEscape(g.instrumen):''}</option>`).join('');
       const today=new Date().toISOString().slice(0,10);

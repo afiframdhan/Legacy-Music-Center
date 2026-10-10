@@ -275,6 +275,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let loginType = 'siswa';
     let globalSiswaList = [];
     let globalJadwalList = [];
+
+    function isOperationalStudent(student) {
+      return String(student?.status || '').trim().toLowerCase() === 'aktif';
+    }
     let globalAbsensiList = [];
     let globalTugasList = [];
     let globalGuruList = [];
@@ -2374,7 +2378,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function openLearningProgressModal() {
       if (currentUser.userType !== 'guru') return;
       const select = document.getElementById('lpStudent');
-      const students = (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+      const students = (globalSiswaList || []).filter(isOperationalStudent);
       select.innerHTML = students.map(item => `<option value="${escapeTaskHtml(item.nama)}">${escapeTaskHtml(item.nama)} (${escapeTaskHtml(item.instrumen || 'Kelas Musik')})</option>`).join('');
       const selected = globalSelectedLearningProgressStudent && students.some(item => item.nama === globalSelectedLearningProgressStudent) ? globalSelectedLearningProgressStudent : (students[0] ? students[0].nama : '');
       if (!selected) { showAlert('alertDanger', 'Belum ada siswa yang dapat diisi progressnya.'); return; }
@@ -2715,7 +2719,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       const currentAbsent = absentSelect.value;
       const currentSlot = slotSelect.value;
       const students = (globalSiswaList || [])
-        .filter(item => String(item.status || '').toLowerCase() !== 'keluar')
+        .filter(isOperationalStudent)
         .filter(item => scheduleOverrideStudentHasInstrument(item, instrument))
         .sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
       const instrumentSuffix = instrument ? ` • ${escapeTaskHtml(instrument)}` : '';
@@ -3547,7 +3551,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       let students = (globalSiswaList || []).slice();
       if (currentUser.userType === 'guru') {
         // globalSiswaList pada dashboard guru memang hanya berisi siswa yang dapat diakses guru tersebut.
-        students = students.filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+        students = students.filter(isOperationalStudent);
       }
       students.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
       select.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
@@ -4057,7 +4061,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const host=document.getElementById(hostId); if(!host)return;
       const student=phStudent(studentId);
       const triggerLabel=student?.siswaID ? `<span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span>` : `<span class="ph-picker-placeholder">${allowAll?'Semua Siswa':'Pilih Siswa'}</span>`;
-      const rows=(globalSiswaList||[]).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id'));
+      const rows=(globalSiswaList||[]).filter(s=>allowAll?true:isOperationalStudent(s)).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id'));
       host.innerHTML=`<button type="button" class="ph-picker-trigger" aria-expanded="false" onclick="togglePhStudentPicker('${phEsc(hostId)}',event)">${triggerLabel}<span class="ph-picker-chevron">⌄</span></button><button type="button" class="ph-picker-backdrop" aria-label="Tutup pilihan siswa" onclick="closePhStudentPickers()"></button><div class="ph-picker-menu"><div class="ph-picker-menu-head"><div><b>Pilih Siswa</b><small>Cari berdasarkan nama, instrumen, atau kelas</small></div><button type="button" class="ph-picker-close" onclick="closePhStudentPickers()">×</button></div><div class="ph-picker-search-wrap"><span>⌕</span><input type="search" class="ph-picker-search" placeholder="Cari siswa..." oninput="filterPhStudentPicker('${phEsc(hostId)}',this.value)"></div><div class="ph-picker-options">${allowAll?`<button type="button" class="ph-picker-option" data-search="semua siswa" onclick="${onPickName}('')"><span class="ph-picker-all">◎</span><span><b>Semua Siswa</b><small>Tampilkan seluruh evaluasi</small></span></button>`:''}${rows.map(s=>{const search=phEsc(`${s.nama||''} ${phStudentClassLabel(s)}`.toLowerCase());return `<button type="button" class="ph-picker-option ${String(s.siswaID)===String(studentId)?'active':''}" data-search="${search}" onclick="${onPickName}('${phEsc(s.siswaID)}')">${phStudentAvatar(s,'sm')}<span><b>${phEsc(s.nama||'-')}</b><small>${phEsc(phStudentClassLabel(s))}</small></span></button>`;}).join('')}<div class="ph-picker-empty" hidden>Tidak ada siswa yang cocok.</div></div></div>`;
     }
 
@@ -4147,7 +4151,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     }
 
     function practiceStudentOptions(selected='') {
-      return (globalSiswaList||[]).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id')).map(s=>`<option value="${phEsc(s.siswaID)}" ${String(s.siswaID)===String(selected)?'selected':''}>${phEsc(s.nama)} • ${phEsc(s.instrumen||'Musik')}</option>`).join('');
+      return (globalSiswaList||[]).filter(isOperationalStudent).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id')).map(s=>`<option value="${phEsc(s.siswaID)}" ${String(s.siswaID)===String(selected)?'selected':''}>${phEsc(s.nama)} • ${phEsc(s.instrumen||'Musik')}</option>`).join('');
     }
 
     function practiceInstrumentForStudent(studentId) {
@@ -5140,10 +5144,13 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function renderGuruSiswaBody(list) {
       const sBody = document.getElementById('guruSiswaBody'); sBody.innerHTML = '';
 
-      const selects = document.querySelectorAll('#absensiSiswa, #editJadwalSiswa, #tugasPilihSiswa, #penggantiSiswaSelect, #pengumumanSiswaDetailSelect');
-      let options = '<option value="">Pilih Siswa...</option>';
-      globalSiswaList.forEach(s => options += `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`);
-      selects.forEach(sel => sel.innerHTML = options);
+      const allStudentSelects = document.querySelectorAll('#editJadwalSiswa, #pengumumanSiswaDetailSelect');
+      const operationalStudentSelects = document.querySelectorAll('#absensiSiswa, #tugasPilihSiswa, #penggantiSiswaSelect');
+      const buildStudentOptions = students => '<option value="">Pilih Siswa...</option>' + students.map(s => `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`).join('');
+      const allOptions = buildStudentOptions(globalSiswaList || []);
+      const operationalOptions = buildStudentOptions((globalSiswaList || []).filter(isOperationalStudent));
+      allStudentSelects.forEach(sel => sel.innerHTML = allOptions);
+      operationalStudentSelects.forEach(sel => sel.innerHTML = operationalOptions);
 
       if (list.length === 0) {
         sBody.innerHTML = `<tr class="table-empty-row"><td class="table-empty-cell" colspan="9">Data siswa tidak ditemukan.</td></tr>`;
@@ -6650,7 +6657,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
-      const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');
+      const students=(globalSiswaList||[]).filter(isOperationalStudent);
       const studentOptions=students.map(s=>`<option value="${annualExamEscape(s.siswaID||'')}">${annualExamEscape(s.nama)} — ${annualExamEscape(s.instrumen||'Musik')}</option>`).join('');
       const examinerOptions=(globalGuruList||[]).map(g=>`<option value="${annualExamEscape(g.nama)}">${annualExamEscape(g.nama)}${g.instrumen?' — '+annualExamEscape(g.instrumen):''}</option>`).join('');
       const today=new Date().toISOString().slice(0,10);
@@ -7103,6 +7110,7 @@ Guru: ${props.guru}`);
         });
       }
       const students = (globalSiswaList || []).filter(student => {
+        if (!isOperationalStudent(student)) return false;
         const name = String(student.nama || '').trim();
         if (!name) return false;
         if (day && !scheduleNames.has(name.toLowerCase())) return false;

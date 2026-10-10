@@ -337,7 +337,7 @@
       const host=document.getElementById(hostId); if(!host)return;
       const student=phStudent(studentId);
       const triggerLabel=student?.siswaID ? `<span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span>` : `<span class="ph-picker-placeholder">${allowAll?'Semua Siswa':'Pilih Siswa'}</span>`;
-      const rows=(globalSiswaList||[]).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id'));
+      const rows=(globalSiswaList||[]).filter(s=>allowAll?true:isOperationalStudent(s)).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id'));
       host.innerHTML=`<button type="button" class="ph-picker-trigger" aria-expanded="false" onclick="togglePhStudentPicker('${phEsc(hostId)}',event)">${triggerLabel}<span class="ph-picker-chevron">⌄</span></button><button type="button" class="ph-picker-backdrop" aria-label="Tutup pilihan siswa" onclick="closePhStudentPickers()"></button><div class="ph-picker-menu"><div class="ph-picker-menu-head"><div><b>Pilih Siswa</b><small>Cari berdasarkan nama, instrumen, atau kelas</small></div><button type="button" class="ph-picker-close" onclick="closePhStudentPickers()">×</button></div><div class="ph-picker-search-wrap"><span>⌕</span><input type="search" class="ph-picker-search" placeholder="Cari siswa..." oninput="filterPhStudentPicker('${phEsc(hostId)}',this.value)"></div><div class="ph-picker-options">${allowAll?`<button type="button" class="ph-picker-option" data-search="semua siswa" onclick="${onPickName}('')"><span class="ph-picker-all">◎</span><span><b>Semua Siswa</b><small>Tampilkan seluruh evaluasi</small></span></button>`:''}${rows.map(s=>{const search=phEsc(`${s.nama||''} ${phStudentClassLabel(s)}`.toLowerCase());return `<button type="button" class="ph-picker-option ${String(s.siswaID)===String(studentId)?'active':''}" data-search="${search}" onclick="${onPickName}('${phEsc(s.siswaID)}')">${phStudentAvatar(s,'sm')}<span><b>${phEsc(s.nama||'-')}</b><small>${phEsc(phStudentClassLabel(s))}</small></span></button>`;}).join('')}<div class="ph-picker-empty" hidden>Tidak ada siswa yang cocok.</div></div></div>`;
     }
 
@@ -427,7 +427,7 @@
     }
 
     function practiceStudentOptions(selected='') {
-      return (globalSiswaList||[]).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id')).map(s=>`<option value="${phEsc(s.siswaID)}" ${String(s.siswaID)===String(selected)?'selected':''}>${phEsc(s.nama)} • ${phEsc(s.instrumen||'Musik')}</option>`).join('');
+      return (globalSiswaList||[]).filter(isOperationalStudent).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id')).map(s=>`<option value="${phEsc(s.siswaID)}" ${String(s.siswaID)===String(selected)?'selected':''}>${phEsc(s.nama)} • ${phEsc(s.instrumen||'Musik')}</option>`).join('');
     }
 
     function practiceInstrumentForStudent(studentId) {
