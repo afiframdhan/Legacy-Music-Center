@@ -3941,6 +3941,21 @@ async function buildStudentDashboardSupabase(env, session) {
   };
 }
 
+// Patch 04: optional, privacy-safe dashboard query timing.
+// Enable DASHBOARD_PERF_LOG=true only on the test Worker to view timings in logs.
+async function dashboardTimedQuery(env, role, label, fetcher) {
+  if (String(env.DASHBOARD_PERF_LOG || '').toLowerCase() !== 'true') return fetcher();
+  const started = Date.now();
+  try {
+    const result = await fetcher();
+    console.info(`[LMC dashboard timing] role=${role} dataset=${label} duration_ms=${Date.now() - started} rows=${Array.isArray(result) ? result.length : 'n/a'} status=ok`);
+    return result;
+  } catch (error) {
+    console.warn(`[LMC dashboard timing] role=${role} dataset=${label} duration_ms=${Date.now() - started} status=error`);
+    throw error;
+  }
+}
+
 async function buildTeacherDashboardSupabase(env, session) {
   const id = session.userID;
 
@@ -3949,17 +3964,17 @@ async function buildTeacherDashboardSupabase(env, session) {
   // on each teacher login, then filtered them in Worker memory.
   const [teachers, teacherClasses, directStudents, schedules, attendance, assignments, progress, replacements, announcements, publications, scheduleOverrides] =
     await Promise.all([
-      sbRows(env, 'teachers', { teacher_id:`eq.${id}`, limit:'1' }),
-      sbPagedRows(env, 'student_classes', { teacher_id:`eq.${id}`, order:'created_at.asc' }),
-      sbPagedRows(env, 'students', { teacher_id:`eq.${id}`, order:'name.asc' }),
-      sbPagedRows(env, 'schedules', { teacher_id:`eq.${id}`, order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'220' }),
-      sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc', limit:'160' }),
-      sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'120' }),
-      sbRowsSafe(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc', limit:'120' }),
-      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'160' }),
-      getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })
+      dashboardTimedQuery(env, 'guru', 'teachers', () => sbRows(env, 'teachers', { teacher_id:`eq.${id}`, limit:'1' })),
+      dashboardTimedQuery(env, 'guru', 'student_classes', () => sbPagedRows(env, 'student_classes', { teacher_id:`eq.${id}`, order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'guru', 'students', () => sbPagedRows(env, 'students', { teacher_id:`eq.${id}`, order:'name.asc' })),
+      dashboardTimedQuery(env, 'guru', 'schedules', () => sbPagedRows(env, 'schedules', { teacher_id:`eq.${id}`, order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'guru', 'student_attendance', () => sbRows(env, 'student_attendance', { teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'guru', 'assignments', () => sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc', limit:'160' })),
+      dashboardTimedQuery(env, 'guru', 'learning_progress', () => sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'120' })),
+      dashboardTimedQuery(env, 'guru', 'replacement_schedules', () => sbRowsSafe(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' })),
+      dashboardTimedQuery(env, 'guru', 'announcements', () => sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc', limit:'120' })),
+      dashboardTimedQuery(env, 'guru', 'student_report_publications', () => sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'160' })),
+      dashboardTimedQuery(env, 'guru', 'schedule_overrides', () => getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })),
     ]);
 
   const teacher = teachers[0];
@@ -4093,19 +4108,19 @@ async function buildTeacherDashboardSupabase(env, session) {
 async function buildAdminDashboardSupabase(env, session) {
   const [admins, students, teachers, classes, schedules, attendance, progress, replacements, announcements, history, teacherAttendance, scheduleOverrides, publications] =
     await Promise.all([
-      sbRows(env, 'admins', { admin_id:`eq.${session.userID}`, limit:'1' }),
-      sbPagedRows(env, 'students', { order:'name.asc' }),
-      sbPagedRows(env, 'teachers', { order:'name.asc' }),
-      sbPagedRows(env, 'student_classes', { order:'created_at.asc' }),
-      sbPagedRows(env, 'schedules', { order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc', limit:'240' }),
-      sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc', limit:'220' }),
-      sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc', limit:'300' }),
-      sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc', limit:'220' }),
-      getScheduleOverrideRowsForSession(env, session),
-      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'220' })
+      dashboardTimedQuery(env, 'admin', 'admins', () => sbRows(env, 'admins', { admin_id:`eq.${session.userID}`, limit:'1' })),
+      dashboardTimedQuery(env, 'admin', 'students', () => sbPagedRows(env, 'students', { order:'name.asc' })),
+      dashboardTimedQuery(env, 'admin', 'teachers', () => sbPagedRows(env, 'teachers', { order:'name.asc' })),
+      dashboardTimedQuery(env, 'admin', 'student_classes', () => sbPagedRows(env, 'student_classes', { order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'admin', 'schedules', () => sbPagedRows(env, 'schedules', { order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'admin', 'student_attendance', () => sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc', limit:'240' })),
+      dashboardTimedQuery(env, 'admin', 'learning_progress', () => sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'admin', 'replacement_schedules', () => sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' })),
+      dashboardTimedQuery(env, 'admin', 'announcements', () => sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' })),
+      dashboardTimedQuery(env, 'admin', 'student_history', () => sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc', limit:'300' })),
+      dashboardTimedQuery(env, 'admin', 'teacher_attendance', () => sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'admin', 'schedule_overrides', () => getScheduleOverrideRowsForSession(env, session)),
+      dashboardTimedQuery(env, 'admin', 'student_report_publications', () => sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'220' })),
     ]);
 
   const admin = admins[0] || null;

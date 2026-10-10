@@ -22,6 +22,9 @@
   "env": {
     "test": {
       "name": "legacy-music-center-test",
+"vars": {
+      "DASHBOARD_PERF_LOG": "true"
+    },
       "triggers": {
         "crons": [
           "*/15 * * * *"
