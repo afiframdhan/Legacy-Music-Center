@@ -5,6 +5,7 @@
   const IDLE_INTERVAL = 12000;
   const FOCUS_REFRESH_MIN_AGE = 2500;
   let lastPollAt = 0;
+  let attendanceDetailsLoaded = false;
   let refreshTimer = null;
   let deltaTimer = null;
   const moduleQueue = new Set();
@@ -98,9 +99,9 @@
 
   async function ensureLiveModules(modules, options = {}) {
     const requested = [...new Set((modules || []).filter(Boolean))];
-    const needed = requested.filter(module => options.force || globalPartialModules.has(module) || !globalLoadedModules.has(module));
+    const needed = requested.filter(module => options.force || (module === 'attendance' && !attendanceDetailsLoaded) || globalPartialModules.has(module) || !globalLoadedModules.has(module));
     if (!needed.length || !currentUser?.userType) return true;
-    const key = needed.slice().sort().join(',');
+    const key = needed.slice().map(module => module === 'attendance' ? 'attendance_detail' : module).sort().join(',');
     if (globalModuleLoadInFlight.has(key)) return globalModuleLoadInFlight.get(key);
     // A user opening the attendance screen needs the existing detailed signature
     // window; routine background sync only needs a small recent window.
@@ -109,6 +110,7 @@
       .then(res => {
         if (!res || res.success === false) throw new Error(res?.message || 'Data modul gagal dimuat.');
         renderChangedModules(needed, res);
+        if (needed.includes('attendance')) attendanceDetailsLoaded = true;
         markModulesLoaded(needed);
         return true;
       })
@@ -194,6 +196,7 @@
   function stopGlobalLiveSync() {
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    attendanceDetailsLoaded = false;
     globalLoadedModules.clear();
     globalPartialModules.clear();
     globalModuleLoadInFlight.clear();
@@ -235,5 +238,7 @@
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
   window.queueLiveModuleSync = queueModuleSync;
   window.ensureLiveModules = ensureLiveModules;
+  window.ensureAttendanceSignatures = () => ensureLiveModules(['attendance']);
+  window.invalidateAttendanceSignatures = () => { attendanceDetailsLoaded = false; };
   window.applyLiveModulePayload = renderChangedModules;
 })();

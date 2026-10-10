@@ -921,6 +921,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
   const IDLE_INTERVAL = 12000;
   const FOCUS_REFRESH_MIN_AGE = 2500;
   let lastPollAt = 0;
+  let attendanceDetailsLoaded = false;
   let refreshTimer = null;
   let deltaTimer = null;
   const moduleQueue = new Set();
@@ -1014,9 +1015,9 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
   async function ensureLiveModules(modules, options = {}) {
     const requested = [...new Set((modules || []).filter(Boolean))];
-    const needed = requested.filter(module => options.force || globalPartialModules.has(module) || !globalLoadedModules.has(module));
+    const needed = requested.filter(module => options.force || (module === 'attendance' && !attendanceDetailsLoaded) || globalPartialModules.has(module) || !globalLoadedModules.has(module));
     if (!needed.length || !currentUser?.userType) return true;
-    const key = needed.slice().sort().join(',');
+    const key = needed.slice().map(module => module === 'attendance' ? 'attendance_detail' : module).sort().join(',');
     if (globalModuleLoadInFlight.has(key)) return globalModuleLoadInFlight.get(key);
     // A user opening the attendance screen needs the existing detailed signature
     // window; routine background sync only needs a small recent window.
@@ -1025,6 +1026,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       .then(res => {
         if (!res || res.success === false) throw new Error(res?.message || 'Data modul gagal dimuat.');
         renderChangedModules(needed, res);
+        if (needed.includes('attendance')) attendanceDetailsLoaded = true;
         markModulesLoaded(needed);
         return true;
       })
@@ -1110,6 +1112,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
   function stopGlobalLiveSync() {
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    attendanceDetailsLoaded = false;
     globalLoadedModules.clear();
     globalPartialModules.clear();
     globalModuleLoadInFlight.clear();
@@ -1151,6 +1154,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
   window.queueLiveModuleSync = queueModuleSync;
   window.ensureLiveModules = ensureLiveModules;
+  window.ensureAttendanceSignatures = () => ensureLiveModules(['attendance']);
+  window.invalidateAttendanceSignatures = () => { attendanceDetailsLoaded = false; };
   window.applyLiveModulePayload = renderChangedModules;
 })();
 
@@ -1697,6 +1702,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         }
 
         globalAbsensiList = data.absensiList || [];
+        if (typeof invalidateAttendanceSignatures === 'function') invalidateAttendanceSignatures();
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
@@ -7494,14 +7500,26 @@ Guru: ${props.guru}`);
     }
 
 
-    function printAbsensiReport() {
+    async function printAbsensiReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
-      const records = getAbsensiReportData();
-      if (!records.length) { showAlert('alertDanger', 'Tidak ada data Absensi pada filter dan periode yang dipilih.'); return; }
+      // Open immediately to avoid popup blocking after an asynchronous fetch.
       const printWindow = window.open('', '_blank', 'width=1200,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
-      const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
-      buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      printWindow.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Menyiapkan laporan</title></head><body style="font:16px Arial;padding:32px">Mengambil tanda tangan untuk laporan. Mohon tunggu...</body></html>');
+      printWindow.document.close();
+      try {
+        if (typeof ensureAttendanceSignatures === 'function') {
+          const ok = await ensureAttendanceSignatures();
+          if (!ok) throw new Error('Gagal mengambil tanda tangan dari server.');
+        }
+        const records = getAbsensiReportData();
+        if (!records.length) throw new Error('Tidak ada absensi pada filter dan periode yang dipilih.');
+        const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+        buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      } catch (error) {
+        printWindow.document.body.textContent = 'Laporan belum bisa dibuat: ' + (error?.message || error);
+        showAlert('alertDanger', 'Laporan gagal dimuat. Coba lagi setelah koneksi stabil.');
+      }
     }
     function buildAbsensiPrintWindow(records, printWindow, logoDataUrl) {
       const studentFilter = document.getElementById('filterProgressSiswa')?.value || 'Semua Siswa';

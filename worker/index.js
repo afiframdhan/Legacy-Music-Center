@@ -2529,12 +2529,23 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
         'attendance_id','student_id','student_name_snapshot','teacher_id','teacher_name_snapshot',
         'attendance_date','meeting_number','status','material','song','notes','created_at'
       ].join(',');
-      const [snapshotRows, recentFullRows] = await Promise.all([
+      // Detail view and printing require signatures from ALL matching records,
+      // not just the newest 40. Transfer only the signature columns on demand.
+      // Routine background sync remains lightweight (8 recent full rows).
+      const [snapshotRows, signatureRows] = await Promise.all([
         sbPagedRows(env, 'student_attendance', { ...baseParams, select:lightweightSelect }),
-        sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit: attendanceDetailRequested ? '40' : '8' })
+        attendanceDetailRequested
+          ? sbPagedRows(env, 'student_attendance', {
+              ...baseParams,
+              select:'attendance_id,teacher_signature_data,student_signature_data'
+            })
+          : sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit:'8' })
       ]);
-      const recentById = new Map(recentFullRows.map(row => [String(row.attendance_id || ''), row]));
-      out.attendance = snapshotRows.map(row => mapAttendance(recentById.get(String(row.attendance_id || '')) || row));
+      const signaturesById = new Map(signatureRows.map(row => [String(row.attendance_id || ''), row]));
+      out.attendance = snapshotRows.map(row => mapAttendance({
+        ...row,
+        ...(signaturesById.get(String(row.attendance_id || '')) || {})
+      }));
       return;
     }
     if (module === 'assignments') {

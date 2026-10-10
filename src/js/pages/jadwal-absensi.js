@@ -503,14 +503,26 @@ Guru: ${props.guru}`);
     }
 
 
-    function printAbsensiReport() {
+    async function printAbsensiReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
-      const records = getAbsensiReportData();
-      if (!records.length) { showAlert('alertDanger', 'Tidak ada data Absensi pada filter dan periode yang dipilih.'); return; }
+      // Open immediately to avoid popup blocking after an asynchronous fetch.
       const printWindow = window.open('', '_blank', 'width=1200,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
-      const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
-      buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      printWindow.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Menyiapkan laporan</title></head><body style="font:16px Arial;padding:32px">Mengambil tanda tangan untuk laporan. Mohon tunggu...</body></html>');
+      printWindow.document.close();
+      try {
+        if (typeof ensureAttendanceSignatures === 'function') {
+          const ok = await ensureAttendanceSignatures();
+          if (!ok) throw new Error('Gagal mengambil tanda tangan dari server.');
+        }
+        const records = getAbsensiReportData();
+        if (!records.length) throw new Error('Tidak ada absensi pada filter dan periode yang dipilih.');
+        const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+        buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      } catch (error) {
+        printWindow.document.body.textContent = 'Laporan belum bisa dibuat: ' + (error?.message || error);
+        showAlert('alertDanger', 'Laporan gagal dimuat. Coba lagi setelah koneksi stabil.');
+      }
     }
     function buildAbsensiPrintWindow(records, printWindow, logoDataUrl) {
       const studentFilter = document.getElementById('filterProgressSiswa')?.value || 'Semua Siswa';

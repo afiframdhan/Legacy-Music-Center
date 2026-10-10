@@ -38,6 +38,7 @@
         }
 
         globalAbsensiList = data.absensiList || [];
+        if (typeof invalidateAttendanceSignatures === 'function') invalidateAttendanceSignatures();
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
