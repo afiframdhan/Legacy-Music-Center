@@ -7384,6 +7384,19 @@ Guru: ${props.guru}`);
       toggleExportMonthHint();
     }
 
+    // An enrolment can have several instruments. Attendance belongs to its
+    // recording teacher, not to every class that shares the student's name.
+    function attendanceBelongsToCurrentTeacher(item) {
+      if (currentUser.userType !== 'guru') return true;
+      const recordTeacherId = String(item.guruID || item.teacherID || '').trim();
+      const signedInTeacherId = String(currentUser.userID || '').trim();
+      if (recordTeacherId && signedInTeacherId) return recordTeacherId === signedInTeacherId;
+      // Legacy records with no teacher ID: only trust an explicit teacher name.
+      const recordedName = String(item.guruCatat || '').trim().toLowerCase();
+      const loggedName = String(currentUser.userName || '').trim().toLowerCase();
+      return !!recordedName && !!loggedName && recordedName === loggedName;
+    }
+
     function renderTabelRiwayat() {
       const tbody = document.getElementById('riwayatAbsensiBody'); 
       const thAksi = document.getElementById('thAbsensiAksi');
@@ -7405,6 +7418,7 @@ Guru: ${props.guru}`);
       const filterGuruVal = (isAdmin && document.getElementById('filterProgressGuru')) ? document.getElementById('filterProgressGuru').value.trim().toLowerCase() : '';
 
       let filteredList = globalAbsensiList.filter(item => {
+        if (!attendanceBelongsToCurrentTeacher(item)) return false;
         if (isAdmin && filterGuruVal !== '') {
           if (String(item.guruCatat || '').trim().toLowerCase() !== filterGuruVal) return false;
         }
@@ -7490,6 +7504,7 @@ Guru: ${props.guru}`);
       const startThreeMonths = new Date();
       startThreeMonths.setDate(1); startThreeMonths.setMonth(startThreeMonths.getMonth() - 2); startThreeMonths.setHours(0,0,0,0);
       return globalAbsensiList.filter(item => {
+        if (!attendanceBelongsToCurrentTeacher(item)) return false;
         if (student && String(item.namaSiswa || '').trim().toLowerCase() !== student) return false;
         if (teacher && String(item.guruCatat || '').trim().toLowerCase() !== teacher) return false;
         if (month && !String(item.tanggal || '').includes(month)) return false;

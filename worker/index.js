@@ -3004,6 +3004,8 @@ function mapAttendance(row) {
     catatan: row.notes || '',
     tandaTangan: row.teacher_signature_data || '',
     guruCatat: row.teacher_name_snapshot || '',
+    guruID: row.teacher_id || '',
+    instrumen: row.instrument || '',
     ttdSiswa: row.student_signature_data || ''
   };
 }
