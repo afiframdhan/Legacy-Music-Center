@@ -917,9 +917,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 4000;
-  const IDLE_INTERVAL = 12000;
-  const FOCUS_REFRESH_MIN_AGE = 2500;
+  const ACTIVE_INTERVAL = 4000; // Admin/Guru: fast cross-device refresh
+  const IDLE_INTERVAL = 20000; // Quiet devices poll less frequently
+  const FOCUS_REFRESH_MIN_AGE = 4000;
+  const MAX_FAILURE_DELAY = 120000;
+  let syncFailureCount = 0;
+  let syncConfigured = false;
   let lastPollAt = 0;
   let refreshTimer = null;
   let deltaTimer = null;
@@ -1065,32 +1068,36 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
   async function pollLiveSync(force = false) {
     if (globalLiveSyncRunning || !currentUser || !currentUser.userType) return;
-    if (document.visibilityState === 'hidden' && !force) return;
+    if (document.visibilityState === 'hidden') return;
     const now = Date.now();
     if (!force && now - lastPollAt < 1200) return;
     lastPollAt = now;
     globalLiveSyncRunning = true;
     try {
       const res = await LegacyAPI.rpc('getLiveSyncState', []);
-      if (!res || res.success === false || !res.versions) return;
+      if (!res || res.success === false || !res.versions) { syncFailureCount = Math.min(syncFailureCount + 1, 5); return; }
+      syncFailureCount = 0;
       const next = res.versions || {};
       const hadBaseline = Object.keys(globalLiveSyncVersions || {}).length > 0;
       const changed = hadBaseline ? changedModules(next) : [];
       globalLiveSyncVersions = next;
       if (changed.length) queueModuleSync(changed);
     } catch (error) {
+      syncFailureCount = Math.min(syncFailureCount + 1, 5);
       console.debug('[Legacy Live Sync] poll skipped:', error?.message || error);
     } finally { globalLiveSyncRunning = false; }
   }
 
   function nextSyncDelay() {
     const recentlyActive = Date.now() - (globalLastInteractionAt || 0) < 30000;
-    return recentlyActive ? ACTIVE_INTERVAL : IDLE_INTERVAL;
+    const role = String(currentUser?.userType || '').toLowerCase();
+    const base = recentlyActive ? (role === 'siswa' ? 6000 : ACTIVE_INTERVAL) : IDLE_INTERVAL;
+    return syncFailureCount ? Math.min(MAX_FAILURE_DELAY, base * (2 ** syncFailureCount)) : base;
   }
 
   function scheduleNextPoll() {
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
-    if (!currentUser?.userType) return;
+    if (!currentUser?.userType || document.visibilityState === 'hidden') return;
     globalLiveSyncTimer = setTimeout(async () => {
       globalLiveSyncTimer = null;
       await pollLiveSync(false);
@@ -1100,6 +1107,9 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
   function configureGlobalLiveSync() {
     if (!currentUser || !currentUser.userType) return;
+    // Dashboard refreshes can call this repeatedly; do not restart an active poll loop.
+    if (syncConfigured) return;
+    syncConfigured = true;
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     pollLiveSync(true).finally(scheduleNextPoll);
   }
@@ -1107,6 +1117,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
   function stopGlobalLiveSync() {
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    syncConfigured = false; syncFailureCount = 0;
     globalLoadedModules.clear();
     globalPartialModules.clear();
     globalModuleLoadInFlight.clear();
@@ -1136,7 +1147,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && currentUser?.userType) {
+    if (document.visibilityState === 'hidden') {
+      if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
+      globalLiveSyncTimer = null;
+    } else if (currentUser?.userType) {
       globalLastInteractionAt = Date.now();
       pollLiveSync(true);
       scheduleNextPoll();
@@ -1742,22 +1756,35 @@ let currentUser = { userType: '', userID: '', userName: '' };
         renderLearningProgressViews();
         if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
+        // Paint the primary dashboard before constructing off-screen tables and widgets.
+        // This doesn't change data freshness or the completion semantics of the API call.
         setupFilterDropdown();
         renderTabelJadwal();
-        if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-        renderTabelRiwayat();
-        renderTabelTugas();
-        renderTabelJadwalPengganti();
         renderPengumumanList();
         renderDashboardAcademyUpdates();
-        setupMakeupFilters();
-        setupRoomFilters();
-        renderRoomAvailability();
         renderNotificationCenter();
         if (notificationTimer) clearInterval(notificationTimer);
         notificationTimer = setInterval(renderNotificationCenter, 60000);
         if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
         if (typeof configureLiveAnnouncementSync === 'function') configureLiveAnnouncementSync();
+        const secondaryRenderUser = String(currentUser.userID || '');
+        const secondaryRenderRole = String(currentUser.userType || '');
+        const renderDeferredDashboardSections = () => {
+          if (String(currentUser.userID || '') !== secondaryRenderUser || String(currentUser.userType || '') !== secondaryRenderRole) return;
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+          renderTabelRiwayat();
+          renderTabelTugas();
+          renderTabelJadwalPengganti();
+          setupMakeupFilters();
+          setupRoomFilters();
+          renderRoomAvailability();
+        };
+        // A browser rendering opportunity between essential and secondary content.
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => setTimeout(renderDeferredDashboardSections, 0));
+        } else {
+          setTimeout(renderDeferredDashboardSections, 0);
+        }
 
         // Small diagnostic marker for troubleshooting. It is intentionally not shown
         // as a normal UI element, but can be checked in DevTools if ever needed.
@@ -1955,7 +1982,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'block';
         const controlBox = document.getElementById('adminControlCenterBox');
         if (controlBox) controlBox.style.display = 'block';
-        setTimeout(() => loadAdminControlCenter(true), 0);
+        if (!globalAdminControlSummary) setTimeout(() => loadAdminControlCenter(false), 0);
 
         document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'block';
@@ -4291,6 +4318,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     let globalAdminAuditLog = [];
     let globalAdminQualityFindings = [];
     let globalAdminControlSummary = null;
+    let adminControlLoadInFlight = false;
 
     function loadAdminControlCenter(force = false) {
       if (currentUser.userType !== 'admin') return;
@@ -4300,8 +4328,11 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         renderAdminControlCenter(globalAdminControlSummary);
         return;
       }
+      if (adminControlLoadInFlight) return;
+      adminControlLoadInFlight = true;
       box.classList.add('admin-control-loading');
       google.script.run.withSuccessHandler(result => {
+        adminControlLoadInFlight = false;
         box.classList.remove('admin-control-loading');
         if (!result || result.success === false) {
           renderAdminControlCenter({ success:false, message:(result && result.message) || 'Dashboard kontrol gagal dimuat.' });
@@ -4310,6 +4341,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         globalAdminControlSummary = result;
         renderAdminControlCenter(result);
       }).withFailureHandler(error => {
+        adminControlLoadInFlight = false;
         box.classList.remove('admin-control-loading');
         renderAdminControlCenter({ success:false, message:error.message || String(error) });
       }).getAdminControlCenter();

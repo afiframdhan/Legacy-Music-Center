@@ -4157,10 +4157,12 @@ async function buildAdminDashboardSupabase(env, session) {
   const mappedAdminProgress = progress.map(mapProgress);
   const adminProgressById = new Map(mappedAdminProgress.map(item => [String(item.progressID || ''), item]));
   const adminStudentByPublicId = new Map(students.map(item => [String(item.student_id || ''), item]));
+  // Index once: avoid scanning the entire student roster for every publication.
+  const adminClassListByStudentId = new Map(siswaList.map(item => [String(item.siswaID || ''), item.kelasList || []]));
   const adminReports = publications.map(mapStudent360Publication).filter(Boolean).map(publication => {
     const progressItem = adminProgressById.get(String(publication.progressID || '')) || null;
     const student = adminStudentByPublicId.get(String(publication.studentID || '')) || null;
-    const studentClasses = siswaList.find(item => String(item.siswaID || '') === String(publication.studentID || ''))?.kelasList || [];
+    const studentClasses = adminClassListByStudentId.get(String(publication.studentID || '')) || [];
     const matchingClass = studentClasses.find(item =>
       progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
     ) || studentClasses[0] || null;

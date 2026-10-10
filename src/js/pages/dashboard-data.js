@@ -86,22 +86,35 @@
         renderLearningProgressViews();
         if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
+        // Paint the primary dashboard before constructing off-screen tables and widgets.
+        // This doesn't change data freshness or the completion semantics of the API call.
         setupFilterDropdown();
         renderTabelJadwal();
-        if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-        renderTabelRiwayat();
-        renderTabelTugas();
-        renderTabelJadwalPengganti();
         renderPengumumanList();
         renderDashboardAcademyUpdates();
-        setupMakeupFilters();
-        setupRoomFilters();
-        renderRoomAvailability();
         renderNotificationCenter();
         if (notificationTimer) clearInterval(notificationTimer);
         notificationTimer = setInterval(renderNotificationCenter, 60000);
         if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
         if (typeof configureLiveAnnouncementSync === 'function') configureLiveAnnouncementSync();
+        const secondaryRenderUser = String(currentUser.userID || '');
+        const secondaryRenderRole = String(currentUser.userType || '');
+        const renderDeferredDashboardSections = () => {
+          if (String(currentUser.userID || '') !== secondaryRenderUser || String(currentUser.userType || '') !== secondaryRenderRole) return;
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+          renderTabelRiwayat();
+          renderTabelTugas();
+          renderTabelJadwalPengganti();
+          setupMakeupFilters();
+          setupRoomFilters();
+          renderRoomAvailability();
+        };
+        // A browser rendering opportunity between essential and secondary content.
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => setTimeout(renderDeferredDashboardSections, 0));
+        } else {
+          setTimeout(renderDeferredDashboardSections, 0);
+        }
 
         // Small diagnostic marker for troubleshooting. It is intentionally not shown
         // as a normal UI element, but can be checked in DevTools if ever needed.
@@ -299,7 +312,7 @@
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'block';
         const controlBox = document.getElementById('adminControlCenterBox');
         if (controlBox) controlBox.style.display = 'block';
-        setTimeout(() => loadAdminControlCenter(true), 0);
+        if (!globalAdminControlSummary) setTimeout(() => loadAdminControlCenter(false), 0);
 
         document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'block';
