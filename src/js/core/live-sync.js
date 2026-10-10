@@ -102,7 +102,10 @@
     if (!needed.length || !currentUser?.userType) return true;
     const key = needed.slice().sort().join(',');
     if (globalModuleLoadInFlight.has(key)) return globalModuleLoadInFlight.get(key);
-    const task = LegacyAPI.rpc('getLiveModuleData', [{ modules:needed }])
+    // A user opening the attendance screen needs the existing detailed signature
+    // window; routine background sync only needs a small recent window.
+    const requestedRpcModules = needed.map(module => module === 'attendance' ? 'attendance_detail' : module);
+    const task = LegacyAPI.rpc('getLiveModuleData', [{ modules:requestedRpcModules }])
       .then(res => {
         if (!res || res.success === false) throw new Error(res?.message || 'Data modul gagal dimuat.');
         renderChangedModules(needed, res);

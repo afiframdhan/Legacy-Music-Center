@@ -2481,7 +2481,11 @@ async function getLiveAnnouncementsSupabase(env, session) {
 
 async function getLiveModuleDataSupabase(env, session, requestedModules) {
   const allowed = new Set(['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams','practice']);
-  const modules = [...new Set((Array.isArray(requestedModules) ? requestedModules : []).map(x => String(x || '').trim()).filter(x => allowed.has(x)))];
+  const rawModules = (Array.isArray(requestedModules) ? requestedModules : []).map(x => String(x || '').trim());
+  // Full signature rows are requested only when a user opens the attendance view.
+  // Background refresh should not repeatedly transfer large inline images.
+  const attendanceDetailRequested = rawModules.includes('attendance_detail');
+  const modules = [...new Set(rawModules.map(x => x === 'attendance_detail' ? 'attendance' : x).filter(x => allowed.has(x)))];
   const out = { success:true, syncedAt:new Date().toISOString() };
   if (!modules.length) return out;
 
@@ -2527,7 +2531,7 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       ].join(',');
       const [snapshotRows, recentFullRows] = await Promise.all([
         sbPagedRows(env, 'student_attendance', { ...baseParams, select:lightweightSelect }),
-        sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit:'40' })
+        sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit: attendanceDetailRequested ? '40' : '8' })
       ]);
       const recentById = new Map(recentFullRows.map(row => [String(row.attendance_id || ''), row]));
       out.attendance = snapshotRows.map(row => mapAttendance(recentById.get(String(row.attendance_id || '')) || row));

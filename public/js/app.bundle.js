@@ -917,12 +917,9 @@ let currentUser = { userType: '', userID: '', userName: '' };
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 4000; // Admin/Guru: fast cross-device refresh
-  const IDLE_INTERVAL = 20000; // Quiet devices poll less frequently
-  const FOCUS_REFRESH_MIN_AGE = 4000;
-  const MAX_FAILURE_DELAY = 120000;
-  let syncFailureCount = 0;
-  let syncConfigured = false;
+  const ACTIVE_INTERVAL = 4000;
+  const IDLE_INTERVAL = 12000;
+  const FOCUS_REFRESH_MIN_AGE = 2500;
   let lastPollAt = 0;
   let refreshTimer = null;
   let deltaTimer = null;
@@ -1021,7 +1018,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     if (!needed.length || !currentUser?.userType) return true;
     const key = needed.slice().sort().join(',');
     if (globalModuleLoadInFlight.has(key)) return globalModuleLoadInFlight.get(key);
-    const task = LegacyAPI.rpc('getLiveModuleData', [{ modules:needed }])
+    // A user opening the attendance screen needs the existing detailed signature
+    // window; routine background sync only needs a small recent window.
+    const requestedRpcModules = needed.map(module => module === 'attendance' ? 'attendance_detail' : module);
+    const task = LegacyAPI.rpc('getLiveModuleData', [{ modules:requestedRpcModules }])
       .then(res => {
         if (!res || res.success === false) throw new Error(res?.message || 'Data modul gagal dimuat.');
         renderChangedModules(needed, res);
@@ -1068,36 +1068,32 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
   async function pollLiveSync(force = false) {
     if (globalLiveSyncRunning || !currentUser || !currentUser.userType) return;
-    if (document.visibilityState === 'hidden') return;
+    if (document.visibilityState === 'hidden' && !force) return;
     const now = Date.now();
     if (!force && now - lastPollAt < 1200) return;
     lastPollAt = now;
     globalLiveSyncRunning = true;
     try {
       const res = await LegacyAPI.rpc('getLiveSyncState', []);
-      if (!res || res.success === false || !res.versions) { syncFailureCount = Math.min(syncFailureCount + 1, 5); return; }
-      syncFailureCount = 0;
+      if (!res || res.success === false || !res.versions) return;
       const next = res.versions || {};
       const hadBaseline = Object.keys(globalLiveSyncVersions || {}).length > 0;
       const changed = hadBaseline ? changedModules(next) : [];
       globalLiveSyncVersions = next;
       if (changed.length) queueModuleSync(changed);
     } catch (error) {
-      syncFailureCount = Math.min(syncFailureCount + 1, 5);
       console.debug('[Legacy Live Sync] poll skipped:', error?.message || error);
     } finally { globalLiveSyncRunning = false; }
   }
 
   function nextSyncDelay() {
     const recentlyActive = Date.now() - (globalLastInteractionAt || 0) < 30000;
-    const role = String(currentUser?.userType || '').toLowerCase();
-    const base = recentlyActive ? (role === 'siswa' ? 6000 : ACTIVE_INTERVAL) : IDLE_INTERVAL;
-    return syncFailureCount ? Math.min(MAX_FAILURE_DELAY, base * (2 ** syncFailureCount)) : base;
+    return recentlyActive ? ACTIVE_INTERVAL : IDLE_INTERVAL;
   }
 
   function scheduleNextPoll() {
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
-    if (!currentUser?.userType || document.visibilityState === 'hidden') return;
+    if (!currentUser?.userType) return;
     globalLiveSyncTimer = setTimeout(async () => {
       globalLiveSyncTimer = null;
       await pollLiveSync(false);
@@ -1107,9 +1103,6 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
   function configureGlobalLiveSync() {
     if (!currentUser || !currentUser.userType) return;
-    // Dashboard refreshes can call this repeatedly; do not restart an active poll loop.
-    if (syncConfigured) return;
-    syncConfigured = true;
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     pollLiveSync(true).finally(scheduleNextPoll);
   }
@@ -1117,7 +1110,6 @@ let currentUser = { userType: '', userID: '', userName: '' };
   function stopGlobalLiveSync() {
     if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
-    syncConfigured = false; syncFailureCount = 0;
     globalLoadedModules.clear();
     globalPartialModules.clear();
     globalModuleLoadInFlight.clear();
@@ -1147,10 +1139,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
-      globalLiveSyncTimer = null;
-    } else if (currentUser?.userType) {
+    if (document.visibilityState === 'visible' && currentUser?.userType) {
       globalLastInteractionAt = Date.now();
       pollLiveSync(true);
       scheduleNextPoll();
