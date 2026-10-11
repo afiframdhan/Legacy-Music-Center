@@ -3629,3 +3629,36 @@ html[data-theme="dark"] .lmc-unified-item[aria-selected="true"]{background:#2b1a
     -webkit-overflow-scrolling:touch;
   }
 }
+/* Patch 04L: the application has THREE student-picker implementations.
+   Keep both older pickers pinned to Safari's visible viewport during keyboard resize.
+   Do not alter their click/change handlers or the native select values. */
+@media (max-width:600px){
+  .lmc-person-filter.open .lmc-person-filter-menu,
+  .ph-student-picker.open .ph-picker-menu{
+    position:fixed!important;
+    top:calc(var(--lmc-picker-visible-top,0px) + 10px)!important;
+    bottom:auto!important;
+    left:12px!important;
+    right:12px!important;
+    width:auto!important;
+    max-width:none!important;
+    max-height:calc(var(--lmc-picker-visible-height,100dvh) - 20px)!important;
+    display:flex!important;
+    flex-direction:column!important;
+    overflow:hidden!important;
+    overscroll-behavior:contain!important;
+  }
+  .lmc-person-filter.open .lmc-person-filter-options,
+  .ph-student-picker.open .ph-picker-options{
+    min-height:0!important;
+    flex:1 1 auto!important;
+    max-height:calc(var(--lmc-picker-visible-height,100dvh) - 135px)!important;
+    overflow-y:auto!important;
+    overscroll-behavior:contain!important;
+    -webkit-overflow-scrolling:touch;
+  }
+  .lmc-person-filter-search input,
+  .ph-picker-search{font-size:16px!important;}
+  .lmc-person-filter.open .lmc-person-filter-menu{z-index:1000!important;}
+  .ph-student-picker.open .ph-picker-menu{z-index:1000!important;}
+}
