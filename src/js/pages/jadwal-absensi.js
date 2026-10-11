@@ -441,12 +441,12 @@ Guru: ${props.guru}`);
         let displayName = item.namaSiswa || currentUser.userName;
 
         let ttdGuruHtml = item.tandaTangan || '-';
-        if (item.tandaTangan && item.tandaTangan.startsWith('data:image')) {
+        if (item.tandaTangan && (item.tandaTangan.startsWith('data:image') || item.tandaTangan.startsWith('/api/attendance-signature/'))) {
           ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">`;
         }
 
         let ttdSiswaHtml = item.ttdSiswa || '-';
-        if (item.ttdSiswa && item.ttdSiswa.startsWith('data:image')) {
+        if (item.ttdSiswa && (item.ttdSiswa.startsWith('data:image') || item.ttdSiswa.startsWith('/api/attendance-signature/'))) {
           ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa">`;
         }
 
@@ -546,7 +546,7 @@ Guru: ${props.guru}`);
       const periodLabel = selectedMonth || (periodType === 'all' ? 'Semua Riwayat' : '3 Bulan Terakhir');
       const present = records.filter(item => item.status === 'Masuk').length;
       const rows = records.map((item, index) => {
-        const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
+        const signature = value => value && (String(value).startsWith('data:image') || String(value).startsWith('/api/attendance-signature/')) ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
         return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.materi || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.lagu || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
       const safeName = String(studentFilter || 'Semua-Siswa').replace(/[^a-z0-9_-]+/gi,'-');

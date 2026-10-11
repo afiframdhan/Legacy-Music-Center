@@ -92,6 +92,39 @@ export default {
       }
     }
 
+    // Private Drive signatures: never expose Google Drive file URLs to the browser.
+    const privateSignatureMatch = url.pathname.match(/^\/api\/attendance-signature\/([A-Za-z0-9_-]{1,128})\/(teacher|student)$/);
+    if (privateSignatureMatch && request.method === 'GET') {
+      if (!env.SESSION_SECRET) return new Response('Unavailable', {status:503});
+      const session = await readSession(request, env.SESSION_SECRET);
+      if (!session) return new Response('Unauthorized', {status:401});
+      try {
+        const attendanceId = privateSignatureMatch[1];
+        const field = privateSignatureMatch[2] === 'teacher' ? 'teacher_signature_data' : 'student_signature_data';
+        const rows = await sbRows(env, 'student_attendance', {
+          select:`attendance_id,student_id,teacher_id,${field}`,
+          attendance_id:`eq.${attendanceId}`, limit:'1'
+        });
+        const row = rows[0];
+        if (!row) return new Response('Not found', {status:404});
+        const role = String(session.userType || '').toLowerCase();
+        const allowed = role === 'admin'
+          || (role === 'guru' && String(row.teacher_id || '') === String(session.userID || ''))
+          || (role === 'siswa' && String(row.student_id || '') === String(session.userID || ''));
+        if (!allowed) return new Response('Forbidden', {status:403});
+        const value = String(row[field] || '');
+        const match = value.match(/^lmc-drive-signature:([A-Za-z0-9_-]{10,128})$/);
+        if (!match) return new Response('Not found', {status:404});
+        const result = await gasRpc(env, 'lmcReadPrivateSignature', [match[1]]);
+        if (!result || !result.success || !/^data:image\/png;base64,/.test(result.dataUrl || '')) throw new Error('Invalid private signature response');
+        const bytes = Uint8Array.from(atob(result.dataUrl.split(',')[1]), ch=>ch.charCodeAt(0));
+        return new Response(bytes, {status:200, headers:{'content-type':'image/png','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+      } catch (error) {
+        console.error('Private attendance signature fetch failed:', String(error && error.message || error));
+        return new Response('Signature temporarily unavailable', {status:502});
+      }
+    }
+
     if (url.pathname === '/api/session' && request.method === 'GET') {
       if (!env.SESSION_SECRET) return json({ ok:false, error:'SESSION_SECRET belum dikonfigurasi.' }, 500);
       const session = await readSession(request, env.SESSION_SECRET);
@@ -882,6 +915,47 @@ async function handleRpc(request, env, ctx) {
       ? { absensiID:String(safeArgs[0] || '').trim() }
       : (safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {});
 
+    // When updating a record, a read-only image URL means "retain old signature".
+    if (method === 'updateAbsensi' && payload.absensiID) {
+      const signed = [['tandaTangan','teacher_signature_data','teacher'],['ttdSiswa','student_signature_data','student']];
+      if (signed.some(([key,,kind])=>String(payload[key] || '') === `/api/attendance-signature/${payload.absensiID}/${kind}`)) {
+        const existing = await sbRows(env,'student_attendance',{select:'attendance_id,teacher_signature_data,student_signature_data', attendance_id:`eq.${String(payload.absensiID)}`,limit:'1'});
+        for (const [key,col,kind] of signed) {
+          if (String(payload[key] || '') === `/api/attendance-signature/${payload.absensiID}/${kind}`) payload[key] = String(existing[0]?.[col] || '');
+        }
+      }
+    }
+    // Existing Base64 signatures must remain Base64 when editing other fields.
+    const unchangedLegacySignatures = new Set();
+    if (method === 'updateAbsensi' && payload.absensiID) {
+      const old = await sbRows(env, 'student_attendance', {
+        select:'attendance_id,teacher_signature_data,student_signature_data',
+        attendance_id:`eq.${String(payload.absensiID)}`,limit:'1'
+      });
+      if (old[0]) {
+        if (String(payload.tandaTangan || '') === String(old[0].teacher_signature_data || '')) unchangedLegacySignatures.add('tandaTangan');
+        if (String(payload.ttdSiswa || '') === String(old[0].student_signature_data || '')) unchangedLegacySignatures.add('ttdSiswa');
+      }
+    }
+    // Signature format v2 (opt-in). Existing Base64 values are never migrated or changed.
+    // Private PNGs are uploaded through an authenticated Apps Script method, NOT uploadFiles.
+    if (method !== 'deleteAbsensi' && String(env.PRIVATE_SIGNATURE_DRIVE || '') === 'true') {
+      for (const [key, label] of [['tandaTangan','teacher'],['ttdSiswa','student']]) {
+        const value = String(payload[key] || '');
+        // Preserve existing stored reference when editing an old attendance row.
+        if (unchangedLegacySignatures.has(key) || !/^data:image\/png;base64,/i.test(value)) continue;
+        if (value.length > 450000) return json({ok:true,data:{success:false,message:'Tanda tangan terlalu besar. Silakan ulangi dengan ukuran normal.'}});
+        try {
+          const uploaded = await gasRpc(env, 'lmcUploadPrivateSignature', [value, `${label}_${Date.now()}.png`]);
+          if (!uploaded || !uploaded.success || !/^[A-Za-z0-9_-]{10,128}$/.test(String(uploaded.fileId || ''))) throw new Error('Drive tidak mengembalikan ID file yang valid.');
+          payload[key] = `lmc-drive-signature:${uploaded.fileId}`;
+        } catch (error) {
+          console.error('Private signature upload failed:', String(error && error.message || error));
+          return json({ok:true,data:{success:false,message:'Gagal menyimpan tanda tangan privat ke Google Drive. Absensi tidak diubah. Silakan coba lagi.'}});
+        }
+      }
+    }
+
     let result;
     try {
       result = await supabaseRpc(env, 'legacy_direct_student_attendance_mutation', {
@@ -920,6 +994,14 @@ async function handleRpc(request, env, ctx) {
     }
 
     if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
+      if (result && result.success && result.attendance) {
+        const a=result.attendance, id=a.attendance_id || a.absensiID || result.absensiID;
+        if (id) {
+          result={...result,attendance:{...a,
+            teacher_signature_data:attendanceSignatureForClient(a.teacher_signature_data, id, 'teacher'),
+            student_signature_data:attendanceSignatureForClient(a.student_signature_data, id, 'student')}};
+        }
+      }
       return json({ ok:true, data:result });
   }
 
@@ -2992,6 +3074,14 @@ function mapSchedule(row, includeStatus = true) {
   return item;
 }
 
+function attendanceSignatureForClient(value, attendanceId, kind) {
+  const raw = String(value || '');
+  if (/^lmc-drive-signature:[A-Za-z0-9_-]{10,128}$/.test(raw) && /^[A-Za-z0-9_-]{1,128}$/.test(String(attendanceId || ''))) {
+    return `/api/attendance-signature/${encodeURIComponent(String(attendanceId))}/${kind}`;
+  }
+  return raw;
+}
+
 function mapAttendance(row) {
   return {
     absensiID: row.attendance_id || '',
@@ -3002,11 +3092,11 @@ function mapAttendance(row) {
     materi: row.material || '',
     lagu: row.song || '',
     catatan: row.notes || '',
-    tandaTangan: row.teacher_signature_data || '',
+    tandaTangan: attendanceSignatureForClient(row.teacher_signature_data, row.attendance_id, 'teacher'),
     guruCatat: row.teacher_name_snapshot || '',
     guruID: row.teacher_id || '',
     instrumen: row.instrument || '',
-    ttdSiswa: row.student_signature_data || ''
+    ttdSiswa: attendanceSignatureForClient(row.student_signature_data, row.attendance_id, 'student')
   };
 }
 

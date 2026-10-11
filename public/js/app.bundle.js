@@ -499,7 +499,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const canvas = document.getElementById(id);
         if (!canvas) return;
         if (sigCanvases[id]) { resizeSignaturePad(id); return; }
-        const pad = { canvas, ctx: canvas.getContext('2d'), strokes: [], drawing: false, activeStroke: null, aspect: 0, originalWidth: 0 };
+        const pad = { canvas, ctx: canvas.getContext('2d'), strokes: [], drawing: false, activeStroke: null, aspect: 0 };
         sigCanvases[id] = pad;
         
         function getPos(e) {
@@ -582,10 +582,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const width = Math.max(1, rect.width);
       const height = Math.max(1, rect.height);
       pad.ctx.clearRect(0, 0, width, height);
-      const viewport = getSignatureViewport(width, height, pad.aspect || width / height);
-      const baseWidth = Math.max(1, pad.originalWidth || viewport.width);
-      const scaledLineWidth = Math.max(0.5, 2 * viewport.width / baseWidth);
-      drawSignatureStrokes(pad.ctx, pad.strokes, width, height, scaledLineWidth, pad.aspect);
+      drawSignatureStrokes(pad.ctx, pad.strokes, width, height, 2, pad.aspect);
     }
 
     function clearSignature(canvasId) {
@@ -613,8 +610,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const tCtx = tempCanvas.getContext('2d');
       tCtx.fillStyle = '#FFFFFF';
       tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-      const exportLineWidth = Math.max(0.5, 2 * tempCanvas.width / Math.max(1, pad.originalWidth || tempCanvas.width));
-      drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, exportLineWidth, aspect);
+      drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, 4, aspect);
       return tempCanvas.toDataURL('image/png');
     }
 
@@ -623,10 +619,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!pad) return;
       const rect = pad.canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      if (!pad.aspect) {
-        pad.aspect = rect.width / rect.height;
-        pad.originalWidth = rect.width;
-      }
+      if (!pad.aspect) pad.aspect = rect.width / rect.height;
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
       pad.canvas.width = Math.max(1, Math.round(rect.width * dpr));
       pad.canvas.height = Math.max(1, Math.round(rect.height * dpr));
@@ -645,8 +638,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       }
       const maxWidth = Math.max(240, window.innerWidth - 40);
       const maxHeight = Math.max(160, window.innerHeight - 92);
-      // Preserve the original signing aspect ratio even when expanding a blank pad.
-      // Changing it here distorted signatures when returning to the compact canvas.
+      if (isCanvasBlank(canvas.id)) pad.aspect = maxWidth / maxHeight;
       canvas.style.width = Math.round(maxWidth) + 'px';
       canvas.style.height = Math.round(maxHeight) + 'px';
       canvas.style.left = '20px';
@@ -7489,12 +7481,12 @@ Guru: ${props.guru}`);
         let displayName = item.namaSiswa || currentUser.userName;
 
         let ttdGuruHtml = item.tandaTangan || '-';
-        if (item.tandaTangan && item.tandaTangan.startsWith('data:image')) {
+        if (item.tandaTangan && (item.tandaTangan.startsWith('data:image') || item.tandaTangan.startsWith('/api/attendance-signature/'))) {
           ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">`;
         }
 
         let ttdSiswaHtml = item.ttdSiswa || '-';
-        if (item.ttdSiswa && item.ttdSiswa.startsWith('data:image')) {
+        if (item.ttdSiswa && (item.ttdSiswa.startsWith('data:image') || item.ttdSiswa.startsWith('/api/attendance-signature/'))) {
           ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa">`;
         }
 
@@ -7594,7 +7586,7 @@ Guru: ${props.guru}`);
       const periodLabel = selectedMonth || (periodType === 'all' ? 'Semua Riwayat' : '3 Bulan Terakhir');
       const present = records.filter(item => item.status === 'Masuk').length;
       const rows = records.map((item, index) => {
-        const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
+        const signature = value => value && (String(value).startsWith('data:image') || String(value).startsWith('/api/attendance-signature/')) ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
         return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.materi || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.lagu || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
       const safeName = String(studentFilter || 'Semua-Siswa').replace(/[^a-z0-9_-]+/gi,'-');
@@ -8562,7 +8554,7 @@ function normalizeTaskStatus(task) {
         attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map((item, index) => {
           const statusKey = String(item.status || '').toLowerCase();
           const badgeClass = statusKey === 'hadir' ? 'badge-success' : (statusKey === 'alpa' ? 'badge-danger' : 'badge-warning');
-          const signature = item.tandaTangan && String(item.tandaTangan).startsWith('data:image') ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
+          const signature = item.tandaTangan && (String(item.tandaTangan).startsWith('data:image') || String(item.tandaTangan).startsWith('/api/attendance-signature/')) ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
           return `<tr class="teacher-attendance-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td data-label="Status"><span><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Jam Masuk">${escapeTaskHtml(item.jamMasuk || '-')}</td><td data-label="Jam Keluar">${escapeTaskHtml(item.jamKeluar || '-')}</td><td data-label="Catatan">${escapeTaskHtml(item.catatan || '-')}</td><td data-label="TTD">${signature}</td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditTeacherAttendance(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteTeacherAttendanceRecord(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Hapus</button></div></td></tr>`;
         }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Tidak ada absensi guru sesuai filter.</td></tr>';
       }
@@ -8700,7 +8692,7 @@ function normalizeTaskStatus(task) {
       const printWindow = window.open('', '_blank', 'width=1000,height=760');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
       const hadir = records.filter(item => String(item.status).toLowerCase() === 'hadir').length;
-      const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : '-';
+      const signature = value => value && (String(value).startsWith('data:image') || String(value).startsWith('/api/attendance-signature/')) ? `<img src="${value}" alt="Tanda tangan">` : '-';
       const rows = records.map((item,index) => `<tr><td>${index+1}</td><td>${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td>${escapeTaskHtml(item.status || '-')}</td><td>${escapeTaskHtml(item.jamMasuk || '-')}</td><td>${escapeTaskHtml(item.jamKeluar || '-')}</td><td>${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td></tr>`).join('');
       const report = `<!doctype html><html><head><meta charset="utf-8"><title>Absensi Guru</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:10px}.head{display:flex;justify-content:space-between;align-items:end;border-bottom:3px solid #f15a24;padding-bottom:10px;margin-bottom:12px}.head h1{margin:0;font-size:20px}.orange{color:#f15a24}.summary{display:flex;gap:10px;margin-bottom:12px}.summary div{padding:9px 12px;border:1px solid #fed9c6;background:#fff7f2;border-radius:8px}.summary b{font-size:17px;color:#f15a24;margin-left:6px}table{width:100%;border-collapse:collapse}th{background:#f15a24;color:#fff;text-align:left;padding:7px}td{border:1px solid #dfe6ee;padding:7px;vertical-align:middle}.signature{text-align:center}.signature img{max-width:100px;max-height:38px;object-fit:contain}.foot{margin-top:10px;color:#94a3b8;text-align:right;font-size:8px}</style></head><body><div class="head"><div><b class="orange">LEGACY MUSIC CENTER</b><div style="margin-top:4px;color:#64748b">Laporan Kehadiran Pengajar</div></div><div style="text-align:right"><h1>Absensi Guru</h1><div>${new Date().toLocaleDateString('id-ID')}</div></div></div><div class="summary"><div>Total Data <b>${records.length}</b></div><div>Hadir <b>${hadir}</b></div><div>Tidak Hadir <b>${records.length-hadir}</b></div></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Guru</th><th>Status</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Catatan</th><th>Tanda Tangan</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">Dicetak dari sistem Legacy Music Center</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
       printWindow.document.open(); printWindow.document.write(report); printWindow.document.close();
