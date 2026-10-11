@@ -3632,6 +3632,11 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
             showAlert('alertDanger', (result && result.message) || 'Repertoire gagal disimpan.');
             return;
           }
+          // Pastikan lapisan pemilih siswa (termasuk portal iPhone) tertutup
+          // sebelum modal disembunyikan; lapisan tertinggal dapat menahan klik detail.
+          const pickerClose = document.querySelector('.lmc-unified-menu.is-portal-open .lmc-unified-close')
+            || document.querySelector('#modalRepertoire .lmc-unified-picker.is-open .lmc-unified-close');
+          if (pickerClose) pickerClose.click();
           closeRepertoireModal();
           // Respons simpan sudah berisi baris terbaru. Tampilkan langsung agar
           // guru tidak harus menunggu pengambilan ulang semua repertoire.
@@ -3656,8 +3661,11 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
             renderRepertoirePage();
           }
           showAlert('alertSuccess', result.message || 'Repertoire berhasil disimpan.');
-          // Sinkronisasi dari server tetap dilakukan, tetapi tidak menahan daftar/detail.
-          loadRepertoirePage();
+          // Jangan memuat ulang daftar tepat setelah Simpan: render ulang oleh
+          // request asinkron dapat membuat tombol Detail tidak responsif sesaat.
+          // Data yang dikembalikan server sudah dipasang di atas; pembukaan menu
+          // berikutnya tetap mengambil snapshot terbaru melalui loadRepertoirePage().
+          if (!saved) loadRepertoirePage();
         })
         .withFailureHandler(error => {
           if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Simpan Repertoire'; }
