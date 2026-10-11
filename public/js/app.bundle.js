@@ -8910,6 +8910,14 @@ function normalizeTaskStatus(task) {
   const IDS=['tugasPilihSiswa','repertoireSiswa','practiceResourceStudent','lpStudent','annualExamStudent'];
   const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const normalize=s=>String(s??'').toLocaleLowerCase('id').trim();
+  function alignMobileViewport(){
+    const vv=window.visualViewport;
+    document.documentElement.style.setProperty('--lmc-picker-visible-top',`${Math.max(0,vv?.offsetTop||0)}px`);
+    document.documentElement.style.setProperty('--lmc-picker-visible-height',`${Math.max(240,vv?.height||window.innerHeight)}px`);
+  }
+  window.visualViewport?.addEventListener('resize',alignMobileViewport);
+  window.visualViewport?.addEventListener('scroll',alignMobileViewport);
+  window.addEventListener('orientationchange',alignMobileViewport);
   function closeAll(){document.querySelectorAll('.lmc-unified-picker.is-open').forEach(el=>{el.classList.remove('is-open');el.querySelector('.lmc-unified-trigger')?.setAttribute('aria-expanded','false');});}
   function avatarFor(option){
     const id=String(option.value||'');
@@ -8945,7 +8953,7 @@ function normalizeTaskStatus(task) {
       });sync();filter();
     };
     const filter=()=>{const q=normalize(search.value);let count=0;list.querySelectorAll('.lmc-unified-item').forEach(btn=>{const yes=!q||btn.dataset.search.includes(q);btn.hidden=!yes;if(yes)count++;});root.querySelector('.lmc-unified-empty').hidden=count!==0;};
-    trigger.addEventListener('click',()=>{const opening=!root.classList.contains('is-open');closeAll();if(opening){rebuild();search.value='';filter();root.classList.add('is-open');trigger.setAttribute('aria-expanded','true');setTimeout(()=>search.focus(),20);}});
+    trigger.addEventListener('click',()=>{const opening=!root.classList.contains('is-open');closeAll();if(opening){rebuild();search.value='';filter();alignMobileViewport();root.classList.add('is-open');trigger.setAttribute('aria-expanded','true');if(window.innerWidth>600)setTimeout(()=>search.focus(),20);}});
     search.addEventListener('input',filter);
     root.querySelector('.lmc-unified-close').addEventListener('click',closeAll);
     root.querySelector('.lmc-unified-backdrop').addEventListener('click',closeAll);
