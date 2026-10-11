@@ -281,3 +281,21 @@ html[data-theme="dark"] .modal-close:hover{background:#1e293b!important;color:#f
   .security-settings .btn{width:100%}
   .force-password-content{width:100vw!important;max-width:none!important;height:100dvh;max-height:100dvh;border-radius:0!important;margin:0!important}
 }
+
+/* Patch 05D: restore the selected appearance option.  The general dark-surface
+   !important rule above must not override the user's explicit theme choice. */
+html[data-theme="dark"] .theme-option.active,
+html[data-theme="dark"] .theme-option[aria-pressed="true"] {
+  background:#4a281a !important;
+  background-color:#4a281a !important;
+  border-color:#ff7a42 !important;
+  color:#ffb28e !important;
+  box-shadow:0 0 0 2px rgba(241,90,36,.17) !important;
+}
+html[data-theme="light"] .theme-option.active,
+html[data-theme="light"] .theme-option[aria-pressed="true"] {
+  background:#fff0e9;
+  border-color:#f15a24;
+  color:#c2410c;
+  box-shadow:0 0 0 2px rgba(241,90,36,.10);
+}
