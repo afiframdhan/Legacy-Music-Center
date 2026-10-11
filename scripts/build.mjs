@@ -21,7 +21,8 @@ const jsSources = [
   'src/js/pages/jadwal-absensi.js',
   'src/js/pages/tugas.js',
   'src/js/pages/siswa-profile.js',
-  'src/js/pages/admin.js'
+  'src/js/pages/admin.js',
+  'src/js/core/unified-student-selects.js'
 ];
 
 const cssSources = [
@@ -31,7 +32,8 @@ const cssSources = [
   'src/css/pages/progress-and-pages.css',
   'src/css/responsive-theme-admin.css',
   'src/css/theme-system.css',
-  'src/css/release-ui-stabilization.css'
+  'src/css/release-ui-stabilization.css',
+  'src/css/unified-student-selects.css'
 ];
 
 async function concat(files) {
