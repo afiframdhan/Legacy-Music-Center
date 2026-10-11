@@ -770,6 +770,20 @@ async function handleRpc(request, env, ctx) {
       });
     }
 
+    if (ctx) {
+      if (result && result.success === true) {
+        if (method === 'deleteAbsensi') {
+          if (priorSignatures.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(priorSignatures,'attendance-deleted'));
+        } else if (method === 'updateAbsensi' && priorSignatures.length) {
+          const latest = result.attendance || {};
+          const current = [latest.teacher_signature_data ?? payload.tandaTangan, latest.student_signature_data ?? payload.ttdSiswa];
+          const replaced = priorSignatures.filter(sig => sig && !current.includes(sig));
+          if (replaced.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(replaced,'signature-replaced'));
+        }
+      } else if (newlyUploadedSignatures.length) {
+        ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'mutation-rejected'));
+      }
+    }
     if (result && result.success === true && ctx) {
       const shadowArgs = structuredClone(safeArgs);
 
@@ -908,6 +922,29 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:result });
   }
 
+  // Patch 05E: never trash a PNG while ANY absensi row still references it.
+  async function cleanupUnusedAttendanceSignatures(candidates, reason) {
+    const ids = [...new Set((candidates || []).map(value => {
+      const m = String(value || '').match(/^lmc-drive-signature:([A-Za-z0-9_-]{10,128})$/);
+      return m ? m[1] : '';
+    }).filter(Boolean))];
+    for (const fileId of ids) {
+      try {
+        const ref = `lmc-drive-signature:${fileId}`;
+        const [teacherRefs, studentRefs] = await Promise.all([
+          sbRows(env, 'student_attendance', {select:'attendance_id',teacher_signature_data:`eq.${ref}`,limit:'1'}),
+          sbRows(env, 'student_attendance', {select:'attendance_id',student_signature_data:`eq.${ref}`,limit:'1'})
+        ]);
+        if (teacherRefs.length || studentRefs.length) continue;
+        await gasRpc(env, 'lmcTrashPrivateSignature', [fileId]);
+        console.log('05E private signature moved to Trash:',reason,fileId.slice(0,6));
+      } catch (error) {
+        // Non-destructive failure: retain orphan rather than risking another signature.
+        console.error('05E signature cleanup skipped:',reason,String(error && error.message || error));
+      }
+    }
+  }
+
   // PHASE 10B: student attendance is now Supabase-first.
   // Spreadsheet is maintained only as a report/legacy compatibility shadow.
   if (method === 'recordAbsensi' || method === 'updateAbsensi' || method === 'deleteAbsensi') {
@@ -915,6 +952,20 @@ async function handleRpc(request, env, ctx) {
       ? { absensiID:String(safeArgs[0] || '').trim() }
       : (safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {});
 
+    // Snapshot only the exact row involved, before a successful mutation can remove it.
+    let priorSignatures = [];
+    if ((method === 'deleteAbsensi' || method === 'updateAbsensi') && payload.absensiID) {
+      try {
+        const previous = await sbRows(env, 'student_attendance', {
+          select:'attendance_id,teacher_signature_data,student_signature_data',
+          attendance_id:`eq.${payload.absensiID}`, limit:'1'
+        });
+        if (previous[0]) priorSignatures = [previous[0].teacher_signature_data, previous[0].student_signature_data];
+      } catch (error) {
+        console.error('05E could not snapshot signatures; cleanup will be skipped:',String(error && error.message || error));
+      }
+    }
+    const newlyUploadedSignatures = [];
     // When updating a record, a read-only image URL means "retain old signature".
     if (method === 'updateAbsensi' && payload.absensiID) {
       const signed = [['tandaTangan','teacher_signature_data','teacher'],['ttdSiswa','student_signature_data','student']];
@@ -949,8 +1000,10 @@ async function handleRpc(request, env, ctx) {
           const uploaded = await gasRpc(env, 'lmcUploadPrivateSignature', [value, `${label}_${Date.now()}.png`]);
           if (!uploaded || !uploaded.success || !/^[A-Za-z0-9_-]{10,128}$/.test(String(uploaded.fileId || ''))) throw new Error('Drive tidak mengembalikan ID file yang valid.');
           payload[key] = `lmc-drive-signature:${uploaded.fileId}`;
+          newlyUploadedSignatures.push(payload[key]);
         } catch (error) {
           console.error('Private signature upload failed:', String(error && error.message || error));
+          if (newlyUploadedSignatures.length && ctx) ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'upload-failed'));
           return json({ok:true,data:{success:false,message:'Gagal menyimpan tanda tangan privat ke Google Drive. Absensi tidak diubah. Silakan coba lagi.'}});
         }
       }
@@ -967,6 +1020,7 @@ async function handleRpc(request, env, ctx) {
       });
     } catch (error) {
       console.error(`Supabase direct attendance write failed for ${method}:`, error);
+      if (newlyUploadedSignatures.length && ctx) ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'database-error'));
       return json({
         ok:true,
         data:{ success:false, message:'Gagal menyimpan absensi ke database. Silakan coba lagi.' }

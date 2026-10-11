@@ -2820,10 +2820,26 @@ function lmcReadPrivateSignature(fileId) {
   return {success:true,dataUrl:'data:image/png;base64,'+Utilities.base64Encode(bytes)};
 }
 
+// Patch 05E: soft-delete only signature PNGs belonging to the private signature folder.
+// The caller must verify that Supabase no longer refers to the file.
+function lmcTrashPrivateSignature(fileId) {
+  var id = String(fileId || '');
+  if (!/^[a-zA-Z0-9_-]{10,128}$/.test(id)) throw new Error('Invalid signature file ID.');
+  var file = DriveApp.getFileById(id);
+  var folder = lmcPrivateSignatureFolder_();
+  var parents = file.getParents(), belongs = false;
+  while (parents.hasNext()) if (parents.next().getId() === folder.getId()) belongs = true;
+  if (!belongs) throw new Error('Refusing to trash file outside private signature folder.');
+  if (file.getMimeType() !== 'image/png') throw new Error('Not a PNG signature.');
+  if (!file.isTrashed()) file.setTrashed(true);
+  return {success:true, trashed:true, fileId:id};
+}
+
 function legacyDispatchRpc_(method, args) {
   switch (method) {
     case 'lmcUploadPrivateSignature': return lmcUploadPrivateSignature.apply(null, args);
     case 'lmcReadPrivateSignature': return lmcReadPrivateSignature.apply(null, args);
+    case 'lmcTrashPrivateSignature': return lmcTrashPrivateSignature.apply(null, args);
     case 'verifyLogin': return verifyLogin.apply(null, args);
     case 'getDashboardData': return getDashboardData.apply(null, args);
     case 'getGuruList': return getGuruList.apply(null, args);
