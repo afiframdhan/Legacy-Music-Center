@@ -45,7 +45,10 @@
         globalScheduleOverrides = data.scheduleOverrides || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
-        globalRepertoireList = [];
+        // Repertoire is loaded independently. Do not clear its live list on a
+        // background dashboard refresh: card clicks and student filters need
+        // the same in-memory records until getRepertoireData updates them.
+        if (!Array.isArray(globalRepertoireList)) globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
         globalTeacherAttendanceList = data.teacherAttendanceList || [];
 
