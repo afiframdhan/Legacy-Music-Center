@@ -499,7 +499,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const canvas = document.getElementById(id);
         if (!canvas) return;
         if (sigCanvases[id]) { resizeSignaturePad(id); return; }
-        const pad = { canvas, ctx: canvas.getContext('2d'), strokes: [], drawing: false, activeStroke: null, aspect: 0 };
+        const pad = { canvas, ctx: canvas.getContext('2d'), strokes: [], drawing: false, activeStroke: null, aspect: 0, originalWidth: 0 };
         sigCanvases[id] = pad;
         
         function getPos(e) {
@@ -582,7 +582,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const width = Math.max(1, rect.width);
       const height = Math.max(1, rect.height);
       pad.ctx.clearRect(0, 0, width, height);
-      drawSignatureStrokes(pad.ctx, pad.strokes, width, height, 2, pad.aspect);
+      const viewport = getSignatureViewport(width, height, pad.aspect || width / height);
+      const baseWidth = Math.max(1, pad.originalWidth || viewport.width);
+      const scaledLineWidth = Math.max(0.5, 2 * viewport.width / baseWidth);
+      drawSignatureStrokes(pad.ctx, pad.strokes, width, height, scaledLineWidth, pad.aspect);
     }
 
     function clearSignature(canvasId) {
@@ -610,7 +613,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const tCtx = tempCanvas.getContext('2d');
       tCtx.fillStyle = '#FFFFFF';
       tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-      drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, 4, aspect);
+      const exportLineWidth = Math.max(0.5, 2 * tempCanvas.width / Math.max(1, pad.originalWidth || tempCanvas.width));
+      drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, exportLineWidth, aspect);
       return tempCanvas.toDataURL('image/png');
     }
 
@@ -619,7 +623,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!pad) return;
       const rect = pad.canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      if (!pad.aspect) pad.aspect = rect.width / rect.height;
+      if (!pad.aspect) {
+        pad.aspect = rect.width / rect.height;
+        pad.originalWidth = rect.width;
+      }
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
       pad.canvas.width = Math.max(1, Math.round(rect.width * dpr));
       pad.canvas.height = Math.max(1, Math.round(rect.height * dpr));
@@ -638,7 +645,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
       }
       const maxWidth = Math.max(240, window.innerWidth - 40);
       const maxHeight = Math.max(160, window.innerHeight - 92);
-      if (isCanvasBlank(canvas.id)) pad.aspect = maxWidth / maxHeight;
+      // Preserve the original signing aspect ratio even when expanding a blank pad.
+      // Changing it here distorted signatures when returning to the compact canvas.
       canvas.style.width = Math.round(maxWidth) + 'px';
       canvas.style.height = Math.round(maxHeight) + 'px';
       canvas.style.left = '20px';
