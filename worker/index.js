@@ -770,20 +770,6 @@ async function handleRpc(request, env, ctx) {
       });
     }
 
-    if (ctx) {
-      if (result && result.success === true) {
-        if (method === 'deleteAbsensi') {
-          if (priorSignatures.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(priorSignatures,'attendance-deleted'));
-        } else if (method === 'updateAbsensi' && priorSignatures.length) {
-          const latest = result.attendance || {};
-          const current = [latest.teacher_signature_data ?? payload.tandaTangan, latest.student_signature_data ?? payload.ttdSiswa];
-          const replaced = priorSignatures.filter(sig => sig && !current.includes(sig));
-          if (replaced.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(replaced,'signature-replaced'));
-        }
-      } else if (newlyUploadedSignatures.length) {
-        ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'mutation-rejected'));
-      }
-    }
     if (result && result.success === true && ctx) {
       const shadowArgs = structuredClone(safeArgs);
 
@@ -1025,6 +1011,21 @@ async function handleRpc(request, env, ctx) {
         ok:true,
         data:{ success:false, message:'Gagal menyimpan absensi ke database. Silakan coba lagi.' }
       });
+    }
+
+    if (ctx) {
+      if (result && result.success === true) {
+        if (method === 'deleteAbsensi') {
+          if (priorSignatures.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(priorSignatures,'attendance-deleted'));
+        } else if (method === 'updateAbsensi' && priorSignatures.length) {
+          const latest = result.attendance || {};
+          const current = [latest.teacher_signature_data ?? payload.tandaTangan, latest.student_signature_data ?? payload.ttdSiswa];
+          const replaced = priorSignatures.filter(sig => sig && !current.includes(sig));
+          if (replaced.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(replaced,'signature-replaced'));
+        }
+      } else if (newlyUploadedSignatures.length) {
+        ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'mutation-rejected'));
+      }
     }
 
     if (result && result.success === true && ctx) {
