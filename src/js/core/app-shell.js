@@ -63,6 +63,7 @@
 
         function startDrawing(e) {
           e.preventDefault();
+          if (pad.fitAfterFullscreen) pad.fitAfterFullscreen = false;
           pad.drawing = true;
           pad.activeStroke = [getPos(e)];
           pad.strokes.push(pad.activeStroke);
@@ -120,6 +121,36 @@
       });
     }
 
+    // Fit fullscreen ink into the compact preview without stretching either axis.
+    // Source coordinates are measured in an aspect-corrected plane.
+    function drawSignatureFitted(ctx, strokes, width, height, lineWidth, aspect) {
+      const points = strokes.flat().filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+      if (!points.length) return;
+      const ratio = Math.max(0.01, aspect || width / Math.max(1, height));
+      const xs = points.map(p => p.x * ratio);
+      const ys = points.map(p => p.y);
+      const left = Math.min(...xs), right = Math.max(...xs);
+      const top = Math.min(...ys), bottom = Math.max(...ys);
+      const boxW = Math.max(0.012 * ratio, right - left);
+      const boxH = Math.max(0.012, bottom - top);
+      const margin = Math.min(width, height) * 0.09;
+      const scale = Math.min((width - 2 * margin) / boxW, (height - 2 * margin) / boxH);
+      const ox = (width - (right-left)*scale)/2 - left*scale;
+      const oy = (height - (bottom-top)*scale)/2 - top*scale;
+      ctx.strokeStyle = '#000000'; ctx.fillStyle = '#000000';
+      ctx.lineWidth = Math.max(0.5, Math.min(lineWidth, lineWidth * scale / Math.max(1, width/ratio)));
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      strokes.forEach(stroke => {
+        if (!stroke.length) return;
+        if (stroke.length === 1) {
+          ctx.beginPath(); ctx.arc(ox + stroke[0].x*ratio*scale, oy + stroke[0].y*scale, ctx.lineWidth/2, 0, Math.PI*2); ctx.fill(); return;
+        }
+        ctx.beginPath(); ctx.moveTo(ox + stroke[0].x*ratio*scale, oy + stroke[0].y*scale);
+        for (let i=1; i<stroke.length; i++) ctx.lineTo(ox + stroke[i].x*ratio*scale, oy + stroke[i].y*scale);
+        ctx.stroke();
+      });
+    }
+
     function redrawSignaturePad(pad) {
       if (!pad) return;
       const rect = pad.canvas.getBoundingClientRect();
@@ -129,7 +160,11 @@
       const viewport = getSignatureViewport(width, height, pad.aspect || width / height);
       const baseWidth = Math.max(1, pad.originalWidth || viewport.width);
       const scaledLineWidth = Math.max(0.5, 2 * viewport.width / baseWidth);
-      drawSignatureStrokes(pad.ctx, pad.strokes, width, height, scaledLineWidth, pad.aspect);
+      if (pad.fitAfterFullscreen && !pad.canvas.parentElement.classList.contains('signature-fullscreen')) {
+        drawSignatureFitted(pad.ctx, pad.strokes, width, height, scaledLineWidth, pad.aspect);
+      } else {
+        drawSignatureStrokes(pad.ctx, pad.strokes, width, height, scaledLineWidth, pad.aspect);
+      }
     }
 
     function clearSignature(canvasId) {
@@ -158,7 +193,11 @@
       tCtx.fillStyle = '#FFFFFF';
       tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
       const exportLineWidth = Math.max(0.5, 2 * tempCanvas.width / Math.max(1, pad.originalWidth || tempCanvas.width));
-      drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, exportLineWidth, aspect);
+      if (pad.fitAfterFullscreen) {
+        drawSignatureFitted(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, exportLineWidth, aspect);
+      } else {
+        drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, exportLineWidth, aspect);
+      }
       return tempCanvas.toDataURL('image/png');
     }
 
@@ -203,7 +242,12 @@
       const container = pad.canvas.parentElement;
       const willOpen = forceClose ? false : !container.classList.contains('signature-fullscreen');
       document.querySelectorAll('.sig-canvas-container.signature-fullscreen').forEach(item => item.classList.remove('signature-fullscreen'));
-      if (willOpen) container.classList.add('signature-fullscreen');
+      if (willOpen) {
+        pad.fitAfterFullscreen = false;
+        container.classList.add('signature-fullscreen');
+      } else if (!isCanvasBlank(canvasId)) {
+        pad.fitAfterFullscreen = true;
+      }
       document.body.classList.toggle('signature-open', willOpen);
       const button = container.querySelector('.btn-expand-sig');
       if (button) button.textContent = willOpen ? 'Selesai' : 'Perbesar';
