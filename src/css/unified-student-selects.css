@@ -64,3 +64,22 @@ html[data-theme="dark"] .lmc-unified-item[aria-selected="true"]{background:#2b1a
   .lmc-unified-menu.is-portal-open .lmc-unified-options{flex:1;min-height:0;max-height:min(360px,calc(var(--lmc-picker-visible-height,100dvh) - 135px))!important;overflow-y:auto!important;}
   .lmc-unified-trigger{height:48px!important;min-height:48px!important;max-height:48px!important;}
 }
+
+/* Patch 04K: stop Safari's focus-driven background scrolling while searching. */
+@media(max-width:600px){
+  body.lmc-student-picker-page-locked{
+    position:fixed!important;
+    top:calc(-1 * var(--lmc-picker-scroll-y,0px))!important;
+    left:0!important;right:0!important;
+    width:100%!important;overflow:hidden!important;
+  }
+  .lmc-unified-menu.is-portal-open{
+    overscroll-behavior:contain!important;
+    height:auto!important;
+    min-height:0!important;
+  }
+  .lmc-unified-menu.is-portal-open .lmc-unified-options{
+    overscroll-behavior:contain!important;
+    -webkit-overflow-scrolling:touch;
+  }
+}

@@ -3,6 +3,20 @@
   const IDS=['tugasPilihSiswa','repertoireSiswa','practiceResourceStudent','lpStudent','annualExamStudent'];
   const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const normalize=s=>String(s??'').toLocaleLowerCase('id').trim();
+  let lockedScrollY=null;
+  function lockPage(){
+    if(lockedScrollY!==null)return;
+    lockedScrollY=window.scrollY||document.documentElement.scrollTop||0;
+    document.body.style.setProperty('--lmc-picker-scroll-y',`${lockedScrollY}px`);
+    document.body.classList.add('lmc-student-picker-page-locked');
+  }
+  function unlockPage(){
+    if(lockedScrollY===null)return;
+    const y=lockedScrollY;lockedScrollY=null;
+    document.body.classList.remove('lmc-student-picker-page-locked');
+    document.body.style.removeProperty('--lmc-picker-scroll-y');
+    window.scrollTo(0,y);
+  }
   function alignMobileViewport(){
     const vv=window.visualViewport;
     document.documentElement.style.setProperty('--lmc-picker-visible-top',`${Math.max(0,vv?.offsetTop||0)}px`);
@@ -20,6 +34,7 @@
       if(menu&&menu._lmcOwner===el){menu.classList.remove('is-portal-open');el.appendChild(menu);}
       if(backdrop&&backdrop._lmcOwner===el){backdrop.classList.remove('is-portal-open');el.appendChild(backdrop);}
     });
+    unlockPage();
   }
   function avatarFor(option){
     const id=String(option.value||'');
@@ -55,9 +70,14 @@
       });sync();filter();
     };
     const filter=()=>{const q=normalize(search.value);let count=0;list.querySelectorAll('.lmc-unified-item').forEach(btn=>{const yes=!q||btn.dataset.search.includes(q);btn.hidden=!yes;if(yes)count++;});root.querySelector('.lmc-unified-empty').hidden=count!==0;};
-    trigger.addEventListener('click',()=>{const opening=!root.classList.contains('is-open');closeAll();if(opening){rebuild();search.value='';filter();alignMobileViewport();root.classList.add('is-open');trigger.setAttribute('aria-expanded','true');if(window.innerWidth<=600){menu._lmcOwner=root;backdrop._lmcOwner=root;document.body.appendChild(backdrop);document.body.appendChild(menu);backdrop.classList.add('is-portal-open');menu.classList.add('is-portal-open');}else setTimeout(()=>search.focus(),20);}});
+    trigger.addEventListener('click',()=>{const opening=!root.classList.contains('is-open');closeAll();if(opening){rebuild();search.value='';filter();alignMobileViewport();root.classList.add('is-open');trigger.setAttribute('aria-expanded','true');if(window.innerWidth<=600){lockPage();menu._lmcOwner=root;backdrop._lmcOwner=root;document.body.appendChild(backdrop);document.body.appendChild(menu);backdrop.classList.add('is-portal-open');menu.classList.add('is-portal-open');}else setTimeout(()=>search.focus(),20);}});
     search.addEventListener('input',filter);
-    search.addEventListener('focus',()=>{alignMobileViewport();requestAnimationFrame(alignMobileViewport);});
+    search.addEventListener('focus',()=>{
+      if(window.innerWidth<=600){
+        const y=lockedScrollY;
+        requestAnimationFrame(()=>{alignMobileViewport();if(y!==null&&window.scrollY!==0)window.scrollTo(0,0);});
+      }else alignMobileViewport();
+    });
     root.querySelector('.lmc-unified-close').addEventListener('click',closeAll);
     root.querySelector('.lmc-unified-backdrop').addEventListener('click',closeAll);
     select.addEventListener('change',sync);
