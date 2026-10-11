@@ -3593,3 +3593,20 @@ html[data-theme="dark"] .lmc-unified-item[aria-selected="true"]{background:#2b1a
   .lmc-unified-search{flex-shrink:0;font-size:16px;}
   .lmc-unified-heading{flex-shrink:0;}
 }
+
+/* Patch 04J: iOS fixed-position layer detached from scrolling form/modal. */
+.lmc-unified-trigger{height:44px!important;min-height:44px!important;max-height:44px!important;padding:4px 11px!important;border-radius:10px!important;}
+.lmc-unified-selected .ph-student-avatar.sm,.lmc-unified-trigger .ph-student-avatar.sm{width:32px!important;height:32px!important;min-width:32px!important;min-height:32px!important;flex:0 0 32px!important;}
+.lmc-unified-selected .ph-student-avatar.sm img{width:100%;height:100%;object-fit:cover;}
+.lmc-unified-menu.is-portal-open{display:flex!important;position:fixed!important;z-index:2147483001!important;flex-direction:column;overflow:hidden;box-sizing:border-box;}
+.lmc-unified-backdrop.is-portal-open{display:block!important;position:fixed!important;inset:0!important;background:rgba(10,20,35,.55)!important;z-index:2147483000!important;}
+@media(max-width:600px){
+  .lmc-unified-menu.is-portal-open{
+    top:calc(var(--lmc-picker-visible-top,0px) + 10px)!important;bottom:auto!important;
+    left:12px!important;right:12px!important;width:auto!important;max-width:none!important;
+    height:auto!important;max-height:calc(var(--lmc-picker-visible-height,100dvh) - 20px)!important;
+    border-radius:16px!important;padding:12px!important;
+  }
+  .lmc-unified-menu.is-portal-open .lmc-unified-options{flex:1;min-height:0;max-height:min(360px,calc(var(--lmc-picker-visible-height,100dvh) - 135px))!important;overflow-y:auto!important;}
+  .lmc-unified-trigger{height:48px!important;min-height:48px!important;max-height:48px!important;}
+}
