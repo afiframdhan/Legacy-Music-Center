@@ -358,7 +358,30 @@
             return;
           }
           closeRepertoireModal();
+          // Respons simpan sudah berisi baris terbaru. Tampilkan langsung agar
+          // guru tidak harus menunggu pengambilan ulang semua repertoire.
+          const saved = result.item && String(result.item.repertoireID || '').trim() ? result.item : null;
+          if (saved) {
+            const savedId = String(saved.repertoireID);
+            const existingItems = Array.isArray(globalRepertoireList) ? globalRepertoireList : [];
+            globalRepertoireList = [saved, ...existingItems.filter(item => String(item.repertoireID || '') !== savedId)];
+            repertoirePageLoaded = true;
+            // Jangan biarkan respons refresh lama mengganti data yang baru disimpan.
+            ++repertoireLoadRequestId;
+            populateRepertoireFilters();
+            // Bila filter lama menyembunyikan lagu yang baru disimpan, buka filternya.
+            if (!repertoireFilteredItems().some(item => String(item.repertoireID || '') === savedId)) {
+              ['repertoireStudentFilter','repertoireTeacherFilter','repertoireInstrumentFilter','repertoireStatusFilter'].forEach(id => {
+                const field = document.getElementById(id);
+                if (field) field.value = '';
+              });
+              const search = document.getElementById('repertoireSearch');
+              if (search) search.value = '';
+            }
+            renderRepertoirePage();
+          }
           showAlert('alertSuccess', result.message || 'Repertoire berhasil disimpan.');
+          // Sinkronisasi dari server tetap dilakukan, tetapi tidak menahan daftar/detail.
           loadRepertoirePage();
         })
         .withFailureHandler(error => {

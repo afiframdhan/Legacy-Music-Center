@@ -2225,7 +2225,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
       if (instrumentGroup) instrumentGroup.style.display = isStudent ? 'none' : 'block';
-      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (searchGroup) searchGroup.style.display = (isStudent || isAdmin) ? 'none' : 'block';
       if (studentGroup) studentGroup.style.display = isStudent ? 'none' : 'block';
 
       if (isAdmin && teacherSelect) {
@@ -2271,7 +2271,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const teacherValue = isAdmin ? String(document.getElementById('lpPageTeacher')?.value || '').trim() : '';
       const instrumentValue = !isStudent ? String(document.getElementById('lpPageInstrument')?.value || '').trim() : '';
       const searchInput = document.getElementById('lpPageStudentSearch');
-      const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      const searchTerm = !isStudent && !isAdmin && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
 
       let roleStudents = isStudent
         ? [{ nama:currentUser.userName, siswaID:currentUser.userID }]
@@ -3633,7 +3633,30 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
             return;
           }
           closeRepertoireModal();
+          // Respons simpan sudah berisi baris terbaru. Tampilkan langsung agar
+          // guru tidak harus menunggu pengambilan ulang semua repertoire.
+          const saved = result.item && String(result.item.repertoireID || '').trim() ? result.item : null;
+          if (saved) {
+            const savedId = String(saved.repertoireID);
+            const existingItems = Array.isArray(globalRepertoireList) ? globalRepertoireList : [];
+            globalRepertoireList = [saved, ...existingItems.filter(item => String(item.repertoireID || '') !== savedId)];
+            repertoirePageLoaded = true;
+            // Jangan biarkan respons refresh lama mengganti data yang baru disimpan.
+            ++repertoireLoadRequestId;
+            populateRepertoireFilters();
+            // Bila filter lama menyembunyikan lagu yang baru disimpan, buka filternya.
+            if (!repertoireFilteredItems().some(item => String(item.repertoireID || '') === savedId)) {
+              ['repertoireStudentFilter','repertoireTeacherFilter','repertoireInstrumentFilter','repertoireStatusFilter'].forEach(id => {
+                const field = document.getElementById(id);
+                if (field) field.value = '';
+              });
+              const search = document.getElementById('repertoireSearch');
+              if (search) search.value = '';
+            }
+            renderRepertoirePage();
+          }
           showAlert('alertSuccess', result.message || 'Repertoire berhasil disimpan.');
+          // Sinkronisasi dari server tetap dilakukan, tetapi tidak menahan daftar/detail.
           loadRepertoirePage();
         })
         .withFailureHandler(error => {
