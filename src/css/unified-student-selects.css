@@ -117,3 +117,44 @@ html[data-theme="dark"] .lmc-unified-item[aria-selected="true"]{background:#2b1a
   .lmc-person-filter.open .lmc-person-filter-menu{z-index:1000!important;}
   .ph-student-picker.open .ph-picker-menu{z-index:1000!important;}
 }
+
+/* Patch 04M - iPhone safe viewport in both legacy and unified student pickers.
+   Presentation only: no changes to selection, search events, or form submission. */
+@media (max-width:600px) {
+  /* Mobile app header and in-form modal titles may cover the top edge.
+     Reserve a stable header-safe area even when Safari's keyboard changes visualViewport. */
+  .lmc-person-filter.open .lmc-person-filter-menu,
+  .ph-student-picker.open .ph-picker-menu {
+    top:calc(var(--lmc-picker-visible-top, 0px) + 136px)!important;
+    bottom:auto!important;
+    max-height:max(110px, calc(var(--lmc-picker-visible-height, 100dvh) - 150px))!important;
+    z-index:2147482000!important;
+  }
+  .lmc-person-filter.open .lmc-person-filter-options,
+  .ph-student-picker.open .ph-picker-options {
+    max-height:none!important;
+    flex:1 1 auto!important;
+    min-height:0!important;
+    overflow-y:auto!important;
+  }
+  /* The portal-based picker needs the same header clearance in nested modals. */
+  .lmc-unified-menu.is-portal-open {
+    top:calc(var(--lmc-picker-visible-top, 0px) + 112px)!important;
+    max-height:max(110px, calc(var(--lmc-picker-visible-height, 100dvh) - 126px))!important;
+    bottom:auto!important;
+  }
+  .lmc-unified-menu.is-portal-open .lmc-unified-options {
+    flex:1 1 auto!important;
+    max-height:none!important;
+    min-height:0!important;
+    overflow-y:auto!important;
+  }
+  .lmc-person-filter-head,
+  .ph-picker-menu-head,
+  .lmc-unified-heading,
+  .lmc-person-filter-search,
+  .ph-picker-search,
+  .lmc-unified-search {
+    flex-shrink:0;
+  }
+}
