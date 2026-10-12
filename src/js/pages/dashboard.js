@@ -290,17 +290,25 @@
 
     function resetStudentPasswordAdmin(studentId, studentName, button) {
       if (currentUser.userType !== 'admin' || !studentId || !button || button.disabled) return;
-      if (!confirm(`Buat password sementara baru untuk siswa "${studentName}"? Password lama langsung tidak berlaku dan siswa perlu mengganti password saat login berikutnya.`)) return;
+      const password = prompt(`Masukkan password SEMENTARA baru untuk siswa "${studentName}".\nMinimal 8 karakter, mengandung huruf dan angka.\nJangan gunakan password yang sama untuk siswa lain.`);
+      if (password === null) return;
+      if (password.length < 8 || password.length > 72 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        alert('Password harus 8-72 karakter, mengandung huruf dan angka.');
+        return;
+      }
+      const confirmation = prompt('Ketik ulang password sementara untuk memastikan tidak salah ketik:');
+      if (confirmation === null) return;
+      if (password !== confirmation) { alert('Konfirmasi password tidak sama. Reset dibatalkan.'); return; }
+      if (!confirm(`Reset password siswa "${studentName}" sekarang? Password lama tidak berlaku untuk login baru dan siswa wajib mengganti password setelah login.`)) return;
       const oldLabel = button.textContent;
       button.disabled = true;
       button.textContent = 'Mereset...';
-      LegacyAPI.rpc('resetStudentPassword', [studentId]).then(result => {
-        if (!result || !result.success || !result.initialPassword) {
+      LegacyAPI.rpc('resetStudentPassword', [studentId, password]).then(result => {
+        if (!result || !result.success) {
           alert(result?.message || 'Reset password gagal.');
           return;
         }
-        // Password shown only in this confirmation. Never store in localStorage or DOM.
-        alert(`Password sementara baru untuk ${studentName}:\n\n${result.initialPassword}\n\nSalin sekarang dan berikan secara pribadi kepada siswa/orang tua. Password lama sudah tidak berlaku. Siswa wajib menggantinya saat login.`);
+        alert(`Password sementara untuk ${studentName} berhasil diubah.\nBerikan password yang Anda buat secara pribadi kepada siswa/orang tua.\nSiswa wajib menggantinya saat login berikutnya.`);
       }).catch(error => alert('Reset password gagal: ' + (error?.message || error)))
         .finally(() => { button.disabled = false; button.textContent = oldLabel; });
     }

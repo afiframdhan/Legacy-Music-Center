@@ -258,7 +258,10 @@ async function handleRpc(request, env, ctx) {
       if (!student || student.student_id !== studentId) {
         return json({ ok:true, data:{ success:false, message:'Akun siswa tidak ditemukan.' } });
       }
-      const password = generateInitialPassword();
+      const password = typeof args[1] === 'string' ? args[1] : '';
+      if (password.length < 8 || password.length > 72 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        return json({ ok:true, data:{ success:false, message:'Password harus 8-72 karakter, mengandung huruf dan angka.' } });
+      }
       await supabaseRpc(env, 'legacy_set_account_password', {
         p_user_id:studentId, p_role:'siswa', p_password:password, p_must_change:true
       });
@@ -266,8 +269,8 @@ async function handleRpc(request, env, ctx) {
         [{ siswaID:studentId, nama:String(student.name || '') }],
         { success:true, siswaID:studentId }
       ).catch(error => console.error('Student password reset audit failed:', error)));
-      return json({ ok:true, data:{ success:true, message:'Password sementara baru berhasil dibuat.',
-        siswaID:studentId, initialPassword:password, mustChangePassword:true } }, 200,
+      return json({ ok:true, data:{ success:true, message:'Password sementara pilihan Admin berhasil disimpan.',
+        siswaID:studentId, mustChangePassword:true } }, 200,
         { 'cache-control':'no-store' });
     } catch (error) {
       console.error('Reset student password failed:', error);
