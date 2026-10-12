@@ -125,6 +125,31 @@ export default {
       }
     }
 
+    // Patch 05G: authorized private teacher-attendance PNG proxy.
+    const teacherSignatureMatch = url.pathname.match(/^\/api\/teacher-attendance-signature\/([A-Za-z0-9_-]{1,128})$/);
+    if (teacherSignatureMatch && request.method === 'GET') {
+      if (!env.SESSION_SECRET) return new Response('Unavailable', {status:503});
+      const session = await readSession(request, env.SESSION_SECRET);
+      if (!session) return new Response('Unauthorized', {status:401});
+      if (String(session.userType || '').toLowerCase() !== 'admin') return new Response('Forbidden', {status:403});
+      try {
+        const rows = await sbRows(env,'teacher_attendance',{
+          select:'teacher_attendance_id,signature_data',
+          teacher_attendance_id:`eq.${teacherSignatureMatch[1]}`,limit:'1'
+        });
+        if (!rows[0]) return new Response('Not found', {status:404});
+        const match = String(rows[0].signature_data || '').match(/^lmc-drive-signature:([A-Za-z0-9_-]{10,128})$/);
+        if (!match) return new Response('Not found', {status:404});
+        const result = await gasRpc(env,'lmcReadPrivateSignature',[match[1]]);
+        if (!result?.success || !/^data:image\/png;base64,/.test(result.dataUrl || '')) throw new Error('Invalid Drive signature response');
+        const bytes = Uint8Array.from(atob(result.dataUrl.split(',')[1]),c=>c.charCodeAt(0));
+        return new Response(bytes,{status:200,headers:{'content-type':'image/png','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+      } catch(error) {
+        console.error('05G teacher signature read failed:',String(error?.message || error));
+        return new Response('Signature unavailable',{status:502});
+      }
+    }
+
     if (url.pathname === '/api/session' && request.method === 'GET') {
       if (!env.SESSION_SECRET) return json({ ok:false, error:'SESSION_SECRET belum dikonfigurasi.' }, 500);
       const session = await readSession(request, env.SESSION_SECRET);
@@ -921,7 +946,8 @@ async function handleRpc(request, env, ctx) {
           sbRows(env, 'student_attendance', {select:'attendance_id',teacher_signature_data:`eq.${ref}`,limit:'1'}),
           sbRows(env, 'student_attendance', {select:'attendance_id',student_signature_data:`eq.${ref}`,limit:'1'})
         ]);
-        if (teacherRefs.length || studentRefs.length) continue;
+        const teacherAttendanceRefs = await sbRows(env,'teacher_attendance',{select:'teacher_attendance_id',signature_data:`eq.${ref}`,limit:'1'});
+        if (teacherRefs.length || studentRefs.length || teacherAttendanceRefs.length) continue;
         await gasRpc(env, 'lmcTrashPrivateSignature', [fileId]);
         console.log('05E private signature moved to Trash:',reason,fileId.slice(0,6));
       } catch (error) {
@@ -1363,6 +1389,40 @@ async function handleRpc(request, env, ctx) {
       ? { absensiGuruID:String(safeArgs[0] || '').trim() }
       : (safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {});
 
+    // Patch 05G: protect existing signatures on edit and snapshot for safe cleanup.
+    let previousSignature = '';
+    if (payload.absensiGuruID) {
+      try {
+        const previous = await sbRows(env,'teacher_attendance',{
+          select:'teacher_attendance_id,signature_data',
+          teacher_attendance_id:`eq.${String(payload.absensiGuruID)}`,limit:'1'
+        });
+        previousSignature = String(previous[0]?.signature_data || '');
+      } catch (error) {
+        console.error('05G teacher signature snapshot failed:',String(error?.message || error));
+        return json({ok:true,data:{success:false,message:'Tidak dapat memeriksa tanda tangan sebelumnya. Coba lagi.'}});
+      }
+    }
+    const createdTeacherSignatures = [];
+    if (method === 'recordTeacherAttendance') {
+      const submitted = String(payload.tandaTangan || '');
+      if ((!submitted || submitted === `/api/teacher-attendance-signature/${payload.absensiGuruID}`) && payload.absensiGuruID) {
+        payload.tandaTangan = previousSignature;
+      }
+      if (String(env.PRIVATE_SIGNATURE_DRIVE || '') === 'true' && /^data:image\/png;base64,/i.test(String(payload.tandaTangan || ''))) {
+        if (String(payload.tandaTangan).length > 450000) return json({ok:true,data:{success:false,message:'Gambar tanda tangan terlalu besar.'}});
+        try {
+          const upload = await gasRpc(env,'lmcUploadPrivateSignature',[payload.tandaTangan,`teacher_attendance_${Date.now()}.png`]);
+          if (!upload?.success || !/^[A-Za-z0-9_-]{10,128}$/.test(String(upload.fileId || ''))) throw new Error('Upload response invalid');
+          payload.tandaTangan = `lmc-drive-signature:${upload.fileId}`;
+          createdTeacherSignatures.push(payload.tandaTangan);
+        } catch(error) {
+          console.error('05G teacher upload failed:',String(error?.message || error));
+          return json({ok:true,data:{success:false,message:'Gagal upload tanda tangan guru ke Drive. Data belum disimpan.'}});
+        }
+      }
+    }
+
     let result;
     try {
       result = await supabaseRpc(env, 'legacy_direct_teacher_attendance_mutation', {
@@ -1374,12 +1434,22 @@ async function handleRpc(request, env, ctx) {
       });
     } catch (error) {
       console.error(`Supabase direct teacher attendance write failed for ${method}:`, error);
+      if (createdTeacherSignatures.length && ctx) ctx.waitUntil(cleanupUnusedAttendanceSignatures(createdTeacherSignatures,'teacher-database-error'));
       return json({
         ok:true,
         data:{ success:false, message:'Gagal menyimpan absensi guru ke database. Silakan coba lagi.' }
       });
     }
 
+    if (ctx) {
+      if (result?.success === true) {
+        if (previousSignature && (method === 'deleteTeacherAttendance' || (method === 'recordTeacherAttendance' && String(payload.tandaTangan || '') !== previousSignature))) {
+          ctx.waitUntil(cleanupUnusedAttendanceSignatures([previousSignature],'teacher-signature-replaced-or-deleted'));
+        }
+      } else if (createdTeacherSignatures.length) {
+        ctx.waitUntil(cleanupUnusedAttendanceSignatures(createdTeacherSignatures,'teacher-mutation-rejected'));
+      }
+    }
     if (result && result.success === true && ctx) {
       if (method === 'deleteTeacherAttendance') {
         const id = String(result.absensiGuruID || payload.absensiGuruID || '').trim();
@@ -3325,7 +3395,9 @@ function mapTeacherAttendance(row) {
     jamKeluar: formatDbTime(row.check_out),
     catatan: row.notes || '',
     dicatatOleh: row.recorded_by || '',
-    tandaTangan: row.signature_data || ''
+    tandaTangan: /^lmc-drive-signature:[A-Za-z0-9_-]{10,128}$/.test(String(row.signature_data || '')) && /^[A-Za-z0-9_-]{1,128}$/.test(String(row.teacher_attendance_id || ''))
+      ? `/api/teacher-attendance-signature/${encodeURIComponent(String(row.teacher_attendance_id))}`
+      : (row.signature_data || '')
   };
 }
 
