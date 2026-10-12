@@ -15,12 +15,14 @@ const jsSources = [
   'src/js/pages/progress.js',
   'src/js/pages/academy.js',
   'src/js/pages/repertoire.js',
+  'src/js/pages/practice-hub.js',
   'src/js/pages/admin-control.js',
   'src/js/pages/dashboard.js',
   'src/js/pages/jadwal-absensi.js',
   'src/js/pages/tugas.js',
   'src/js/pages/siswa-profile.js',
-  'src/js/pages/admin.js'
+  'src/js/pages/admin.js',
+  'src/js/core/unified-student-selects.js'
 ];
 
 const cssSources = [
@@ -28,7 +30,10 @@ const cssSources = [
   'src/css/components.css',
   'src/css/pages/tugas.css',
   'src/css/pages/progress-and-pages.css',
-  'src/css/responsive-theme-admin.css'
+  'src/css/responsive-theme-admin.css',
+  'src/css/theme-system.css',
+  'src/css/release-ui-stabilization.css',
+  'src/css/unified-student-selects.css'
 ];
 
 async function concat(files) {

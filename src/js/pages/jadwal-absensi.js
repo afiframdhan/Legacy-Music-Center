@@ -212,7 +212,6 @@ Guru: ${props.guru}`);
     function refreshAbsensiStudentOptions() {
       const select = document.getElementById('absensiSiswa');
       if (!select || currentUser.userType === 'siswa') return;
-      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
       const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
       const day = formDay;
       const currentValue = select.value;
@@ -230,9 +229,9 @@ Guru: ${props.guru}`);
         });
       }
       const students = (globalSiswaList || []).filter(student => {
+        if (!isOperationalStudent(student)) return false;
         const name = String(student.nama || '').trim();
         if (!name) return false;
-        if (search && !name.toLowerCase().includes(search)) return false;
         if (day && !scheduleNames.has(name.toLowerCase())) return false;
         return true;
       }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
@@ -257,16 +256,20 @@ Guru: ${props.guru}`);
       const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
       const currentValue = String(select.value || '').trim();
 
+      // The teacher dashboard already contains schedules scoped to the logged-in teacher.
+      // Use those assignments when choosing a student: a child enrolled in two
+      // instruments must not be included just because of an unrelated class.
       const allowedNames = new Set((globalJadwalList || [])
         .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
         .map(item => String(item.namaSiswa || '').trim().toLowerCase())
         .filter(Boolean));
+      const restrictToTeacherSchedule = currentUser.userType === 'guru' && allowedNames.size > 0;
 
       const students = (globalSiswaList || [])
         .filter(student => {
           const name = String(student.nama || '').trim();
           if (!name) return false;
-          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
+          if ((selectedDay || restrictToTeacherSchedule) && !allowedNames.has(name.toLowerCase())) return false;
           return true;
         })
         .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
@@ -350,10 +353,8 @@ Guru: ${props.guru}`);
       }
 
       const filterSiswaContainer = document.getElementById('containerFilterProgressSiswa');
-      const searchSiswaContainer = document.getElementById('containerSearchProgressSiswa');
       const filterHariContainer = document.getElementById('containerFilterProgressHari');
       const filterSiswaEl = document.getElementById('filterProgressSiswa');
-      if (searchSiswaContainer) searchSiswaContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if (filterHariContainer) filterHariContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if ((isGuru || isAdmin) && filterSiswaEl && filterSiswaContainer) {
         filterSiswaContainer.style.display = 'block';
@@ -375,11 +376,29 @@ Guru: ${props.guru}`);
       toggleExportMonthHint();
     }
 
+    // An enrolment can have several instruments. Attendance belongs to its
+    // recording teacher, not to every class that shares the student's name.
+    function attendanceBelongsToCurrentTeacher(item) {
+      if (currentUser.userType !== 'guru') return true;
+      const recordTeacherId = String(item.guruID || item.teacherID || '').trim();
+      const signedInTeacherId = String(currentUser.userID || '').trim();
+      if (recordTeacherId && signedInTeacherId) return recordTeacherId === signedInTeacherId;
+      // Legacy records with no teacher ID: only trust an explicit teacher name.
+      const recordedName = String(item.guruCatat || '').trim().toLowerCase();
+      const loggedName = String(currentUser.userName || '').trim().toLowerCase();
+      return !!recordedName && !!loggedName && recordedName === loggedName;
+    }
+
     function renderTabelRiwayat() {
       const tbody = document.getElementById('riwayatAbsensiBody'); 
       const thAksi = document.getElementById('thAbsensiAksi');
       const thTtdSiswa = document.getElementById('thAbsensiTtdSiswa');
       if(!tbody) return;
+      // Do not depend on opening the print dialog to load private Drive signatures.
+      // Only request the detailed attendance module when the history is visible.
+      if (tbody.getClientRects().length && typeof ensureAttendanceSignatures === 'function') {
+        ensureAttendanceSignatures().catch(error => console.warn('[Attendance signatures]', error));
+      }
       tbody.innerHTML = '';
 
       const isSiswa = currentUser.userType === 'siswa';
@@ -391,20 +410,17 @@ Guru: ${props.guru}`);
 
       const filterBulanVal = document.getElementById('filterRiwayatSelect') ? document.getElementById('filterRiwayatSelect').value.trim() : '';
       const filterSiswaVal = (!isSiswa && document.getElementById('filterProgressSiswa')) ? document.getElementById('filterProgressSiswa').value.trim().toLowerCase() : '';
-      const searchSiswaVal = (!isSiswa && document.getElementById('searchProgressSiswa')) ? document.getElementById('searchProgressSiswa').value.trim().toLowerCase() : '';
       const filterHariVal = (!isSiswa && document.getElementById('filterProgressHari')) ? document.getElementById('filterProgressHari').value.trim().toLowerCase() : '';
       const filterGuruVal = (isAdmin && document.getElementById('filterProgressGuru')) ? document.getElementById('filterProgressGuru').value.trim().toLowerCase() : '';
 
       let filteredList = globalAbsensiList.filter(item => {
+        if (!attendanceBelongsToCurrentTeacher(item)) return false;
         if (isAdmin && filterGuruVal !== '') {
           if (String(item.guruCatat || '').trim().toLowerCase() !== filterGuruVal) return false;
         }
 
         if (!isSiswa && filterSiswaVal !== '') {
           if (String(item.namaSiswa || '').trim().toLowerCase() !== filterSiswaVal) return false;
-        }
-        if (!isSiswa && searchSiswaVal !== '') {
-          if (!String(item.namaSiswa || '').trim().toLowerCase().includes(searchSiswaVal)) return false;
         }
         if (!isSiswa && filterHariVal !== '') {
           if (getIndonesianDayNameFromAttendanceDate(item.tanggal).toLowerCase() !== filterHariVal) return false;
@@ -430,12 +446,12 @@ Guru: ${props.guru}`);
         let displayName = item.namaSiswa || currentUser.userName;
 
         let ttdGuruHtml = item.tandaTangan || '-';
-        if (item.tandaTangan && item.tandaTangan.startsWith('data:image')) {
+        if (item.tandaTangan && (item.tandaTangan.startsWith('data:image') || item.tandaTangan.startsWith('/api/attendance-signature/'))) {
           ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">`;
         }
 
         let ttdSiswaHtml = item.ttdSiswa || '-';
-        if (item.ttdSiswa && item.ttdSiswa.startsWith('data:image')) {
+        if (item.ttdSiswa && (item.ttdSiswa.startsWith('data:image') || item.ttdSiswa.startsWith('/api/attendance-signature/'))) {
           ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa">`;
         }
 
@@ -481,6 +497,7 @@ Guru: ${props.guru}`);
       const startThreeMonths = new Date();
       startThreeMonths.setDate(1); startThreeMonths.setMonth(startThreeMonths.getMonth() - 2); startThreeMonths.setHours(0,0,0,0);
       return globalAbsensiList.filter(item => {
+        if (!attendanceBelongsToCurrentTeacher(item)) return false;
         if (student && String(item.namaSiswa || '').trim().toLowerCase() !== student) return false;
         if (teacher && String(item.guruCatat || '').trim().toLowerCase() !== teacher) return false;
         if (month && !String(item.tanggal || '').includes(month)) return false;
@@ -504,14 +521,26 @@ Guru: ${props.guru}`);
     }
 
 
-    function printAbsensiReport() {
+    async function printAbsensiReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
-      const records = getAbsensiReportData();
-      if (!records.length) { showAlert('alertDanger', 'Tidak ada data Absensi pada filter dan periode yang dipilih.'); return; }
+      // Open immediately to avoid popup blocking after an asynchronous fetch.
       const printWindow = window.open('', '_blank', 'width=1200,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
-      const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
-      buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      printWindow.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Menyiapkan laporan</title></head><body style="font:16px Arial;padding:32px">Mengambil tanda tangan untuk laporan. Mohon tunggu...</body></html>');
+      printWindow.document.close();
+      try {
+        if (typeof ensureAttendanceSignatures === 'function') {
+          const ok = await ensureAttendanceSignatures();
+          if (!ok) throw new Error('Gagal mengambil tanda tangan dari server.');
+        }
+        const records = getAbsensiReportData();
+        if (!records.length) throw new Error('Tidak ada absensi pada filter dan periode yang dipilih.');
+        const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+        buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      } catch (error) {
+        printWindow.document.body.textContent = 'Laporan belum bisa dibuat: ' + (error?.message || error);
+        showAlert('alertDanger', 'Laporan gagal dimuat. Coba lagi setelah koneksi stabil.');
+      }
     }
     function buildAbsensiPrintWindow(records, printWindow, logoDataUrl) {
       const studentFilter = document.getElementById('filterProgressSiswa')?.value || 'Semua Siswa';
@@ -522,7 +551,7 @@ Guru: ${props.guru}`);
       const periodLabel = selectedMonth || (periodType === 'all' ? 'Semua Riwayat' : '3 Bulan Terakhir');
       const present = records.filter(item => item.status === 'Masuk').length;
       const rows = records.map((item, index) => {
-        const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
+        const signature = value => value && (String(value).startsWith('data:image') || String(value).startsWith('/api/attendance-signature/')) ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
         return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.materi || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.lagu || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
       const safeName = String(studentFilter || 'Semua-Siswa').replace(/[^a-z0-9_-]+/gi,'-');

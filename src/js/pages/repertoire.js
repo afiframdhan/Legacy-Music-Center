@@ -307,7 +307,7 @@
       let students = (globalSiswaList || []).slice();
       if (currentUser.userType === 'guru') {
         // globalSiswaList pada dashboard guru memang hanya berisi siswa yang dapat diakses guru tersebut.
-        students = students.filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+        students = students.filter(isOperationalStudent);
       }
       students.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
       select.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
@@ -357,9 +357,40 @@
             showAlert('alertDanger', (result && result.message) || 'Repertoire gagal disimpan.');
             return;
           }
+          // Pastikan lapisan pemilih siswa (termasuk portal iPhone) tertutup
+          // sebelum modal disembunyikan; lapisan tertinggal dapat menahan klik detail.
+          const pickerClose = document.querySelector('.lmc-unified-menu.is-portal-open .lmc-unified-close')
+            || document.querySelector('#modalRepertoire .lmc-unified-picker.is-open .lmc-unified-close');
+          if (pickerClose) pickerClose.click();
           closeRepertoireModal();
+          // Respons simpan sudah berisi baris terbaru. Tampilkan langsung agar
+          // guru tidak harus menunggu pengambilan ulang semua repertoire.
+          const saved = result.item && String(result.item.repertoireID || '').trim() ? result.item : null;
+          if (saved) {
+            const savedId = String(saved.repertoireID);
+            const existingItems = Array.isArray(globalRepertoireList) ? globalRepertoireList : [];
+            globalRepertoireList = [saved, ...existingItems.filter(item => String(item.repertoireID || '') !== savedId)];
+            repertoirePageLoaded = true;
+            // Jangan biarkan respons refresh lama mengganti data yang baru disimpan.
+            ++repertoireLoadRequestId;
+            populateRepertoireFilters();
+            // Bila filter lama menyembunyikan lagu yang baru disimpan, buka filternya.
+            if (!repertoireFilteredItems().some(item => String(item.repertoireID || '') === savedId)) {
+              ['repertoireStudentFilter','repertoireTeacherFilter','repertoireInstrumentFilter','repertoireStatusFilter'].forEach(id => {
+                const field = document.getElementById(id);
+                if (field) field.value = '';
+              });
+              const search = document.getElementById('repertoireSearch');
+              if (search) search.value = '';
+            }
+            renderRepertoirePage();
+          }
           showAlert('alertSuccess', result.message || 'Repertoire berhasil disimpan.');
-          loadRepertoirePage();
+          // Jangan memuat ulang daftar tepat setelah Simpan: render ulang oleh
+          // request asinkron dapat membuat tombol Detail tidak responsif sesaat.
+          // Data yang dikembalikan server sudah dipasang di atas; pembukaan menu
+          // berikutnya tetap mengambil snapshot terbaru melalui loadRepertoirePage().
+          if (!saved) loadRepertoirePage();
         })
         .withFailureHandler(error => {
           if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Simpan Repertoire'; }

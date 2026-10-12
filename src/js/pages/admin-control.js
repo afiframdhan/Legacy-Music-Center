@@ -1,6 +1,7 @@
     let globalAdminAuditLog = [];
     let globalAdminQualityFindings = [];
     let globalAdminControlSummary = null;
+    let adminControlLoadInFlight = false;
 
     function loadAdminControlCenter(force = false) {
       if (currentUser.userType !== 'admin') return;
@@ -10,8 +11,11 @@
         renderAdminControlCenter(globalAdminControlSummary);
         return;
       }
+      if (adminControlLoadInFlight) return;
+      adminControlLoadInFlight = true;
       box.classList.add('admin-control-loading');
       google.script.run.withSuccessHandler(result => {
+        adminControlLoadInFlight = false;
         box.classList.remove('admin-control-loading');
         if (!result || result.success === false) {
           renderAdminControlCenter({ success:false, message:(result && result.message) || 'Dashboard kontrol gagal dimuat.' });
@@ -20,6 +24,7 @@
         globalAdminControlSummary = result;
         renderAdminControlCenter(result);
       }).withFailureHandler(error => {
+        adminControlLoadInFlight = false;
         box.classList.remove('admin-control-loading');
         renderAdminControlCenter({ success:false, message:error.message || String(error) });
       }).getAdminControlCenter();

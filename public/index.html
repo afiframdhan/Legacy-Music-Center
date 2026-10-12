@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Legacy Music Center">
 <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
   <title>Legacy Music Center - Portal</title>
   <script>
     (function() {
@@ -412,6 +412,35 @@
           </div>
         </div>
 
+
+        <div class="content-section" id="section-practice-hub">
+          <div class="task-page-head practice-page-head">
+            <div><h2>Latihan Mandiri</h2><p>Materi latihan yang selalu tersedia dan Evaluasi Audio/Video dalam satu tempat yang rapi.</p></div>
+            <div id="practiceTeacherActions" class="practice-head-actions" style="display:none;">
+              <button type="button" id="practiceAddEvaluationBtn" class="btn btn-export" onclick="openMediaEvaluationModal()">+ Evaluasi Audio/Video</button>
+              <button type="button" id="practiceAddMaterialBtn" class="btn btn-primary" onclick="openPracticeResourceModal()">+ Materi Latihan</button>
+            </div>
+          </div>
+          <div class="practice-mode-tabs" role="tablist" aria-label="Jenis latihan">
+            <button type="button" id="practiceTabMaterials" class="practice-mode-tab active" onclick="setPracticeHubTab('materials')">📚 Materi Latihan</button>
+            <button type="button" id="practiceTabEvaluations" class="practice-mode-tab" onclick="setPracticeHubTab('evaluations')">🎧 Evaluasi Audio / Video</button>
+          </div>
+          <div class="task-stats practice-stats">
+            <div class="task-stat"><div class="task-stat-icon">📚</div><div class="task-stat-copy"><span>Materi Latihan</span><strong id="practiceStatResources">0</strong><small>Materi aktif</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">▶</div><div class="task-stat-copy"><span>Video Tutorial</span><strong id="practiceStatVideos">0</strong><small>YouTube Unlisted</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">📄</div><div class="task-stat-copy"><span>File / PDF</span><strong id="practiceStatFiles">0</strong><small>Google Drive</small></div></div>
+            <div class="task-stat"><div class="task-stat-icon">🎧</div><div class="task-stat-copy"><span>Evaluasi</span><strong id="practiceStatEvaluations">0</strong><small>Audio / Video</small></div></div>
+          </div>
+          <div class="widget-box practice-filter-box"><div class="practice-filter-grid"><div class="form-group" style="margin:0;"><label>Cari</label><input type="search" id="practiceSearch" placeholder="Cari materi, siswa, instrumen..." oninput="renderPracticeHub()"></div><div class="form-group" style="margin:0;"><label>Siswa</label><select id="practiceStudentFilter" onchange="renderPracticeHub()"><option value="">Semua Siswa</option></select></div></div></div>
+          <div id="practiceHubLoading" class="widget-box practice-empty">Memuat materi latihan...</div>
+          <div id="practiceMaterialsPane" class="practice-mode-pane active">
+            <section><div class="practice-section-title"><div><h3>📚 Materi Latihan</h3><p>Bukan tugas. Materi ini selalu tersedia untuk latihan mandiri.</p></div></div><div id="practiceResourceList" class="practice-resource-list"></div></section>
+          </div>
+          <div id="practiceEvaluationsPane" class="practice-mode-pane">
+            <section><div class="practice-section-title"><div><h3>🎧 Evaluasi Audio / Video</h3><p>Cari evaluasi berdasarkan judul, materi, repertoire, instrumen, atau siswa.</p></div></div><div id="mediaEvaluationBrowseFilters" class="media-eval-browse-filters"></div><div id="mediaEvaluationList" class="media-eval-list"></div></section>
+          </div>
+        </div>
+
         <!-- DAFTAR SISWA -->
         <div class="content-section" id="section-siswa">
           <div class="academy-page-head"><div><h2>Daftar Siswa</h2><p>Kelola data siswa, kelas, instrumen, dan guru pengajar dalam satu tampilan.</p></div></div>
@@ -722,14 +751,14 @@
 
         <!-- MATERI & PROGRESS -->
         <div class="content-section" id="section-progress">
-          <div class="attendance-page-head"><h2>Materi & Progress (Absensi)</h2><p>Catat kehadiran, materi pertemuan, latihan, dan perkembangan siswa dalam satu tampilan.</p></div>
+          <div class="attendance-page-head"><h2>Materi & Absensi</h2><p>Catat kehadiran, materi pertemuan, latihan, dan perkembangan siswa dalam satu tampilan.</p></div>
           <div class="widget-box attendance-form-box collapsible-widget" id="formAbsensiContainer" style="display:none;">
             <div class="widget-header">
               <div class="widget-title">Catat Kehadiran & Progress Pertemuan</div>
               <button type="button" class="widget-collapse-btn" data-collapse-button="formAbsensiContainer" onclick="toggleDashboardWidget('formAbsensiContainer')" aria-label="Minimize">−</button>
             </div>
             <form id="formAbsensi" class="attendance-form-grid collapsible-content" onsubmit="return addAbsensiCombined(event)">
-              <div class="form-group"><label>Cari Siswa</label><input type="search" id="absensiSiswaSearch" placeholder="Ketik nama siswa..." oninput="refreshAbsensiStudentOptions()" autocomplete="off"></div>
+              
               <div class="form-group"><label>Filter Hari</label><select id="absensiHariFilter" onchange="refreshAbsensiStudentOptions()"><option value="">-- Semua Hari --</option><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option><option value="Minggu">Minggu</option></select></div>
               <div class="form-group"><label>Pilih Siswa</label><select id="absensiSiswa" required></select><div id="absensiStudentFilterHint" style="font-size:11px;color:#64748b;margin-top:5px;"></div></div>
               <div class="form-group"><label>Pertemuan Ke</label><select id="absensiPertemuanKe" required><option value="1">Pertemuan 1</option><option value="2">Pertemuan 2</option><option value="3">Pertemuan 3</option><option value="4">Pertemuan 4</option></select></div>
@@ -783,12 +812,6 @@
                 <select id="filterProgressGuru" onchange="renderTabelRiwayat()">
                   <option value="">-- Semua Guru --</option>
                 </select>
-              </div>
-
-              <!-- Search Siswa (Guru & Admin) -->
-              <div class="form-group" id="containerSearchProgressSiswa" style="margin:0; display:none;">
-                <label>Cari Siswa:</label>
-                <input type="search" id="searchProgressSiswa" placeholder="Ketik nama siswa..." oninput="renderTabelRiwayat()" autocomplete="off">
               </div>
 
               <!-- Filter Hari (Guru & Admin) -->
@@ -853,7 +876,7 @@
         <div class="content-section" id="section-tugas">
           <div class="task-page-head">
             <div>
-              <h2>Tugas & Latihan</h2>
+              <h2>Tugas</h2>
               <p id="taskPageSubtitle">Kelola latihan, lampiran materi, dan hasil tugas dalam satu tempat.</p>
             </div>
             <button type="button" id="btnOpenCreateTask" class="btn btn-primary" style="display:none;" onclick="toggleCreateTaskForm()">+ Buat Tugas Baru</button>
@@ -1238,7 +1261,7 @@
           <div class="profile-layout">
             <div class="profile-photo-container">
               <div class="profile-avatar-large" onclick="triggerPhotoSelect()">
-                <img id="myProfilePhotoImg" src="" style="display:none;">
+                <img id="myProfilePhotoImg" src="" alt="Foto profil" style="display:none;">
                 <span id="myProfileInitials">A</span>
                 <div class="overlay">Ubah Foto</div>
               </div>
@@ -1283,6 +1306,14 @@
               <small class="push-settings-help">Untuk iPhone: tambahkan aplikasi ke Home Screen, buka dari ikon Home Screen, lalu tekan Aktifkan Notifikasi.</small>
             </section>
 
+            <section class="security-settings" aria-labelledby="securitySettingsTitle">
+              <div>
+                <h3 id="securitySettingsTitle">Keamanan Akun</h3>
+                <p>Gunakan password unik minimal 8 karakter yang mengandung huruf dan angka.</p>
+              </div>
+              <button type="button" class="btn btn-secondary" onclick="openChangePasswordModal()">Ubah Password</button>
+            </section>
+
             <form id="formEditProfileSelf" onsubmit="return handleSaveSelfProfile(event)">
               <div class="form-group"><label>Nama Lengkap</label><input type="text" id="selfProfileNama" required></div>
               <div class="form-group"><label>Alamat Email</label><input type="email" id="selfProfileEmail" required></div>
@@ -1298,6 +1329,73 @@
         </div>
 
       </div>
+    </div>
+  </div>
+
+
+  <!-- MODAL MATERI LATIHAN -->
+  <div id="modalPracticeResource" class="modal">
+    <div class="modal-content practice-modal-content">
+      <div class="modal-header"><h3 id="practiceResourceModalTitle">Tambah Materi Latihan</h3><button class="modal-close" onclick="closePracticeResourceModal()">&times;</button></div>
+      <form onsubmit="return savePracticeResource(event)">
+        <input type="hidden" id="practiceResourceId">
+        <div class="practice-form-grid">
+          <div class="form-group"><label>Siswa</label><select id="practiceResourceStudent" required onchange="syncPracticeResourceInstrument()"></select></div>
+          <div class="form-group"><label>Instrumen</label><select id="practiceResourceInstrument" required></select></div>
+          <div class="form-group practice-span-2"><label>Judul Materi</label><input id="practiceResourceTitle" required placeholder="Contoh: Latihan Barre Chord Minggu 1"></div>
+          <div class="form-group practice-span-2"><label>Deskripsi / Petunjuk Latihan</label><textarea id="practiceResourceDescription" rows="4" placeholder="Tuliskan cara latihan, tempo, target, atau catatan penting..."></textarea></div>
+          <div class="form-group practice-span-2"><label>Video Tutorial YouTube (Unlisted)</label><input type="url" id="practiceResourceYoutube" placeholder="https://youtu.be/..."><small>Video tutorial disimpan di YouTube agar Google Drive tidak penuh.</small></div>
+          <div class="form-group practice-span-2"><label>File / PDF Google Drive</label><input type="file" id="practiceResourceFiles" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,image/*,audio/*"><small>Maksimal 5 file. Video gunakan YouTube Unlisted.</small></div>
+        </div>
+        <div class="practice-modal-actions"><button type="button" class="btn" onclick="closePracticeResourceModal()">Batal</button><button type="submit" id="btnSavePracticeResource" class="btn btn-primary">Simpan Materi</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DETAIL MATERI LATIHAN -->
+  <div id="modalPracticeResourceDetail" class="modal" onclick="if(event.target===this)closePracticeResourceDetail()">
+    <div class="modal-content media-eval-detail-modal practice-resource-detail-modal">
+      <div class="modal-header">
+        <h3>Detail Materi Latihan</h3>
+        <button type="button" class="modal-close" onclick="closePracticeResourceDetail()">&times;</button>
+      </div>
+      <div id="practiceResourceDetailBody"></div>
+      <div id="practiceResourceDetailActions" class="practice-modal-actions"></div>
+    </div>
+  </div>
+
+  <!-- MODAL EVALUASI AUDIO VIDEO -->
+  <div id="modalMediaEvaluation" class="modal">
+    <div class="modal-content practice-modal-content media-eval-form-modal">
+      <div class="modal-header"><h3 id="mediaEvaluationModalTitle">Evaluasi Audio/Video Baru</h3><button class="modal-close" onclick="closeMediaEvaluationModal()">&times;</button></div>
+      <form onsubmit="return saveMediaEvaluation(event)">
+        <input type="hidden" id="mediaEvalId">
+        <div class="practice-form-grid media-eval-form-top">
+          <div class="form-group"><label>Pilih Siswa</label><select id="mediaEvalStudent" required style="display:none"></select><div id="mediaEvalStudentPicker" class="ph-student-picker"></div></div>
+          <div class="form-group"><label>Instrumen</label><select id="mediaEvalInstrument" required onchange="onMediaEvalInstrumentChange()"></select></div>
+          <div class="form-group practice-span-2"><label>Pilih Tugas / Latihan</label><select id="mediaEvalSource" onchange="onMediaEvalSourceChange()"><option value="">Tanpa sumber khusus</option></select><small>Pilih Tugas, Latihan Mandiri, atau Repertoire siswa agar evaluasi mudah dicari kembali.</small></div>
+          <div class="form-group" style="display:none"><label>Repertoire</label><select id="mediaEvalRepertoire"><option value="">Tanpa Repertoire</option></select></div>
+          <div class="form-group"><label>Judul Evaluasi</label><input id="mediaEvalTitle" required placeholder="Contoh: Full Performance - Autumn Leaves"></div>
+          <div class="form-group"><label>Link Audio / Video</label><input type="url" id="mediaEvalUrl" placeholder="YouTube Unlisted atau link Google Drive"><small>Gunakan YouTube Unlisted untuk video panjang. Audio boleh berupa link Google Drive.</small></div>
+        </div>
+        <div class="media-aspect-editor-wrap"><div class="practice-section-title"><div><h3>Aspek Penilaian</h3><p>Otomatis mengikuti instrumen. Nama aspek dan nilainya tetap bisa diedit guru.</p></div></div><div id="mediaEvalAspectEditor" class="media-aspect-editor"></div></div>
+        <div class="practice-form-grid">
+          <div class="form-group"><label>Kekuatan Utama</label><textarea id="mediaEvalStrength" rows="3"></textarea></div>
+          <div class="form-group"><label>Perlu Ditingkatkan</label><textarea id="mediaEvalImprovement" rows="3"></textarea></div>
+          <div class="form-group"><label>Target Selanjutnya</label><textarea id="mediaEvalNextTarget" rows="3"></textarea></div>
+          <div class="form-group"><label>Catatan Umum</label><textarea id="mediaEvalNotes" rows="3"></textarea></div>
+          <div class="form-group practice-span-2"><label>Feedback Berdasarkan Waktu</label><textarea id="mediaEvalMarkers" rows="4" placeholder="00:24 | Tempo mulai goyah, gunakan metronome&#10;00:51 | Transisi chord sudah lebih rapi"></textarea><small>Satu feedback per baris dengan format waktu | catatan.</small></div>
+        </div>
+        <div class="practice-modal-actions"><button type="button" class="btn" onclick="closeMediaEvaluationModal()">Batal</button><button type="submit" id="btnSaveMediaEvaluation" class="btn btn-primary">Simpan Evaluasi</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalMediaEvaluationDetail" class="modal">
+    <div class="modal-content media-eval-detail-modal">
+      <div class="modal-header"><h3>Evaluasi Audio / Video</h3><button class="modal-close" onclick="closeMediaEvaluationDetail()">&times;</button></div>
+      <div id="mediaEvaluationDetailBody"></div>
+      <div id="mediaEvaluationDetailActions" class="practice-modal-actions"></div>
     </div>
   </div>
 
@@ -1345,13 +1443,13 @@
   </div>
 
   <!-- MODAL KERJAKAN TUGAS (SISWA) -->
-  <div id="modalKerjakanTugas" class="modal">
-    <div class="modal-content">
+  <div id="modalKerjakanTugas" class="modal task-submit-modal">
+    <div class="modal-content task-submit-modal-content">
       <div class="modal-header">
         <h3>Kumpulkan Tugas</h3>
         <button class="modal-close" onclick="closeKerjakanModal()">&times;</button>
       </div>
-      <form onsubmit="return handleSubmitJawabanTugas(event)">
+      <form class="task-submit-form" onsubmit="return handleSubmitJawabanTugas(event)">
         <input type="hidden" id="modalTugasID">
         <div class="form-group">
           <label>Judul Tugas</label>
@@ -1367,12 +1465,20 @@
           <div class="task-help">Tambahkan rekaman audio, video latihan, foto, PDF, atau file lainnya. Jawaban tertulis atau minimal satu file wajib diisi.</div>
           <div id="taskAnswerSelection" class="task-file-selection"></div>
         </div>
-        <button type="submit" id="btnSubmitJawaban" class="btn btn-primary" style="width:100%;">Kirim Jawaban</button>
+        <div class="task-submit-actions"><button type="button" class="btn" onclick="closeKerjakanModal()">Batal</button><button type="submit" id="btnSubmitJawaban" class="btn btn-primary">Kirim Jawaban</button></div>
       </form>
     </div>
   </div>
 
   <!-- MODAL DETAIL TUGAS & JAWABAN -->
+  <div id="modalExitedStudentArchive" class="modal" onclick="handleExitedStudentArchiveBackdrop(event)">
+    <div class="modal-content student-archive-modal-content" role="dialog" aria-modal="true" aria-labelledby="exitedStudentArchiveTitle">
+      <div class="modal-header"><h3 id="exitedStudentArchiveTitle">Arsip Siswa</h3><button type="button" class="modal-close" onclick="closeExitedStudentArchive()" aria-label="Tutup">&times;</button></div>
+      <div id="exitedStudentArchiveBody" class="student-archive-body"></div>
+      <div class="student-archive-footer"><button type="button" class="btn btn-primary" onclick="closeExitedStudentArchive()">Tutup</button></div>
+    </div>
+  </div>
+
   <div id="modalDetailTugas" class="modal task-detail-modal" onclick="handleTaskDetailBackdrop(event)">
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="taskDetailModalTitle">
       <div class="modal-header">
@@ -1568,6 +1674,22 @@
     </div>
   </div>
 
+  <!-- MODAL UBAH PASSWORD -->
+  <div id="modalForcePassword" class="modal force-password-modal" aria-modal="true" role="dialog" aria-labelledby="forcePasswordTitle">
+    <div class="modal-content force-password-content">
+      <div class="modal-header">
+        <div><h3 id="forcePasswordTitle">Ubah Password</h3><p id="forcePasswordSubtitle">Perbarui password akun Anda.</p></div>
+        <button type="button" id="forcePasswordClose" class="modal-close" onclick="closeChangePasswordModal()">&times;</button>
+      </div>
+      <form onsubmit="return handleForcePasswordChange(event)">
+        <div id="forcePasswordMessage" class="force-password-message"></div>
+        <div class="form-group"><label>Password Baru</label><input id="forcePasswordNew" type="password" autocomplete="new-password" minlength="8" required placeholder="Minimal 8 karakter"></div>
+        <div class="form-group"><label>Konfirmasi Password Baru</label><input id="forcePasswordConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Ulangi password baru"></div>
+        <button id="forcePasswordSubmit" type="submit" class="btn btn-primary" style="width:100%;">Simpan Password Baru</button>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL CROPPER FOTO -->
   <div id="modalCropper" class="modal">
     <div class="modal-content">
@@ -1575,7 +1697,7 @@
         <h3>Potong Foto Profile (Crop)</h3>
         <button class="modal-close" onclick="closeCropperModal()">&times;</button>
       </div>
-      <div class="cropper-modal-container"><img id="imageToCrop" src=""></div>
+      <div class="cropper-modal-container"><img id="imageToCrop" src="" alt="Pratinjau foto untuk dipotong"></div>
       <div style="display:flex; justify-content:flex-end; gap:10px;">
         <button class="btn" onclick="closeCropperModal()" style="background:#e2e8f0; color:#475569;">Batal</button>
         <button class="btn btn-primary" onclick="cropAndUploadPhoto()">Simpan Foto</button>

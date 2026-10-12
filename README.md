@@ -1,42 +1,27 @@
-# Legacy Music Center — GitHub + Cloudflare migration
+# LMC FIX — Arsip Siswa Keluar Robust
 
-Repositori ini adalah tahap migrasi aman dari Google Apps Script HtmlService ke **Cloudflare Workers + Static Assets**, dengan backend Spreadsheet/Drive/Docs lama tetap dipertahankan agar fungsi tidak hilang.
+Patch khusus arsip siswa keluar. Tidak mengubah database/schema dan tidak memerlukan SQL baru.
 
-## Arsitektur
+## Perbaikan
+- Lihat Arsip tidak lagi bergantung pada record `students` yang masih aktif.
+- Jika siswa lama sudah terhapus dari tabel `students`, arsip tetap dapat dibuka dari `student_history` dan data terkait yang masih tersisa.
+- Arsip penuh menampilkan ringkasan profil, absensi, tugas, repertoire, progress, materi latihan, evaluasi, ujian, laporan, dan riwayat status yang masih tersedia.
+- Untuk siswa lama yang sudah pernah dihapus permanen, modal menampilkan `Arsip historis terbatas` jika hanya riwayat yang tersisa.
+- Hapus Data sekarang tetap berhasil bila record utama siswa sudah tidak ada di Supabase: orphan history/data dibersihkan dan baris langsung hilang dari UI.
+- Tombol Lihat Arsip + Hapus Data tersedia pada tab Siswa Keluar.
 
-Browser → Cloudflare static assets → `/api/rpc` Cloudflare Worker → Apps Script `doPost()` → Google Spreadsheet / Drive / Docs.
+## File replace
+- src/js/pages/dashboard.js
+- src/js/pages/admin.js
+- src/css/release-ui-stabilization.css
+- public/js/app.bundle.js
+- public/css/app.bundle.css
+- worker/index.js
 
-Frontend lama tetap menggunakan antarmuka `google.script.run`, tetapi `public/js/services/api.js` menyediakan compatibility shim sehingga pemanggilan tersebut dikirim ke Worker API. Ini membuat migrasi UI berisiko rendah dan memungkinkan refactor per modul setelah produksi stabil.
+## Database
+Tidak ada SQL/migration baru.
 
-## Langkah setup
-
-1. Upload isi folder ini ke repository GitHub baru.
-2. Ganti `Code.gs` Apps Script dengan `backend/Code.gs`, lalu **Deploy > Manage deployments > Edit > New version** sebagai Web App.
-3. Buat token acak >= 32 karakter. Dari editor Apps Script, jalankan `configureLegacyApiToken('TOKEN_ANDA')` satu kali.
-4. Install dependency: `npm install`.
-5. Simpan secret Cloudflare:
-   - `npx wrangler secret put APPS_SCRIPT_URL` → URL Web App Apps Script `/exec`
-   - `npx wrangler secret put APPS_SCRIPT_TOKEN` → token yang sama dengan langkah 3
-   - `npx wrangler secret put SESSION_SECRET` → random secret lain >= 32 karakter
-6. Test lokal dengan `.dev.vars` (copy dari `.dev.vars.example`) lalu `npm run dev`.
-7. Deploy: `npm run deploy`. Setelah stabil, hubungkan repo GitHub ke Cloudflare Builds bila ingin auto-deploy setiap push.
-
-## Login setelah migrasi
-
-Login pertama setelah pindah domain perlu dilakukan ulang satu kali agar Cloudflare membuat cookie session HttpOnly. Setelah itu session API bertahan hingga 1 tahun, sementara mekanisme localStorage UI lama juga tetap dipertahankan.
-
-## Kenapa `legacy-app.js` dan `app.css` masih besar?
-
-Ini disengaja untuk tahap pertama. Memecah 5.000+ baris sekaligus sambil memindahkan platform berisiko menimbulkan regression. Struktur folder modular sudah disiapkan; ekstraksi ke `pages/`, `components/`, dan service files sebaiknya dilakukan setelah deployment kompatibilitas ini lolos regression test.
-
-## Regression test wajib
-
-Uji tiga role (Siswa, Guru, Admin): login/logout, reload/close browser, dashboard, jadwal, tambah/edit/hapus siswa, guru, tugas + YouTube + lampiran, jawaban tugas, absensi + tanda tangan, progress belajar + cetak, jadwal pengganti, pengumuman, foto profil, laporan/statistik, dan konflik ruangan.
-
-## V3 performance pass
-See `docs/REFACTOR-V3.md`. V3 lazy-loads FullCalendar/CropperJS and deduplicates simultaneous identical read RPCs while leaving legacy global handlers untouched. Backend and Spreadsheet contracts are unchanged.
-
-
-## V4 Backend Performance
-
-Lihat `docs/REFACTOR-V4.md`. V4 menambahkan request-local Spreadsheet snapshot untuk dashboard, header snapshot, cache logo laporan, dan timing log tanpa mengubah kontrak API.
+## Build check
+- npm run build: PASS
+- node --check worker/index.js: PASS
+- Static parity: PASS

@@ -37,16 +37,46 @@
           saveLoginSession(currentUser);
         }
 
-        globalAbsensiList = data.absensiList || [];
+        // Boot data may be signature-light. Preserve detailed image references
+        // already resolved on the open attendance screen during background refresh.
+        const priorAttendanceById = new Map((globalAbsensiList || []).map(row => [String(row.absensiID || ''), row]));
+        globalAbsensiList = (data.absensiList || []).map(row => {
+          const prior = priorAttendanceById.get(String(row.absensiID || ''));
+          return prior ? {
+            ...row,
+            tandaTangan: row.tandaTangan || prior.tandaTangan || '',
+            ttdSiswa: row.ttdSiswa || prior.ttdSiswa || ''
+          } : row;
+        });
+        if (typeof invalidateAttendanceSignatures === 'function') invalidateAttendanceSignatures();
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
         globalScheduleOverrides = data.scheduleOverrides || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
-        globalRepertoireList = [];
+        // Repertoire is loaded independently. Do not clear its live list on a
+        // background dashboard refresh: card clicks and student filters need
+        // the same in-memory records until getRepertoireData updates them.
+        if (!Array.isArray(globalRepertoireList)) globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
-        globalTeacherAttendanceList = data.teacherAttendanceList || [];
+        if (Array.isArray(data.teacherAttendanceList)) globalTeacherAttendanceList = data.teacherAttendanceList;
+
+        // Dashboard V3 loads only the data needed to paint the first screen quickly.
+        // Historical modules can be completed lazily when their page is opened.
+        globalPartialModules = new Set(Array.isArray(data.partialModules) ? data.partialModules : []);
+        globalLoadedModules = new Set();
+        const bootModules = {
+          attendance:Array.isArray(data.absensiList),
+          assignments:Array.isArray(data.tugasList),
+          progress:Array.isArray(data.learningProgressList),
+          schedules:Array.isArray(data.jadwal || data.schedules),
+          announcements:Array.isArray(data.pengumumanList),
+          teacher_attendance:Array.isArray(data.teacherAttendanceList)
+        };
+        Object.entries(bootModules).forEach(([module, present]) => {
+          if (present && !globalPartialModules.has(module)) globalLoadedModules.add(module);
+        });
 
         // Do not make a second blocking request for Guru List after dashboard load.
         // Admin already receives guruList from the same Supabase dashboard response;
@@ -70,22 +100,35 @@
         renderLearningProgressViews();
         if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
+        // Paint the primary dashboard before constructing off-screen tables and widgets.
+        // This doesn't change data freshness or the completion semantics of the API call.
         setupFilterDropdown();
         renderTabelJadwal();
-        if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-        renderTabelRiwayat();
-        renderTabelTugas();
-        renderTabelJadwalPengganti();
         renderPengumumanList();
         renderDashboardAcademyUpdates();
-        setupMakeupFilters();
-        setupRoomFilters();
-        renderRoomAvailability();
         renderNotificationCenter();
         if (notificationTimer) clearInterval(notificationTimer);
         notificationTimer = setInterval(renderNotificationCenter, 60000);
         if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
         if (typeof configureLiveAnnouncementSync === 'function') configureLiveAnnouncementSync();
+        const secondaryRenderUser = String(currentUser.userID || '');
+        const secondaryRenderRole = String(currentUser.userType || '');
+        const renderDeferredDashboardSections = () => {
+          if (String(currentUser.userID || '') !== secondaryRenderUser || String(currentUser.userType || '') !== secondaryRenderRole) return;
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+          renderTabelRiwayat();
+          renderTabelTugas();
+          renderTabelJadwalPengganti();
+          setupMakeupFilters();
+          setupRoomFilters();
+          renderRoomAvailability();
+        };
+        // A browser rendering opportunity between essential and secondary content.
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => setTimeout(renderDeferredDashboardSections, 0));
+        } else {
+          setTimeout(renderDeferredDashboardSections, 0);
+        }
 
         // Small diagnostic marker for troubleshooting. It is intentionally not shown
         // as a normal UI element, but can be checked in DevTools if ever needed.
@@ -148,11 +191,28 @@
       return '🎸';
     }
 
-    function getFormattedDateString(hariStr) {
-      const today = new Date();
+    function getNextScheduleDate(hariStr, jamMulai) {
+      const dayMap = {minggu:0,ahad:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,"jum'at":5,sabtu:6};
+      const target = dayMap[String(hariStr || '').trim().toLowerCase()];
+      const now = new Date();
+      if (target == null) return new Date(now);
+      let addDays = (target - now.getDay() + 7) % 7;
+      if (addDays === 0 && jamMulai) {
+        const parts = String(jamMulai).match(/^(\d{1,2}):(\d{2})/);
+        if (parts) {
+          const start = new Date(now); start.setHours(Number(parts[1]), Number(parts[2]), 0, 0);
+          if (start <= now) addDays = 7;
+        }
+      }
+      const next = new Date(now); next.setDate(now.getDate() + addDays); next.setHours(0,0,0,0);
+      return next;
+    }
+
+    function getFormattedDateString(hariStr, jamMulai) {
+      const next = getNextScheduleDate(hariStr, jamMulai);
       const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-      const hari = hariStr || "Rabu";
-      return `${hari}, ${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear()}`;
+      const dayNames = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+      return `${dayNames[next.getDay()]}, ${next.getDate()} ${monthNames[next.getMonth()]} ${next.getFullYear()}`;
     }
 
     function renderSiswa(data) {
@@ -177,12 +237,13 @@
       container.innerHTML = '';
 
       if (data.schedules && data.schedules.length > 0) {
-        data.schedules.forEach(nextJadwal => {
+        const upcomingSchedules = [...data.schedules].sort((a,b)=>getNextScheduleDate(a.hari,a.jamMulai)-getNextScheduleDate(b.hari,b.jamMulai));
+        upcomingSchedules.forEach(nextJadwal => {
         const instrumenNama = nextJadwal.instrumen || (data.siswaInfo ? data.siswaInfo.instrumen : 'Gitar');
         const siswaNama = currentUser.userName;
         const iconInstrumen = getInstrumenIcon(instrumenNama);
         const durationStr = calculateDurationMinutes(nextJadwal.jamMulai, nextJadwal.jamSelesai);
-        const dateStr = getFormattedDateString(nextJadwal.hari);
+        const dateStr = getFormattedDateString(nextJadwal.hari, nextJadwal.jamMulai);
         
         const coachNama = nextJadwal.guru || (data.siswaInfo ? data.siswaInfo.guru : '');
         const coachObj = globalGuruList.find(g => String(g.nama).trim().toLowerCase() === String(coachNama).trim().toLowerCase());
@@ -236,7 +297,7 @@
           </div>`);
         });
       } else {
-        container.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Belum ada jadwal pelajaran mendatang.</div>`;
+        container.innerHTML = `<div class="student-dashboard-empty">Belum ada jadwal pelajaran mendatang.</div>`;
       }
 
       if (typeof renderStudent360Access === 'function') renderStudent360Access(data);
@@ -265,7 +326,7 @@
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'block';
         const controlBox = document.getElementById('adminControlCenterBox');
         if (controlBox) controlBox.style.display = 'block';
-        setTimeout(() => loadAdminControlCenter(true), 0);
+        if (!globalAdminControlSummary) setTimeout(() => loadAdminControlCenter(false), 0);
 
         document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'block';

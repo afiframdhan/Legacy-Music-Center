@@ -2,6 +2,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let loginType = 'siswa';
     let globalSiswaList = [];
     let globalJadwalList = [];
+
+    function isOperationalStudent(student) {
+      return String(student?.status || '').trim().toLowerCase() === 'aktif';
+    }
     let globalAbsensiList = [];
     let globalTugasList = [];
     let globalGuruList = [];
@@ -26,6 +30,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let globalLiveSyncTimer = null;
     let globalLiveSyncRunning = false;
     let globalLiveSyncVersions = {};
+    let globalLoadedModules = new Set();
+    let globalPartialModules = new Set();
+    let globalModuleLoadInFlight = new Map();
+    let globalLastInteractionAt = Date.now();
     let dashboardLoadInFlight = false;
     let dashboardRefreshQueued = false;
     let dashboardLastLoadedAt = 0;

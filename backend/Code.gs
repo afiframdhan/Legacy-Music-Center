@@ -2785,8 +2785,61 @@ function legacyJsonResponse_(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
 }
 
+// Dedicated private storage for NEW attendance signatures. Old Base64 is untouched.
+// The folder must NOT be a child of the shared upload root.
+function lmcPrivateSignatureFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('LMC_PRIVATE_SIGNATURE_FOLDER_ID');
+  if (id) return DriveApp.getFolderById(id);
+  var folder = DriveApp.createFolder('LMC_Private_Attendance_Signatures');
+  folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.VIEW);
+  props.setProperty('LMC_PRIVATE_SIGNATURE_FOLDER_ID', folder.getId());
+  return folder;
+}
+function lmcUploadPrivateSignature(dataUrl, fileName) {
+  var raw = String(dataUrl || '');
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/i.test(raw)) throw new Error('Only PNG signature data is supported.');
+  if (raw.length > 450000) throw new Error('Signature too large.');
+  var bytes = Utilities.base64Decode(raw.substring(raw.indexOf(',') + 1));
+  if (bytes.length > 330000) throw new Error('Signature too large.');
+  var name = String(fileName || 'signature.png').replace(/[^a-zA-Z0-9_.-]/g,'_').slice(0,90);
+  var file = lmcPrivateSignatureFolder_().createFile(Utilities.newBlob(bytes, 'image/png', name));
+  // No setSharing(ANYONE_WITH_LINK) here. Only this script account can read these files.
+  return {success:true, fileId:file.getId()};
+}
+function lmcReadPrivateSignature(fileId) {
+  var id = String(fileId || '');
+  if (!/^[a-zA-Z0-9_-]{10,128}$/.test(id)) throw new Error('Invalid file ID.');
+  var file = DriveApp.getFileById(id);
+  var parent = lmcPrivateSignatureFolder_();
+  var parents = file.getParents(), found = false;
+  while (parents.hasNext()) if (parents.next().getId() === parent.getId()) found = true;
+  if (!found) throw new Error('Signature file does not belong to the private folder.');
+  var blob = file.getBlob(), bytes = blob.getBytes();
+  if (blob.getContentType() !== 'image/png' || bytes.length > 330000) throw new Error('Invalid signature image.');
+  return {success:true,dataUrl:'data:image/png;base64,'+Utilities.base64Encode(bytes)};
+}
+
+// Patch 05E: soft-delete only signature PNGs belonging to the private signature folder.
+// The caller must verify that Supabase no longer refers to the file.
+function lmcTrashPrivateSignature(fileId) {
+  var id = String(fileId || '');
+  if (!/^[a-zA-Z0-9_-]{10,128}$/.test(id)) throw new Error('Invalid signature file ID.');
+  var file = DriveApp.getFileById(id);
+  var folder = lmcPrivateSignatureFolder_();
+  var parents = file.getParents(), belongs = false;
+  while (parents.hasNext()) if (parents.next().getId() === folder.getId()) belongs = true;
+  if (!belongs) throw new Error('Refusing to trash file outside private signature folder.');
+  if (file.getMimeType() !== 'image/png') throw new Error('Not a PNG signature.');
+  if (!file.isTrashed()) file.setTrashed(true);
+  return {success:true, trashed:true, fileId:id};
+}
+
 function legacyDispatchRpc_(method, args) {
   switch (method) {
+    case 'lmcUploadPrivateSignature': return lmcUploadPrivateSignature.apply(null, args);
+    case 'lmcReadPrivateSignature': return lmcReadPrivateSignature.apply(null, args);
+    case 'lmcTrashPrivateSignature': return lmcTrashPrivateSignature.apply(null, args);
     case 'verifyLogin': return verifyLogin.apply(null, args);
     case 'getDashboardData': return getDashboardData.apply(null, args);
     case 'getGuruList': return getGuruList.apply(null, args);

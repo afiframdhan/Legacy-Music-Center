@@ -1,10 +1,13 @@
 const COOKIE_NAME = 'legacy_api_session';
-const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
+const SESSION_MAX_AGE = 60 * 60 * 24 * 90;
+const STAFF_SESSION_MAX_AGE = 60 * 60 * 24 * 30;
+const STUDENT_SESSION_MAX_AGE = 60 * 60 * 24 * 90;
+function sessionMaxAgeForRole(role){ return String(role||'').toLowerCase()==='siswa' ? STUDENT_SESSION_MAX_AGE : STAFF_SESSION_MAX_AGE; }
 
 const COMMON = new Set([
   'getDashboardData', 'getGuruList', 'getLiveAnnouncements', 'getLiveSyncState', 'getLiveModuleData', 'updateUserPhoto', 'updateSelfProfile', 'getStudent360Report',
   'getPushConfig', 'getPushStatus', 'savePushSubscription', 'removePushSubscription', 'sendPushTest',
-  'getRepertoireData'
+  'getRepertoireData', 'getPracticeHubData', 'changeOwnPassword'
 ]);
 const STUDENT = new Set([...COMMON, 'submitTugasJawaban', 'listAnnualExams', 'getAnnualExam']);
 const TEACHER = new Set([
@@ -14,7 +17,8 @@ const TEACHER = new Set([
   'updateSiswa', 'updateJadwal', 'deleteJadwal',
   'addSiswaCombined', 'deleteSiswa', 'publishStudent360Report', 'deleteStudent360Report',
   'listAnnualExams', 'getAnnualExam', 'saveAnnualExam', 'publishAnnualExam', 'deleteAnnualExam',
-  'saveStudentRepertoire', 'deleteStudentRepertoire'
+  'saveStudentRepertoire', 'deleteStudentRepertoire',
+  'savePracticeResource', 'deletePracticeResource', 'saveMediaEvaluation', 'deleteMediaEvaluation'
 ]);
 const ADMIN = new Set([
   ...TEACHER,
@@ -23,7 +27,7 @@ const ADMIN = new Set([
   'addPengumuman', 'deletePengumuman',
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance',
-  'deleteExitedStudentRecord',
+  'deleteExitedStudentRecord', 'getExitedStudentArchive',
   'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
 ]);
 
@@ -31,7 +35,7 @@ const AUDIT_METHODS = new Set([
   'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
   'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
   'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addPengumuman','deletePengumuman',
-  'recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire','saveAnnualExam','publishAnnualExam','deleteAnnualExam',
+  'recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','saveAnnualExam','publishAnnualExam','deleteAnnualExam',
   'publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile'
 ]);
 
@@ -88,11 +92,69 @@ export default {
       }
     }
 
+    // Private Drive signatures: never expose Google Drive file URLs to the browser.
+    const privateSignatureMatch = url.pathname.match(/^\/api\/attendance-signature\/([A-Za-z0-9_-]{1,128})\/(teacher|student)$/);
+    if (privateSignatureMatch && request.method === 'GET') {
+      if (!env.SESSION_SECRET) return new Response('Unavailable', {status:503});
+      const session = await readSession(request, env.SESSION_SECRET);
+      if (!session) return new Response('Unauthorized', {status:401});
+      try {
+        const attendanceId = privateSignatureMatch[1];
+        const field = privateSignatureMatch[2] === 'teacher' ? 'teacher_signature_data' : 'student_signature_data';
+        const rows = await sbRows(env, 'student_attendance', {
+          select:`attendance_id,student_id,teacher_id,${field}`,
+          attendance_id:`eq.${attendanceId}`, limit:'1'
+        });
+        const row = rows[0];
+        if (!row) return new Response('Not found', {status:404});
+        const role = String(session.userType || '').toLowerCase();
+        const allowed = role === 'admin'
+          || (role === 'guru' && String(row.teacher_id || '') === String(session.userID || ''))
+          || (role === 'siswa' && String(row.student_id || '') === String(session.userID || ''));
+        if (!allowed) return new Response('Forbidden', {status:403});
+        const value = String(row[field] || '');
+        const match = value.match(/^lmc-drive-signature:([A-Za-z0-9_-]{10,128})$/);
+        if (!match) return new Response('Not found', {status:404});
+        const result = await gasRpc(env, 'lmcReadPrivateSignature', [match[1]]);
+        if (!result || !result.success || !/^data:image\/png;base64,/.test(result.dataUrl || '')) throw new Error('Invalid private signature response');
+        const bytes = Uint8Array.from(atob(result.dataUrl.split(',')[1]), ch=>ch.charCodeAt(0));
+        return new Response(bytes, {status:200, headers:{'content-type':'image/png','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+      } catch (error) {
+        console.error('Private attendance signature fetch failed:', String(error && error.message || error));
+        return new Response('Signature temporarily unavailable', {status:502});
+      }
+    }
+
+    // Patch 05G: authorized private teacher-attendance PNG proxy.
+    const teacherSignatureMatch = url.pathname.match(/^\/api\/teacher-attendance-signature\/([A-Za-z0-9_-]{1,128})$/);
+    if (teacherSignatureMatch && request.method === 'GET') {
+      if (!env.SESSION_SECRET) return new Response('Unavailable', {status:503});
+      const session = await readSession(request, env.SESSION_SECRET);
+      if (!session) return new Response('Unauthorized', {status:401});
+      if (String(session.userType || '').toLowerCase() !== 'admin') return new Response('Forbidden', {status:403});
+      try {
+        const rows = await sbRows(env,'teacher_attendance',{
+          select:'teacher_attendance_id,signature_data',
+          teacher_attendance_id:`eq.${teacherSignatureMatch[1]}`,limit:'1'
+        });
+        if (!rows[0]) return new Response('Not found', {status:404});
+        const match = String(rows[0].signature_data || '').match(/^lmc-drive-signature:([A-Za-z0-9_-]{10,128})$/);
+        if (!match) return new Response('Not found', {status:404});
+        const result = await gasRpc(env,'lmcReadPrivateSignature',[match[1]]);
+        if (!result?.success || !/^data:image\/png;base64,/.test(result.dataUrl || '')) throw new Error('Invalid Drive signature response');
+        const bytes = Uint8Array.from(atob(result.dataUrl.split(',')[1]),c=>c.charCodeAt(0));
+        return new Response(bytes,{status:200,headers:{'content-type':'image/png','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+      } catch(error) {
+        console.error('05G teacher signature read failed:',String(error?.message || error));
+        return new Response('Signature unavailable',{status:502});
+      }
+    }
+
     if (url.pathname === '/api/session' && request.method === 'GET') {
       if (!env.SESSION_SECRET) return json({ ok:false, error:'SESSION_SECRET belum dikonfigurasi.' }, 500);
       const session = await readSession(request, env.SESSION_SECRET);
       if (!session) return json({ ok:false, error:'Sesi login tidak valid atau sudah berakhir.' }, 401);
-      return json({ ok:true, data:{ userType:session.userType, userID:session.userID, userName:session.userName } });
+      return json({ ok:true, data:{ userType:session.userType, userID:session.userID, userName:session.userName, mustChangePassword:Boolean(session.mustChangePassword) } });
     }
 
     if (url.pathname === '/api/logout' && request.method === 'POST') {
@@ -136,40 +198,74 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:false, error:'Konfigurasi Supabase TEST belum lengkap.' }, 500);
     }
 
+    const role = String(args[0] || '').trim().toLowerCase();
+    const username = String(args[1] || '').trim().toLowerCase();
+    const clientIp = String(request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown').split(',')[0].trim();
+    const loginGuardKey = await sha256Hex(`${role}|${username}|${clientIp}`);
+    try {
+      const guard = await supabaseRpc(env, 'legacy_login_guard_status', { p_key:loginGuardKey });
+      const status = Array.isArray(guard) ? guard[0] : guard;
+      if (status && status.allowed === false) {
+        const wait = Math.max(1, Number(status.retry_after_seconds || 60));
+        return json({ ok:true, data:{ success:false, message:`Terlalu banyak percobaan login. Coba lagi dalam ${wait} detik.` } });
+      }
+    } catch (error) {
+      console.error('Login guard status failed (continuing safely):', error);
+    }
+
     let result;
     try {
       result = await verifyLoginSupabaseRpc(env, args);
     } catch (error) {
       console.error('Supabase login RPC error:', error);
-      return json({
-        ok:true,
-        data:{ success:false, message:'Login gagal diproses. Silakan coba lagi.' }
-      });
+      return json({ ok:true, data:{ success:false, message:'Login gagal diproses. Silakan coba lagi.' } });
     }
+
+    try { await supabaseRpc(env, 'legacy_record_login_attempt', { p_key:loginGuardKey, p_success:Boolean(result.success) }); }
+    catch (error) { console.error('Login guard record failed:', error); }
 
     if (!result.success) return json({ ok:true, data:result });
 
+    const maxAge = sessionMaxAgeForRole(result.userType);
     const session = {
       userType: result.userType,
       userID: result.userID,
       userName: result.userName,
-      exp: Math.floor(Date.now()/1000) + SESSION_MAX_AGE
+      mustChangePassword:Boolean(result.mustChangePassword),
+      exp: Math.floor(Date.now()/1000) + maxAge
     };
 
     const token = await signSession(session, env.SESSION_SECRET);
 
     return json({ ok:true, data:result }, 200, {
-      'set-cookie': `${COOKIE_NAME}=${token}; Max-Age=${SESSION_MAX_AGE}; Path=/; HttpOnly; Secure; SameSite=Strict`
+      'set-cookie': `${COOKIE_NAME}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Strict`
     });
-  }
-
-  if (!env.APPS_SCRIPT_URL || !env.APPS_SCRIPT_TOKEN) {
-    return json({ ok:false, error:'Konfigurasi Apps Script belum lengkap.' }, 500);
   }
 
   const session = await readSession(request, env.SESSION_SECRET);
   if (!session) return json({ ok:false, error:'Sesi login tidak valid atau sudah berakhir.' }, 401);
   if (!isAllowed(session.userType, method)) return json({ ok:false, error:'Akses fungsi ditolak.' }, 403);
+
+  if (method === 'changeOwnPassword') {
+    const payload = args[0] && typeof args[0] === 'object' ? args[0] : {};
+    const nextPassword = String(payload.password || '').trim();
+    const confirmPassword = String(payload.confirmPassword || '').trim();
+    if (nextPassword.length < 8 || !/[A-Za-z]/.test(nextPassword) || !/[0-9]/.test(nextPassword)) {
+      return json({ ok:true, data:{ success:false, message:'Password minimal 8 karakter dan harus mengandung huruf serta angka.' } });
+    }
+    if (nextPassword !== confirmPassword) return json({ ok:true, data:{ success:false, message:'Konfirmasi password tidak sama.' } });
+    try {
+      const result = await supabaseRpc(env, 'legacy_change_own_password', { p_user_id:session.userID, p_role:session.userType, p_new_password:nextPassword });
+      const maxAge = sessionMaxAgeForRole(session.userType);
+      const refreshed = { ...session, mustChangePassword:false, exp:Math.floor(Date.now()/1000)+maxAge };
+      const token = await signSession(refreshed, env.SESSION_SECRET);
+      return json({ ok:true, data:{ success:true, message:'Password berhasil diperbarui.' } }, 200, {
+        'set-cookie': `${COOKIE_NAME}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Strict`
+      });
+    } catch (error) {
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
 
   if (method === 'getPushConfig') {
     const publicKey = String(env.VAPID_PUBLIC_KEY || '').trim();
@@ -401,6 +497,44 @@ async function handleRpc(request, env, ctx) {
   }
 
 
+  if (method === 'getPracticeHubData') {
+    try {
+      return json({ ok:true, data:await getPracticeHubDataSupabase(env, session) });
+    } catch (error) {
+      console.error('Practice hub read error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error), resources:[], evaluations:[] } });
+    }
+  }
+
+  if (method === 'savePracticeResource' || method === 'deletePracticeResource' || method === 'saveMediaEvaluation' || method === 'deleteMediaEvaluation') {
+    try {
+      let result;
+      if (method === 'savePracticeResource') {
+        const payload = args[0] && typeof args[0] === 'object' ? structuredClone(args[0]) : {};
+        const files = Array.isArray(payload.files) ? payload.files : [];
+        delete payload.files;
+        if (files.length) {
+          const upload = await driveUploadFiles(env, files, 'LegacyMusicCenter_MateriLatihan');
+          if (!upload || upload.success !== true) return json({ ok:true, data:{ success:false, message:(upload && upload.message) || 'Upload file materi latihan gagal.' } });
+          payload.newAttachments = Array.isArray(upload.attachments) ? upload.attachments : [];
+        } else payload.newAttachments = [];
+        result = await savePracticeResourceSupabase(env, session, payload);
+      } else if (method === 'deletePracticeResource') {
+        result = await deletePracticeResourceSupabase(env, session, String(args[0] || '').trim());
+      } else if (method === 'saveMediaEvaluation') {
+        result = await saveMediaEvaluationSupabase(env, session, args[0] && typeof args[0] === 'object' ? structuredClone(args[0]) : {});
+      } else {
+        result = await deleteMediaEvaluationSupabase(env, session, String(args[0] || '').trim());
+      }
+      if (ctx && result && result.success) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
+      return json({ ok:true, data:result });
+    } catch (error) {
+      console.error('Practice hub write error:', error);
+      return json({ ok:true, data:{ success:false, message:String(error && error.message ? error.message : error) } });
+    }
+  }
+
+
   if (method === 'getStudent360Report') {
     try {
       const requested = String(args[0] || '').trim();
@@ -610,27 +744,31 @@ async function handleRpc(request, env, ctx) {
   }
 
   if (method === 'updateSelfProfile') {
-    const result = await gasRpc(env, method, safeArgs);
-
-    if (result && result.success === true) {
-      try {
-        const payload = safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {};
-        await supabaseRpc(env, 'legacy_update_identity_profile', {
-          p_role: session.userType,
-          p_user_id: session.userID,
-          p_name: String(payload.nama || '').trim() || null,
-          p_email: String(payload.email || '').trim() || null,
-          p_phone: String(payload.noHp || '').trim() || null,
-          p_instrument: String(payload.instrumen || '').trim() || null,
-          p_photo_url: null
-        });
-      } catch (error) {
-        console.error('Supabase identity mirror failed for updateSelfProfile:', error);
-      }
+    const payload = safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {};
+    try {
+      await supabaseRpc(env, 'legacy_update_identity_profile', {
+        p_role: session.userType,
+        p_user_id: session.userID,
+        p_name: String(payload.nama || '').trim() || null,
+        p_email: String(payload.email || '').trim() || null,
+        p_phone: String(payload.noHp || '').trim() || null,
+        p_instrument: String(payload.instrumen || '').trim() || null,
+        p_photo_url: null
+      });
+    } catch (error) {
+      console.error('Supabase identity update failed for updateSelfProfile:', error);
+      return json({ ok:true, data:{ success:false, message:'Gagal memperbarui profil di database.' } });
     }
 
-    if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
-      return json({ ok:true, data:result });
+    const result = { success:true, message:'Profil berhasil diperbarui.', userID:session.userID };
+    if (ctx && env.APPS_SCRIPT_URL && env.APPS_SCRIPT_TOKEN) {
+      ctx.waitUntil(gasRpc(env, method, safeArgs).catch(error => console.error('Apps Script profile shadow failed:', error)));
+    }
+    if (ctx && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
+    const maxAge = sessionMaxAgeForRole(session.userType);
+    const refreshedSession = { ...session, userName:String(payload.nama || session.userName || '').trim(), exp:Math.floor(Date.now()/1000)+maxAge };
+    const refreshedToken = await signSession(refreshedSession, env.SESSION_SECRET);
+    return json({ ok:true, data:result }, 200, { 'set-cookie':`${COOKIE_NAME}=${refreshedToken}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Strict` });
   }
 
   // PHASE 10: Guru is now Supabase-first.
@@ -701,6 +839,17 @@ async function handleRpc(request, env, ctx) {
 
     if (result && result.success === true && method !== 'deleteSiswa') {
       const studentId = String(result.siswaID || payload.siswaID || '').trim();
+      if (method === 'addSiswaCombined' && studentId) {
+        try {
+          const initialPassword = generateInitialPassword();
+          await supabaseRpc(env, 'legacy_set_account_password', { p_user_id:studentId, p_role:'siswa', p_password:initialPassword, p_must_change:true });
+          result.initialPassword = initialPassword;
+          result.message = `${result.message || 'Siswa berhasil ditambahkan.'} Password awal: ${initialPassword}`;
+        } catch (error) {
+          console.error('Initial student password hardening failed:', error);
+          return json({ ok:true, data:{ success:false, message:'Data siswa tersimpan, tetapi password awal gagal dibuat. Jalankan migration 32 lalu coba tambah siswa baru lagi.' } });
+        }
+      }
       try {
         await patchStudentClassDatesFromPayload(env, studentId, payload);
         if (studentId) {
@@ -784,12 +933,93 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:result });
   }
 
+  // Patch 05E: never trash a PNG while ANY absensi row still references it.
+  async function cleanupUnusedAttendanceSignatures(candidates, reason) {
+    const ids = [...new Set((candidates || []).map(value => {
+      const m = String(value || '').match(/^lmc-drive-signature:([A-Za-z0-9_-]{10,128})$/);
+      return m ? m[1] : '';
+    }).filter(Boolean))];
+    for (const fileId of ids) {
+      try {
+        const ref = `lmc-drive-signature:${fileId}`;
+        const [teacherRefs, studentRefs] = await Promise.all([
+          sbRows(env, 'student_attendance', {select:'attendance_id',teacher_signature_data:`eq.${ref}`,limit:'1'}),
+          sbRows(env, 'student_attendance', {select:'attendance_id',student_signature_data:`eq.${ref}`,limit:'1'})
+        ]);
+        const teacherAttendanceRefs = await sbRows(env,'teacher_attendance',{select:'teacher_attendance_id',signature_data:`eq.${ref}`,limit:'1'});
+        if (teacherRefs.length || studentRefs.length || teacherAttendanceRefs.length) continue;
+        await gasRpc(env, 'lmcTrashPrivateSignature', [fileId]);
+        console.log('05E private signature moved to Trash:',reason,fileId.slice(0,6));
+      } catch (error) {
+        // Non-destructive failure: retain orphan rather than risking another signature.
+        console.error('05E signature cleanup skipped:',reason,String(error && error.message || error));
+      }
+    }
+  }
+
   // PHASE 10B: student attendance is now Supabase-first.
   // Spreadsheet is maintained only as a report/legacy compatibility shadow.
   if (method === 'recordAbsensi' || method === 'updateAbsensi' || method === 'deleteAbsensi') {
     const payload = method === 'deleteAbsensi'
       ? { absensiID:String(safeArgs[0] || '').trim() }
       : (safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {});
+
+    // Snapshot only the exact row involved, before a successful mutation can remove it.
+    let priorSignatures = [];
+    if ((method === 'deleteAbsensi' || method === 'updateAbsensi') && payload.absensiID) {
+      try {
+        const previous = await sbRows(env, 'student_attendance', {
+          select:'attendance_id,teacher_signature_data,student_signature_data',
+          attendance_id:`eq.${payload.absensiID}`, limit:'1'
+        });
+        if (previous[0]) priorSignatures = [previous[0].teacher_signature_data, previous[0].student_signature_data];
+      } catch (error) {
+        console.error('05E could not snapshot signatures; cleanup will be skipped:',String(error && error.message || error));
+      }
+    }
+    const newlyUploadedSignatures = [];
+    // When updating a record, a read-only image URL means "retain old signature".
+    if (method === 'updateAbsensi' && payload.absensiID) {
+      const signed = [['tandaTangan','teacher_signature_data','teacher'],['ttdSiswa','student_signature_data','student']];
+      if (signed.some(([key,,kind])=>String(payload[key] || '') === `/api/attendance-signature/${payload.absensiID}/${kind}`)) {
+        const existing = await sbRows(env,'student_attendance',{select:'attendance_id,teacher_signature_data,student_signature_data', attendance_id:`eq.${String(payload.absensiID)}`,limit:'1'});
+        for (const [key,col,kind] of signed) {
+          if (String(payload[key] || '') === `/api/attendance-signature/${payload.absensiID}/${kind}`) payload[key] = String(existing[0]?.[col] || '');
+        }
+      }
+    }
+    // Existing Base64 signatures must remain Base64 when editing other fields.
+    const unchangedLegacySignatures = new Set();
+    if (method === 'updateAbsensi' && payload.absensiID) {
+      const old = await sbRows(env, 'student_attendance', {
+        select:'attendance_id,teacher_signature_data,student_signature_data',
+        attendance_id:`eq.${String(payload.absensiID)}`,limit:'1'
+      });
+      if (old[0]) {
+        if (String(payload.tandaTangan || '') === String(old[0].teacher_signature_data || '')) unchangedLegacySignatures.add('tandaTangan');
+        if (String(payload.ttdSiswa || '') === String(old[0].student_signature_data || '')) unchangedLegacySignatures.add('ttdSiswa');
+      }
+    }
+    // Signature format v2 (opt-in). Existing Base64 values are never migrated or changed.
+    // Private PNGs are uploaded through an authenticated Apps Script method, NOT uploadFiles.
+    if (method !== 'deleteAbsensi' && String(env.PRIVATE_SIGNATURE_DRIVE || '') === 'true') {
+      for (const [key, label] of [['tandaTangan','teacher'],['ttdSiswa','student']]) {
+        const value = String(payload[key] || '');
+        // Preserve existing stored reference when editing an old attendance row.
+        if (unchangedLegacySignatures.has(key) || !/^data:image\/png;base64,/i.test(value)) continue;
+        if (value.length > 450000) return json({ok:true,data:{success:false,message:'Tanda tangan terlalu besar. Silakan ulangi dengan ukuran normal.'}});
+        try {
+          const uploaded = await gasRpc(env, 'lmcUploadPrivateSignature', [value, `${label}_${Date.now()}.png`]);
+          if (!uploaded || !uploaded.success || !/^[A-Za-z0-9_-]{10,128}$/.test(String(uploaded.fileId || ''))) throw new Error('Drive tidak mengembalikan ID file yang valid.');
+          payload[key] = `lmc-drive-signature:${uploaded.fileId}`;
+          newlyUploadedSignatures.push(payload[key]);
+        } catch (error) {
+          console.error('Private signature upload failed:', String(error && error.message || error));
+          if (newlyUploadedSignatures.length && ctx) ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'upload-failed'));
+          return json({ok:true,data:{success:false,message:'Gagal menyimpan tanda tangan privat ke Google Drive. Absensi tidak diubah. Silakan coba lagi.'}});
+        }
+      }
+    }
 
     let result;
     try {
@@ -802,10 +1032,26 @@ async function handleRpc(request, env, ctx) {
       });
     } catch (error) {
       console.error(`Supabase direct attendance write failed for ${method}:`, error);
+      if (newlyUploadedSignatures.length && ctx) ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'database-error'));
       return json({
         ok:true,
         data:{ success:false, message:'Gagal menyimpan absensi ke database. Silakan coba lagi.' }
       });
+    }
+
+    if (ctx) {
+      if (result && result.success === true) {
+        if (method === 'deleteAbsensi') {
+          if (priorSignatures.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(priorSignatures,'attendance-deleted'));
+        } else if (method === 'updateAbsensi' && priorSignatures.length) {
+          const latest = result.attendance || {};
+          const current = [latest.teacher_signature_data ?? payload.tandaTangan, latest.student_signature_data ?? payload.ttdSiswa];
+          const replaced = priorSignatures.filter(sig => sig && !current.includes(sig));
+          if (replaced.length) ctx.waitUntil(cleanupUnusedAttendanceSignatures(replaced,'signature-replaced'));
+        }
+      } else if (newlyUploadedSignatures.length) {
+        ctx.waitUntil(cleanupUnusedAttendanceSignatures(newlyUploadedSignatures,'mutation-rejected'));
+      }
     }
 
     if (result && result.success === true && ctx) {
@@ -829,6 +1075,14 @@ async function handleRpc(request, env, ctx) {
     }
 
     if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
+      if (result && result.success && result.attendance) {
+        const a=result.attendance, id=a.attendance_id || a.absensiID || result.absensiID;
+        if (id) {
+          result={...result,attendance:{...a,
+            teacher_signature_data:attendanceSignatureForClient(a.teacher_signature_data, id, 'teacher'),
+            student_signature_data:attendanceSignatureForClient(a.student_signature_data, id, 'student')}};
+        }
+      }
       return json({ ok:true, data:result });
   }
 
@@ -1135,6 +1389,40 @@ async function handleRpc(request, env, ctx) {
       ? { absensiGuruID:String(safeArgs[0] || '').trim() }
       : (safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {});
 
+    // Patch 05G: protect existing signatures on edit and snapshot for safe cleanup.
+    let previousSignature = '';
+    if (payload.absensiGuruID) {
+      try {
+        const previous = await sbRows(env,'teacher_attendance',{
+          select:'teacher_attendance_id,signature_data',
+          teacher_attendance_id:`eq.${String(payload.absensiGuruID)}`,limit:'1'
+        });
+        previousSignature = String(previous[0]?.signature_data || '');
+      } catch (error) {
+        console.error('05G teacher signature snapshot failed:',String(error?.message || error));
+        return json({ok:true,data:{success:false,message:'Tidak dapat memeriksa tanda tangan sebelumnya. Coba lagi.'}});
+      }
+    }
+    const createdTeacherSignatures = [];
+    if (method === 'recordTeacherAttendance') {
+      const submitted = String(payload.tandaTangan || '');
+      if ((!submitted || submitted === `/api/teacher-attendance-signature/${payload.absensiGuruID}`) && payload.absensiGuruID) {
+        payload.tandaTangan = previousSignature;
+      }
+      if (String(env.PRIVATE_SIGNATURE_DRIVE || '') === 'true' && /^data:image\/png;base64,/i.test(String(payload.tandaTangan || ''))) {
+        if (String(payload.tandaTangan).length > 450000) return json({ok:true,data:{success:false,message:'Gambar tanda tangan terlalu besar.'}});
+        try {
+          const upload = await gasRpc(env,'lmcUploadPrivateSignature',[payload.tandaTangan,`teacher_attendance_${Date.now()}.png`]);
+          if (!upload?.success || !/^[A-Za-z0-9_-]{10,128}$/.test(String(upload.fileId || ''))) throw new Error('Upload response invalid');
+          payload.tandaTangan = `lmc-drive-signature:${upload.fileId}`;
+          createdTeacherSignatures.push(payload.tandaTangan);
+        } catch(error) {
+          console.error('05G teacher upload failed:',String(error?.message || error));
+          return json({ok:true,data:{success:false,message:'Gagal upload tanda tangan guru ke Drive. Data belum disimpan.'}});
+        }
+      }
+    }
+
     let result;
     try {
       result = await supabaseRpc(env, 'legacy_direct_teacher_attendance_mutation', {
@@ -1146,12 +1434,22 @@ async function handleRpc(request, env, ctx) {
       });
     } catch (error) {
       console.error(`Supabase direct teacher attendance write failed for ${method}:`, error);
+      if (createdTeacherSignatures.length && ctx) ctx.waitUntil(cleanupUnusedAttendanceSignatures(createdTeacherSignatures,'teacher-database-error'));
       return json({
         ok:true,
         data:{ success:false, message:'Gagal menyimpan absensi guru ke database. Silakan coba lagi.' }
       });
     }
 
+    if (ctx) {
+      if (result?.success === true) {
+        if (previousSignature && (method === 'deleteTeacherAttendance' || (method === 'recordTeacherAttendance' && String(payload.tandaTangan || '') !== previousSignature))) {
+          ctx.waitUntil(cleanupUnusedAttendanceSignatures([previousSignature],'teacher-signature-replaced-or-deleted'));
+        }
+      } else if (createdTeacherSignatures.length) {
+        ctx.waitUntil(cleanupUnusedAttendanceSignatures(createdTeacherSignatures,'teacher-mutation-rejected'));
+      }
+    }
     if (result && result.success === true && ctx) {
       if (method === 'deleteTeacherAttendance') {
         const id = String(result.absensiGuruID || payload.absensiGuruID || '').trim();
@@ -1173,6 +1471,21 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:result });
   }
 
+  if (method === 'getExitedStudentArchive') {
+    let result;
+    try {
+      result = await getExitedStudentArchiveSupabase(
+        env,
+        String(safeArgs[0] || '').trim(),
+        String(safeArgs[1] || '').trim()
+      );
+    } catch (error) {
+      console.error('Exited-student archive read failed:', error);
+      result = { success:false, message:'Gagal membuka arsip siswa: ' + String(error && error.message ? error.message : error) };
+    }
+    return json({ ok:true, data:result });
+  }
+
   if (method === 'deleteExitedStudentRecord') {
     let result;
     try {
@@ -1189,6 +1502,9 @@ async function handleRpc(request, env, ctx) {
   }
 
 
+  if (!env.APPS_SCRIPT_URL || !env.APPS_SCRIPT_TOKEN) {
+    return json({ ok:false, error:'Fitur ini membutuhkan konfigurasi Apps Script/Drive yang belum lengkap.' }, 503);
+  }
   const result = await gasRpc(env, method, safeArgs);
   if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
       return json({ ok:true, data:result });
@@ -1196,33 +1512,154 @@ async function handleRpc(request, env, ctx) {
 
 
 
+async function getExitedStudentArchiveSupabase(env, identifier, fallbackName = '') {
+  const key = String(identifier || '').trim();
+  const nameHint = String(fallbackName || '').trim();
+  if (!key && !nameHint) throw new Error('Identitas siswa arsip kosong.');
+
+  const first = async (table, filters) => {
+    try { const rows = await sbRowsSafe(env, table, { ...filters, limit:'1' }); return rows[0] || null; }
+    catch (_) { return null; }
+  };
+  const listSafe = async (table, filters) => {
+    try { return await sbRowsSafe(env, table, filters); }
+    catch (_) { return []; }
+  };
+
+  let student = null;
+  if (key) student = await first('students', { student_id:`eq.${key}` });
+  if (!student && nameHint) student = await first('students', { name:`eq.${nameHint}` });
+  if (!student && key && key !== nameHint) student = await first('students', { name:`eq.${key}` });
+
+  let historySeed = null;
+  if (!student && key) historySeed = await first('student_history', { student_id:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc' });
+  if (!historySeed && nameHint) historySeed = await first('student_history', { student_name_snapshot:`eq.${nameHint}`, order:'event_at.desc.nullslast,created_at.desc' });
+  if (!historySeed && key && key !== nameHint) historySeed = await first('student_history', { student_name_snapshot:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc' });
+
+  if (!student && !historySeed) {
+    return { success:false, message:'Arsip siswa tidak ditemukan. Data utama dan riwayat siswa sudah tidak tersedia.' };
+  }
+
+  const studentId = String(student?.student_id || historySeed?.student_id || key || '').trim();
+  const studentName = String(student?.name || historySeed?.student_name_snapshot || nameHint || key || '').trim();
+  const byId = studentId ? { student_id:`eq.${studentId}` } : null;
+  const byName = studentName ? { student_name_snapshot:`eq.${studentName}` } : null;
+
+  const rowsFor = async (table, idColumn='student_id', nameColumn='student_name_snapshot', extra={}) => {
+    let rows = [];
+    if (studentId) rows = await listSafe(table, { [idColumn]:`eq.${studentId}`, ...extra });
+    if (!rows.length && studentName && nameColumn) rows = await listSafe(table, { [nameColumn]:`eq.${studentName}`, ...extra });
+    return rows;
+  };
+
+  const [classes, schedules, attendance, assignments, progress, repertoire, practice, evaluations, exams, reportsById, history] = await Promise.all([
+    rowsFor('student_classes','student_id','student_name_snapshot',{order:'created_at.desc',limit:'100'}),
+    rowsFor('schedules','student_id','student_name_snapshot',{order:'created_at.desc',limit:'100'}),
+    rowsFor('student_attendance','student_id','student_name_snapshot',{order:'attendance_date.desc,created_at.desc',limit:'300'}),
+    rowsFor('assignments','student_id','student_name_snapshot',{order:'created_at.desc',limit:'200'}),
+    rowsFor('learning_progress','student_id','student_name_snapshot',{order:'last_updated_at.desc.nullslast,created_at.desc',limit:'100'}),
+    rowsFor('student_repertoire','student_id','student_name_snapshot',{order:'updated_at.desc',limit:'100'}),
+    rowsFor('practice_resources','student_id','student_name_snapshot',{order:'updated_at.desc',limit:'100'}),
+    rowsFor('media_evaluations','student_id','student_name_snapshot',{order:'updated_at.desc',limit:'100'}),
+    rowsFor('annual_exam_assessments','student_public_id','student_name_snapshot',{order:'exam_date.desc,created_at.desc',limit:'100'}),
+    studentId ? listSafe('student_report_publications',{student_id:`eq.${studentId}`,order:'sent_at.desc',limit:'100'}) : [],
+    rowsFor('student_history','student_id','student_name_snapshot',{order:'event_at.desc.nullslast,created_at.desc',limit:'300'})
+  ]);
+
+  const exitRow = history.find(row => String(row.event_type||'').trim().toLowerCase()==='keluar') || historySeed || null;
+  const profile = {
+    siswaID: studentId,
+    nama: studentName || '-',
+    status: student?.status || exitRow?.new_status || 'Keluar',
+    email: student?.email || '',
+    noHp: student?.phone || '',
+    instrumen: student?.instrument || exitRow?.instrument || classes[0]?.instrument || '-',
+    guru: student?.teacher_name_snapshot || exitRow?.teacher_name_snapshot || classes[0]?.teacher_name_snapshot || '-',
+    grade: student?.grade || classes[0]?.grade || '-',
+    tanggalMasuk: formatDbDateIso(student?.registered_on || ''),
+    tanggalKeluar: formatDbDateIso(student?.left_on || exitRow?.event_at || ''),
+    alasanKeluar: student?.exit_reason || exitRow?.description || ''
+  };
+
+  return {
+    success:true,
+    limited:!student,
+    profile,
+    counts:{
+      kelas:classes.length, jadwal:schedules.length, absensi:attendance.length, tugas:assignments.length,
+      progress:progress.length, repertoire:repertoire.length, materiLatihan:practice.length,
+      evaluasi:evaluations.length, ujian:exams.length, laporan:reportsById.length, riwayat:history.length
+    },
+    classes:classes.map(r=>({instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',grade:r.grade||'',status:r.status||'',mulai:formatDbDateIso(r.started_on),selesai:formatDbDateIso(r.ended_on)})),
+    attendance:attendance.map(r=>({tanggal:formatDbDateIso(r.attendance_date),pertemuan:r.meeting_number??'',status:r.status||'',materi:r.material||'',lagu:r.song||'',guru:r.teacher_name_snapshot||''})),
+    assignments:assignments.map(r=>({judul:r.title||'',status:r.status||'',deadline:formatDbDateIso(r.deadline),dibuat:formatDbDateIso(r.created_on),dikirim:formatDbDateIso(r.sent_on),jawaban:r.answer_text||''})),
+    progress:progress.map(r=>({periode:r.period||'',level:r.level||'',nilai:Number(r.overall_progress||0),guru:r.teacher_name_snapshot||'',target:r.next_target||''})),
+    repertoire:repertoire.map(r=>({judul:r.song_title||'',status:r.status||'',progress:Number(r.progress_percent||0),instrumen:r.instrument||'',guru:r.teacher_name_snapshot||''})),
+    practice:practice.map(r=>({judul:r.title||'',instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',updated:r.updated_at||r.created_at||''})),
+    evaluations:evaluations.map(r=>({judul:r.title||'',instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',updated:r.updated_at||r.created_at||''})),
+    exams:exams.map(r=>({tanggal:formatDbDateIso(r.exam_date),grade:r.grade_exam||'',nilai:Number(r.final_score||0),predikat:r.predicate||'',status:r.result_status||'',published:Boolean(r.published)})),
+    reports:reportsById.map(r=>({tanggal:r.sent_at||'',pengirim:r.sent_by_name||'',aktif:r.active!==false,progressID:r.progress_id||''})),
+    history:history.map(r=>({tanggal:formatDbDateIso(r.event_at),jenis:r.event_type||'',statusSebelum:r.previous_status||'',statusSesudah:r.new_status||'',instrumen:r.instrument||'',guru:r.teacher_name_snapshot||'',keterangan:r.description||''}))
+  };
+}
+
 async function purgeExitedStudentSupabase(env, identifier) {
   const key = String(identifier || '').trim();
   if (!key) throw new Error('Identitas siswa kosong.');
-  let rows = await sbRows(env, 'students', { student_id:`eq.${key}`, limit:'1' });
-  if (!rows.length) rows = await sbRows(env, 'students', { name:`eq.${key}`, limit:'1' });
-  const student = rows[0];
-  if (!student) throw new Error('Siswa tidak ditemukan di Supabase.');
-  if (String(student.status || '').trim().toLowerCase() !== 'keluar') throw new Error('Hanya siswa berstatus Keluar yang dapat dihapus permanen.');
-  const id = String(student.student_id || '').trim();
-  const del = async (table, filter) => { try { await supabaseRest(env, `/rest/v1/${table}?${filter}`, { method:'DELETE', headers:{Prefer:'return=minimal'} }); } catch (e) { console.error(`Purge ${table} skipped:`, e); } };
-  await del('push_delivery_events', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-  await del('push_subscriptions', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-  await del('student_repertoire', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('annual_exam_assessments', `student_public_id=eq.${encodeURIComponent(id)}`);
-  await del('student_report_publications', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('learning_progress', `student_id=eq.${encodeURIComponent(id)}`);
-  if (student.name) await del('learning_progress', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(student.name)}`);
-  await del('assignments', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('student_attendance', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('schedule_overrides', `absent_student_id=eq.${encodeURIComponent(id)}`);
-  await del('schedule_overrides', `slot_student_id=eq.${encodeURIComponent(id)}`);
-  await del('schedules', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('student_classes', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
-  await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
-  await supabaseRest(env, `/rest/v1/students?student_id=eq.${encodeURIComponent(id)}`, { method:'DELETE', headers:{Prefer:'return=minimal'} });
-  return { success:true, siswaID:id, message:`Siswa ${student.name || ''} dan seluruh data terkait berhasil dihapus permanen.` };
+
+  let rows = await sbRowsSafe(env, 'students', { student_id:`eq.${key}`, limit:'1' });
+  if (!rows.length) rows = await sbRowsSafe(env, 'students', { name:`eq.${key}`, limit:'1' });
+  const student = rows[0] || null;
+
+  let historyRows = [];
+  if (!student) historyRows = await sbRowsSafe(env, 'student_history', { student_id:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
+  if (!student && !historyRows.length) historyRows = await sbRowsSafe(env, 'student_history', { student_name_snapshot:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
+
+  if (student && String(student.status || '').trim().toLowerCase() !== 'keluar') {
+    throw new Error('Hanya siswa berstatus Keluar yang dapat dihapus permanen.');
+  }
+
+  const history = historyRows[0] || null;
+  const id = String(student?.student_id || history?.student_id || (historyRows.length ? key : '')).trim();
+  const name = String(student?.name || history?.student_name_snapshot || (!id ? key : '')).trim();
+
+  // Jika record utama sudah terhapus, anggap sebagai orphan archive dan bersihkan sisa riwayat/data.
+  const del = async (table, filter) => {
+    if (!filter) return;
+    try { await supabaseRest(env, `/rest/v1/${table}?${filter}`, { method:'DELETE', headers:{Prefer:'return=minimal'} }); }
+    catch (e) { console.error(`Purge ${table} skipped:`, e); }
+  };
+
+  if (id) {
+    await del('push_delivery_events', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
+    await del('push_subscriptions', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
+    await del('media_evaluations', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('practice_resources', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_repertoire', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('annual_exam_assessments', `student_public_id=eq.${encodeURIComponent(id)}`);
+    await del('student_report_publications', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('learning_progress', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('assignments', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_attendance', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('schedule_overrides', `absent_student_id=eq.${encodeURIComponent(id)}`);
+    await del('schedule_overrides', `slot_student_id=eq.${encodeURIComponent(id)}`);
+    await del('replacement_schedules', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('schedules', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_classes', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
+    await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
+    await del('students', `student_id=eq.${encodeURIComponent(id)}`);
+  }
+  if (name) {
+    await del('learning_progress', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(name)}`);
+    if (!id) await del('student_history', `student_name_snapshot=eq.${encodeURIComponent(name)}`);
+  }
+
+  if (!student && !historyRows.length) {
+    return { success:true, alreadyDeleted:true, siswaID:key, message:'Data siswa sudah tidak ada di Supabase. Tidak ada arsip tersisa untuk dihapus.' };
+  }
+
+  return { success:true, siswaID:id || key, message:`${student ? `Siswa ${student.name || name || ''}` : `Arsip ${name || key}`} dan seluruh data terkait berhasil dihapus permanen.` };
 }
 
 // ============================================================================
@@ -1330,6 +1767,50 @@ function hasSupabaseConfig(env) {
   return Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+async function sha256Hex(value) {
+  const data = new TextEncoder().encode(String(value || ''));
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(x => x.toString(16).padStart(2,'0')).join('');
+}
+
+function generateInitialPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const bytes = new Uint8Array(12); crypto.getRandomValues(bytes);
+  let out = 'LmC-';
+  for (let i=0;i<bytes.length;i++) out += alphabet[bytes[i] % alphabet.length];
+  out += '-7';
+  return out;
+}
+
+function weekdayIndexId(dayName) {
+  const map={minggu:0,ahad:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,"jum'at":5,sabtu:6};
+  return map[String(dayName||'').trim().toLowerCase()] ?? null;
+}
+function sameYearMonthIso(iso, year, monthIndex){
+  const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return !!m && Number(m[1])===year && Number(m[2])===monthIndex+1;
+}
+function countWeekdayInMonth(year, monthIndex, weekday){
+  if (weekday == null) return 0; let total=0; const days=new Date(year,monthIndex+1,0).getDate();
+  for(let d=1;d<=days;d++) if(new Date(year,monthIndex,d).getDay()===weekday) total++;
+  return total;
+}
+function calculateMonthlyExpectedClasses(schedules, overrides, studentId) {
+  const now=new Date();
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit'}).formatToParts(now);
+  const year=Number(parts.find(p=>p.type==='year')?.value || now.getUTCFullYear());
+  const month=Number(parts.find(p=>p.type==='month')?.value || (now.getUTCMonth()+1))-1;
+  let total=(Array.isArray(schedules)?schedules:[]).filter(x=>String(x.status||'Aktif').toLowerCase()==='aktif').reduce((sum,row)=>sum+countWeekdayInMonth(year,month,weekdayIndexId(row.day_name||row.hari)),0);
+  for(const row of (Array.isArray(overrides)?overrides:[])){
+    if(String(row.status||'Aktif').toLowerCase()!=='aktif') continue;
+    if(studentId && String(row.absent_student_id||'')!==String(studentId)) continue;
+    const originalInMonth=sameYearMonthIso(row.original_date,year,month);
+    const makeupInMonth=sameYearMonthIso(row.makeup_date,year,month);
+    if(originalInMonth && row.makeup_date && !makeupInMonth) total=Math.max(0,total-1);
+    if(!originalInMonth && makeupInMonth) total+=1;
+  }
+  return Math.max(0,total);
+}
+
 async function verifyLoginSupabaseRpc(env, args) {
   const [rawRole, rawUsername, rawPassword] = args;
   const role = String(rawRole || '').trim().toLowerCase();
@@ -1383,7 +1864,8 @@ async function verifyLoginSupabaseRpc(env, args) {
     success:true,
     userID:String(account.user_id || ''),
     userName:String(account.display_name || ''),
-    userType:String(account.role || role)
+    userType:String(account.role || role),
+    mustChangePassword:Boolean(account.must_change_password)
   };
 }
 
@@ -1696,7 +2178,7 @@ async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
     p_left_on: String(payload.tglKeluar || '').trim() || null,
     p_classes: normalizedClasses,
     p_replace_classes: String(payload.currentUserType || '').toLowerCase() === 'admin' || method === 'addSiswaCombined',
-    p_initial_password: method === 'addSiswaCombined' ? 'password123' : null
+    p_initial_password: null
   });
 }
 
@@ -2205,8 +2687,12 @@ async function getLiveAnnouncementsSupabase(env, session) {
 
 
 async function getLiveModuleDataSupabase(env, session, requestedModules) {
-  const allowed = new Set(['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams']);
-  const modules = [...new Set((Array.isArray(requestedModules) ? requestedModules : []).map(x => String(x || '').trim()).filter(x => allowed.has(x)))];
+  const allowed = new Set(['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams','practice']);
+  const rawModules = (Array.isArray(requestedModules) ? requestedModules : []).map(x => String(x || '').trim());
+  // Full signature rows are requested only when a user opens the attendance view.
+  // Background refresh should not repeatedly transfer large inline images.
+  const attendanceDetailRequested = rawModules.includes('attendance_detail');
+  const modules = [...new Set(rawModules.map(x => x === 'attendance_detail' ? 'attendance' : x).filter(x => allowed.has(x)))];
   const out = { success:true, syncedAt:new Date().toISOString() };
   if (!modules.length) return out;
 
@@ -2250,26 +2736,37 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
         'attendance_id','student_id','student_name_snapshot','teacher_id','teacher_name_snapshot',
         'attendance_date','meeting_number','status','material','song','notes','created_at'
       ].join(',');
-      const [snapshotRows, recentFullRows] = await Promise.all([
+      // Detail view and printing require signatures from ALL matching records,
+      // not just the newest 40. Transfer only the signature columns on demand.
+      // Routine background sync remains lightweight (8 recent full rows).
+      const [snapshotRows, signatureRows] = await Promise.all([
         sbPagedRows(env, 'student_attendance', { ...baseParams, select:lightweightSelect }),
-        sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit:'40' })
+        attendanceDetailRequested
+          ? sbPagedRows(env, 'student_attendance', {
+              ...baseParams,
+              select:'attendance_id,teacher_signature_data,student_signature_data'
+            })
+          : sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit:'8' })
       ]);
-      const recentById = new Map(recentFullRows.map(row => [String(row.attendance_id || ''), row]));
-      out.attendance = snapshotRows.map(row => mapAttendance(recentById.get(String(row.attendance_id || '')) || row));
+      const signaturesById = new Map(signatureRows.map(row => [String(row.attendance_id || ''), row]));
+      out.attendance = snapshotRows.map(row => mapAttendance({
+        ...row,
+        ...(signaturesById.get(String(row.attendance_id || '')) || {})
+      }));
       return;
     }
     if (module === 'assignments') {
       const params = { order:'created_at.desc' };
       if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
-      out.assignments = (await sbRows(env, 'assignments', params)).map(mapAssignment);
+      out.assignments = (await sbPagedRows(env, 'assignments', params)).map(mapAssignment);
       return;
     }
     if (module === 'progress') {
       const params = { order:'last_updated_at.desc.nullslast,created_at.desc' };
       if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
-      out.progress = (await sbRows(env, 'learning_progress', params)).map(mapProgress);
+      out.progress = (await sbPagedRows(env, 'learning_progress', params)).map(mapProgress);
       return;
     }
     if (module === 'schedules') {
@@ -2277,13 +2774,13 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       if (session.userType === 'siswa') params.student_id = `eq.${session.userID}`;
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
       const [rows, replacements, overrides] = await Promise.all([
-        sbRows(env, 'schedules', params),
+        sbPagedRows(env, 'schedules', params),
         session.userType === 'siswa' ? sbRowsSafe(env,'replacement_schedules',{student_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
           session.userType === 'guru' ? sbRowsSafe(env,'replacement_schedules',{teacher_id:`eq.${session.userID}`,order:'scheduled_date.desc.nullslast,created_at.desc'}) :
           sbRowsSafe(env,'replacement_schedules',{order:'scheduled_date.desc.nullslast,created_at.desc'}),
         getScheduleOverrideRowsForSession(env, session).catch(()=>[])
       ]);
-      out.schedules = rows.map(row => mapSchedule(row, true));
+      out.schedules = (await filterOperationalScheduleRowsFromDb(env, rows)).map(row => mapSchedule(row, true));
       out.replacements = replacements.map(mapReplacement);
       out.scheduleOverrides = overrides.map(mapScheduleOverride);
       return;
@@ -2292,7 +2789,7 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       const params = { order:'attendance_date.desc,created_at.desc' };
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
       if (session.userType === 'siswa') { out.teacherAttendance = []; return; }
-      out.teacherAttendance = (await sbRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
+      out.teacherAttendance = (await sbPagedRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
       return;
     }
     if (module === 'repertoire') {
@@ -2300,11 +2797,50 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       out.repertoire = result.items || result.repertoire || [];
       return;
     }
+    if (module === 'practice') {
+      const result = await getPracticeHubDataSupabase(env, session);
+      out.practiceResources = result.resources || [];
+      out.mediaEvaluations = result.evaluations || [];
+      return;
+    }
     if (module === 'exams') {
       out.exams = await listAnnualExamsSupabase(env, session);
     }
   }));
   return out;
+}
+
+function isOperationalStudentStatus(value) {
+  return String(value || '').trim().toLowerCase() === 'aktif';
+}
+
+function filterOperationalScheduleRows(rows, students) {
+  const activeIds = new Set((students || []).filter(student => isOperationalStudentStatus(student.status)).map(student => String(student.student_id || '').trim()).filter(Boolean));
+  const activeNames = new Set((students || []).filter(student => isOperationalStudentStatus(student.status)).map(student => String(student.name || '').trim().toLowerCase()).filter(Boolean));
+  return (rows || []).filter(row => {
+    const studentId = String(row.student_id || '').trim();
+    if (studentId) return activeIds.has(studentId);
+    const name = String(row.student_name_snapshot || '').trim().toLowerCase();
+    return !!name && activeNames.has(name);
+  });
+}
+
+async function filterOperationalScheduleRowsFromDb(env, rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return [];
+  const ids = [...new Set(list.map(row => String(row.student_id || '').trim()).filter(Boolean))];
+  const students = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50).map(value => value.replace(/[(),"]/g, '')).filter(Boolean);
+    if (!chunk.length) continue;
+    students.push(...await sbRows(env, 'students', { select:'student_id,name,status', student_id:`in.(${chunk.join(',')})` }));
+  }
+  if (list.some(row => !String(row.student_id || '').trim())) {
+    students.push(...await sbPagedRows(env, 'students', { select:'student_id,name,status' }));
+  }
+  const unique = new Map();
+  students.forEach(student => unique.set(String(student.student_id || student.name || ''), student));
+  return filterOperationalScheduleRows(list, [...unique.values()]);
 }
 
 async function getDashboardDataSupabase(env, session) {
@@ -2332,6 +2868,15 @@ async function sbRowsSafe(env, table, params = {}) {
     return await sbRows(env, table, params);
   } catch (error) {
     console.error(`Optional Supabase table ${table} failed:`, error);
+    return [];
+  }
+}
+
+async function sbPagedRowsSafe(env, table, params = {}, maxRows = 10000) {
+  try {
+    return await sbPagedRows(env, table, params, maxRows);
+  } catch (error) {
+    console.error(`Optional paged Supabase table ${table} failed:`, error);
     return [];
   }
 }
@@ -2474,9 +3019,9 @@ function intervalsOverlap(startA,endA,startB,endB) {
 
 async function buildAdminDataQuality(env) {
   const [students,teachers,classes,schedules,overrides,progress] = await Promise.all([
-    sbRows(env,'students',{order:'name.asc'}), sbRows(env,'teachers',{order:'name.asc'}), sbRows(env,'student_classes',{order:'created_at.asc'}),
-    sbRows(env,'schedules',{order:'day_name.asc,start_time.asc'}), sbRows(env,'schedule_overrides',{status:'eq.Aktif',order:'original_date.desc'}),
-    sbRows(env,'learning_progress',{order:'last_updated_at.desc.nullslast,created_at.desc'})
+    sbPagedRows(env,'students',{order:'name.asc'}), sbPagedRows(env,'teachers',{order:'name.asc'}), sbPagedRows(env,'student_classes',{order:'created_at.asc'}),
+    sbPagedRows(env,'schedules',{order:'day_name.asc,start_time.asc'}), sbPagedRows(env,'schedule_overrides',{status:'eq.Aktif',order:'original_date.desc'}),
+    sbPagedRows(env,'learning_progress',{order:'last_updated_at.desc.nullslast,created_at.desc'})
   ]);
   const findings=[];
   const add=(severity,category,title,detail,entityName,section)=>findings.push({id:`DQ-${findings.length+1}`,severity,category,title,detail,entityName:entityName||'',section:section||'section-siswa'});
@@ -2654,6 +3199,14 @@ function mapSchedule(row, includeStatus = true) {
   return item;
 }
 
+function attendanceSignatureForClient(value, attendanceId, kind) {
+  const raw = String(value || '');
+  if (/^lmc-drive-signature:[A-Za-z0-9_-]{10,128}$/.test(raw) && /^[A-Za-z0-9_-]{1,128}$/.test(String(attendanceId || ''))) {
+    return `/api/attendance-signature/${encodeURIComponent(String(attendanceId))}/${kind}`;
+  }
+  return raw;
+}
+
 function mapAttendance(row) {
   return {
     absensiID: row.attendance_id || '',
@@ -2664,9 +3217,11 @@ function mapAttendance(row) {
     materi: row.material || '',
     lagu: row.song || '',
     catatan: row.notes || '',
-    tandaTangan: row.teacher_signature_data || '',
+    tandaTangan: attendanceSignatureForClient(row.teacher_signature_data, row.attendance_id, 'teacher'),
     guruCatat: row.teacher_name_snapshot || '',
-    ttdSiswa: row.student_signature_data || ''
+    guruID: row.teacher_id || '',
+    instrumen: row.instrument || '',
+    ttdSiswa: attendanceSignatureForClient(row.student_signature_data, row.attendance_id, 'student')
   };
 }
 
@@ -2840,7 +3395,9 @@ function mapTeacherAttendance(row) {
     jamKeluar: formatDbTime(row.check_out),
     catatan: row.notes || '',
     dicatatOleh: row.recorded_by || '',
-    tandaTangan: row.signature_data || ''
+    tandaTangan: /^lmc-drive-signature:[A-Za-z0-9_-]{10,128}$/.test(String(row.signature_data || '')) && /^[A-Za-z0-9_-]{1,128}$/.test(String(row.teacher_attendance_id || ''))
+      ? `/api/teacher-attendance-signature/${encodeURIComponent(String(row.teacher_attendance_id))}`
+      : (row.signature_data || '')
   };
 }
 
@@ -3308,6 +3865,99 @@ async function deleteStudentRepertoireSupabase(env, session, payload) {
   return { success:true, message:'Repertoire berhasil dihapus.', repertoireID:repertoireId };
 }
 
+
+function mapPracticeResource(row) {
+  return {
+    resourceID:row.resource_id || '', studentID:row.student_id || '', studentName:row.student_name_snapshot || '',
+    teacherID:row.teacher_id || '', teacherName:row.teacher_name_snapshot || '', instrument:row.instrument || '',
+    title:row.title || '', description:row.description || '', youtubeUrl:row.youtube_url || '',
+    attachments:Array.isArray(row.attachments) ? row.attachments : [], createdAt:row.created_at || '', updatedAt:row.updated_at || ''
+  };
+}
+function mapMediaEvaluation(row) {
+  const scores={tone:Number(row.tone_score||0),rhythm:Number(row.rhythm_score||0),tempo:Number(row.tempo_score||0),technique:Number(row.technique_score||0),expression:Number(row.expression_score||0)};
+  const legacyAspects=[
+    {key:'tone',label:'Tone',description:'Kualitas dan konsistensi bunyi.',score:scores.tone},
+    {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan kestabilan pulse.',score:scores.rhythm},
+    {key:'tempo',label:'Tempo',description:'Kestabilan tempo.',score:scores.tempo},
+    {key:'technique',label:'Teknik',description:'Ketepatan dan kontrol teknik instrumen.',score:scores.technique},
+    {key:'expression',label:'Ekspresi',description:'Musikalitas, dinamika, dan penghayatan.',score:scores.expression}
+  ];
+  const aspects=Array.isArray(row.score_aspects)&&row.score_aspects.length?row.score_aspects.map((x,i)=>({key:String(x?.key||`aspect_${i+1}`),label:String(x?.label||`Aspek ${i+1}`),description:String(x?.description||''),score:Math.max(0,Math.min(100,Number(x?.score||0)))})):legacyAspects;
+  const averageScore=aspects.length?Math.round(aspects.reduce((sum,x)=>sum+Number(x.score||0),0)/aspects.length):0;
+  return {
+    evaluationID:row.evaluation_id || '', studentID:row.student_id || '', studentName:row.student_name_snapshot || '',
+    teacherID:row.teacher_id || '', teacherName:row.teacher_name_snapshot || '', instrument:row.instrument || '', repertoireID:row.repertoire_id || '',
+    sourceType:row.source_type || '', sourceID:row.source_id || '', sourceLabel:row.source_label || '',
+    title:row.title || '', mediaUrl:row.media_url || '', mediaKind:row.media_kind || 'link', scores, aspects, averageScore,
+    strength:row.strength || '', improvement:row.improvement || '', nextTarget:row.next_target || '',
+    markers:Array.isArray(row.feedback_markers) ? row.feedback_markers : [], notes:row.notes || '', createdAt:row.created_at || '', updatedAt:row.updated_at || ''
+  };
+}
+async function practiceAllowedStudentIds(env, session) {
+  if (session.userType === 'siswa') return new Set([String(session.userID || '').trim()]);
+  if (session.userType !== 'guru') return new Set();
+  const [classes,direct] = await Promise.all([
+    sbRows(env,'student_classes',{teacher_id:`eq.${session.userID}`}),
+    sbRows(env,'students',{teacher_id:`eq.${session.userID}`})
+  ]);
+  return new Set([...classes.map(x=>x.student_id),...direct.map(x=>x.student_id)].map(v=>String(v||'').trim()).filter(Boolean));
+}
+async function getPracticeHubDataSupabase(env, session) {
+  if (!['guru','siswa'].includes(session.userType)) throw new Error('Fitur Latihan Mandiri tersedia untuk guru dan siswa.');
+  const ids=await practiceAllowedStudentIds(env,session);
+  if (!ids.size) return {success:true,resources:[],evaluations:[]};
+  const [resourceRows,evaluationRows,repertoireResult]=await Promise.all([
+    sbRows(env,'practice_resources',{active:'eq.true',order:'updated_at.desc.nullslast,created_at.desc'}),
+    sbRows(env,'media_evaluations',{active:'eq.true',order:'updated_at.desc.nullslast,created_at.desc'}),
+    getRepertoireDataSupabase(env, session).catch(() => ({success:true,items:[]}))
+  ]);
+  const ownTeacher=String(session.userID||'').trim();
+  const allow=row=>ids.has(String(row.student_id||'').trim()) && (session.userType==='siswa' || String(row.teacher_id||'').trim()===ownTeacher || ids.has(String(row.student_id||'').trim()));
+  return {success:true,resources:resourceRows.filter(allow).map(mapPracticeResource),evaluations:evaluationRows.filter(allow).map(mapMediaEvaluation),repertoire:Array.isArray(repertoireResult.items)?repertoireResult.items:[]};
+}
+async function practiceStudentAndAccess(env,session,studentId) {
+  if (session.userType !== 'guru') throw new Error('Hanya guru yang dapat mengubah Latihan Mandiri.');
+  if (!studentId) throw new Error('Siswa belum dipilih.');
+  if (!(await annualExamTeacherCanAccessStudent(env,session,studentId))) throw new Error('Anda tidak memiliki akses ke siswa ini.');
+  const rows=await sbRows(env,'students',{student_id:`eq.${studentId}`,limit:'1'}); if(!rows[0])throw new Error('Data siswa tidak ditemukan.'); return rows[0];
+}
+async function savePracticeResourceSupabase(env,session,payload) {
+  const studentId=String(payload.studentID||'').trim(); const student=await practiceStudentAndAccess(env,session,studentId);
+  const resourceId=String(payload.resourceID||'').trim(); let existing=null;
+  if(resourceId){const rows=await sbRows(env,'practice_resources',{resource_id:`eq.${resourceId}`,limit:'1'});existing=rows[0]||null;if(!existing)throw new Error('Materi latihan tidak ditemukan.');if(String(existing.teacher_id||'')!==String(session.userID||''))throw new Error('Materi ini dibuat oleh guru lain.');}
+  const rawYoutube=String(payload.youtubeUrl||'').trim(); const yt=buildYouTubeMeta(rawYoutube); if(rawYoutube&&!yt.videoId)throw new Error('Link video harus berupa link YouTube yang valid.');
+  const oldAttachments=Array.isArray(existing?.attachments)?existing.attachments:[]; const added=Array.isArray(payload.newAttachments)?payload.newAttachments:[];
+  const body={student_id:studentId,student_name_snapshot:String(student.name||''),teacher_id:String(session.userID||''),teacher_name_snapshot:String(session.userName||''),instrument:String(payload.instrument||student.instrument||'Musik'),title:String(payload.title||'').trim(),description:String(payload.description||'').trim(),youtube_url:yt.url||'',attachments:[...oldAttachments,...added],active:true,updated_at:new Date().toISOString()};
+  if(!body.title)throw new Error('Judul materi wajib diisi.');
+  const response=existing?await supabaseRest(env,`/rest/v1/practice_resources?resource_id=eq.${encodeURIComponent(resourceId)}`,{method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)}):await supabaseRest(env,'/rest/v1/practice_resources',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)});
+  return {success:true,message:existing?'Materi latihan berhasil diperbarui.':'Materi latihan berhasil ditambahkan.',item:Array.isArray(response)&&response[0]?mapPracticeResource(response[0]):null};
+}
+async function deletePracticeResourceSupabase(env,session,resourceId) {
+  if(session.userType!=='guru')throw new Error('Hanya guru yang dapat menghapus materi latihan.');
+  const rows=await sbRows(env,'practice_resources',{resource_id:`eq.${resourceId}`,limit:'1'});const row=rows[0];if(!row)throw new Error('Materi latihan tidak ditemukan.');if(String(row.teacher_id||'')!==String(session.userID||''))throw new Error('Materi ini dibuat oleh guru lain.');
+  await supabaseRest(env,`/rest/v1/practice_resources?resource_id=eq.${encodeURIComponent(resourceId)}`,{method:'DELETE',headers:{Prefer:'return=minimal'}});return {success:true,message:'Materi latihan berhasil dihapus.'};
+}
+function parseFeedbackMarkers(text) {
+  return String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>{const parts=line.split('|');return {time:String(parts.shift()||'').trim(),text:parts.join('|').trim()};}).filter(x=>x.time||x.text).slice(0,50);
+}
+async function saveMediaEvaluationSupabase(env,session,payload) {
+  const studentId=String(payload.studentID||'').trim();const student=await practiceStudentAndAccess(env,session,studentId);const id=String(payload.evaluationID||'').trim();let existing=null;
+  if(id){const rows=await sbRows(env,'media_evaluations',{evaluation_id:`eq.${id}`,limit:'1'});existing=rows[0]||null;if(!existing)throw new Error('Evaluasi tidak ditemukan.');if(String(existing.teacher_id||'')!==String(session.userID||''))throw new Error('Evaluasi ini dibuat oleh guru lain.');}
+  const clamp=v=>Math.max(0,Math.min(100,Math.round(Number(v)||0))); const mediaUrl=String(payload.mediaUrl||'').trim(); const yt=buildYouTubeMeta(mediaUrl);
+  let aspects=Array.isArray(payload.aspects)?payload.aspects.slice(0,10).map((x,i)=>({key:String(x?.key||`aspect_${i+1}`).trim().slice(0,50),label:String(x?.label||`Aspek ${i+1}`).trim().slice(0,80),description:String(x?.description||'').trim().slice(0,240),score:clamp(x?.score)})):[];
+  if(!aspects.length){aspects=[{key:'tone',label:'Tone',score:clamp(payload.tone)},{key:'rhythm',label:'Rhythm',score:clamp(payload.rhythm)},{key:'tempo',label:'Tempo',score:clamp(payload.tempo)},{key:'technique',label:'Teknik',score:clamp(payload.technique)},{key:'expression',label:'Ekspresi',score:clamp(payload.expression)}];}
+  const byKey=Object.fromEntries(aspects.map(x=>[String(x.key||'').toLowerCase(),x.score]));
+  const fallback=i=>Number(aspects[i]?.score||0);
+  const body={student_id:studentId,student_name_snapshot:String(student.name||''),teacher_id:String(session.userID||''),teacher_name_snapshot:String(session.userName||''),instrument:String(payload.instrument||student.instrument||'Musik'),repertoire_id:String(payload.repertoireID||'').trim()||null,source_type:String(payload.sourceType||'').trim().slice(0,30),source_id:String(payload.sourceID||'').trim().slice(0,120),source_label:String(payload.sourceLabel||'').trim().slice(0,240),title:String(payload.title||'').trim(),media_url:mediaUrl,media_kind:yt.videoId?'youtube':(mediaUrl?'link':'none'),score_aspects:aspects,tone_score:clamp(byKey.tone??fallback(0)),rhythm_score:clamp(byKey.rhythm??fallback(1)),tempo_score:clamp(byKey.tempo??fallback(2)),technique_score:clamp(byKey.technique??fallback(3)),expression_score:clamp(byKey.expression??fallback(4)),strength:String(payload.strength||'').trim(),improvement:String(payload.improvement||'').trim(),next_target:String(payload.nextTarget||'').trim(),feedback_markers:parseFeedbackMarkers(payload.markers),notes:String(payload.notes||'').trim(),active:true,updated_at:new Date().toISOString()};
+  if(!body.title)throw new Error('Judul evaluasi wajib diisi.');
+  const response=existing?await supabaseRest(env,`/rest/v1/media_evaluations?evaluation_id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)}):await supabaseRest(env,'/rest/v1/media_evaluations',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(body)});
+  return {success:true,message:existing?'Evaluasi berhasil diperbarui.':'Evaluasi Audio/Video berhasil disimpan.',item:Array.isArray(response)&&response[0]?mapMediaEvaluation(response[0]):null};
+}
+async function deleteMediaEvaluationSupabase(env,session,id) {
+  if(session.userType!=='guru')throw new Error('Hanya guru yang dapat menghapus evaluasi.');const rows=await sbRows(env,'media_evaluations',{evaluation_id:`eq.${id}`,limit:'1'});const row=rows[0];if(!row)throw new Error('Evaluasi tidak ditemukan.');if(String(row.teacher_id||'')!==String(session.userID||''))throw new Error('Evaluasi ini dibuat oleh guru lain.');await supabaseRest(env,`/rest/v1/media_evaluations?evaluation_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:{Prefer:'return=minimal'}});return {success:true,message:'Evaluasi berhasil dihapus.'};
+}
+
 async function getScheduleOverrideRowsForSession(env, session) {
   const rows = await sbRows(env, 'schedule_overrides', { status:'eq.Aktif', order:'original_date.desc,created_at.desc' });
   if (session.userType === 'admin') return rows;
@@ -3420,11 +4070,11 @@ async function buildStudentDashboardSupabase(env, session) {
   const [students, classes, schedules, attendance, assignments, progress, replacements, announcements, scheduleOverrides, teachers] =
     await Promise.all([
       sbRows(env, 'students', { student_id:`eq.${id}`, limit:'1' }),
-      sbRows(env, 'student_classes', { student_id:`eq.${id}`, order:'created_at.asc' }),
-      sbRows(env, 'schedules', { student_id:`eq.${id}`, order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { student_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc' }),
-      sbRows(env, 'assignments', { student_id:`eq.${id}`, order:'created_at.desc' }),
-      sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
+      sbPagedRows(env, 'student_classes', { student_id:`eq.${id}`, order:'created_at.asc' }),
+      sbPagedRows(env, 'schedules', { student_id:`eq.${id}`, order:'created_at.asc' }),
+      sbRows(env, 'student_attendance', { student_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'120' }),
+      sbRows(env, 'assignments', { student_id:`eq.${id}`, order:'created_at.desc', limit:'120' }),
+      sbRows(env, 'learning_progress', { student_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'72' }),
       sbRowsSafe(env, 'replacement_schedules', { student_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
       sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
       getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; }),
@@ -3484,6 +4134,7 @@ async function buildStudentDashboardSupabase(env, session) {
     success:true,
     dataSource:'supabase',
     userType:'siswa',
+    partialModules:['attendance','assignments','progress'],
     guruList:teachers
       .filter(row => {
         const teacherIds = new Set(classes.map(c => String(c.teacher_id || '')).filter(Boolean));
@@ -3508,11 +4159,11 @@ async function buildStudentDashboardSupabase(env, session) {
       guru:teacherNames.join(', ') || student.teacher_name_snapshot || '',
       kelasList
     },
-    schedules:schedules
+    schedules:(isOperationalStudentStatus(student.status) ? schedules : [])
       .filter(row => String(row.status || 'Aktif').toLowerCase() === 'aktif')
       .map(row => mapSchedule(row, false)),
     absensiList:attendance.map(mapAttendance),
-    absensiProgress:{ hadir, total:4 },
+    absensiProgress:{ hadir, total:isOperationalStudentStatus(student.status) ? calculateMonthlyExpectedClasses(schedules, scheduleOverrides, student.student_id) : 0 },
     tugasList:assignments.map(mapAssignment),
     learningProgressList:mappedProgressList,
     studentReports,
@@ -3524,28 +4175,77 @@ async function buildStudentDashboardSupabase(env, session) {
   };
 }
 
+// Patch 04: optional, privacy-safe dashboard query timing.
+// Enable DASHBOARD_PERF_LOG=true only on the test Worker to view timings in logs.
+async function dashboardTimedQuery(env, role, label, fetcher) {
+  if (String(env.DASHBOARD_PERF_LOG || '').toLowerCase() !== 'true') return fetcher();
+  const started = Date.now();
+  try {
+    const result = await fetcher();
+    console.info(`[LMC dashboard timing] role=${role} dataset=${label} duration_ms=${Date.now() - started} rows=${Array.isArray(result) ? result.length : 'n/a'} status=ok`);
+    return result;
+  } catch (error) {
+    console.warn(`[LMC dashboard timing] role=${role} dataset=${label} duration_ms=${Date.now() - started} status=error`);
+    throw error;
+  }
+}
+
+// Exclude large inline base64 signatures from the initial dashboard snapshot.
+// The existing attendance lazy loader fetches detail when attendance is opened.
+const DASHBOARD_ATTENDANCE_SELECT = [
+  'attendance_id','student_id','student_name_snapshot','teacher_id',
+  'teacher_name_snapshot','attendance_date','meeting_number','status',
+  'material','song','notes'
+].join(',');
+
 async function buildTeacherDashboardSupabase(env, session) {
   const id = session.userID;
-  const [teachers, students, classes, schedules, attendance, assignments, progress, replacements, announcements, publications, scheduleOverrides] =
+
+  // Fast path: only load the students/classes that actually belong to this teacher.
+  // The previous implementation downloaded every student and every class in the school
+  // on each teacher login, then filtered them in Worker memory.
+  const [teachers, teacherClasses, directStudents, schedules, attendance, assignments, progress, replacements, announcements, publications, scheduleOverrides] =
     await Promise.all([
-      sbRows(env, 'teachers', { teacher_id:`eq.${id}`, limit:'1' }),
-      sbRows(env, 'students', { order:'name.asc' }),
-      sbRows(env, 'student_classes', { order:'created_at.asc' }),
-      sbRows(env, 'schedules', { teacher_id:`eq.${id}`, order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc' }),
-      sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc' }),
-      sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' }),
-      getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })
+      dashboardTimedQuery(env, 'guru', 'teachers', () => sbRows(env, 'teachers', { teacher_id:`eq.${id}`, limit:'1' })),
+      dashboardTimedQuery(env, 'guru', 'student_classes', () => sbPagedRows(env, 'student_classes', { teacher_id:`eq.${id}`, order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'guru', 'students', () => sbPagedRows(env, 'students', { teacher_id:`eq.${id}`, order:'name.asc' })),
+      dashboardTimedQuery(env, 'guru', 'schedules', () => sbPagedRows(env, 'schedules', { teacher_id:`eq.${id}`, order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'guru', 'student_attendance', () => sbRows(env, 'student_attendance', { select:DASHBOARD_ATTENDANCE_SELECT, teacher_id:`eq.${id}`, order:'attendance_date.desc,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'guru', 'assignments', () => sbRows(env, 'assignments', { teacher_id:`eq.${id}`, order:'created_at.desc', limit:'160' })),
+      dashboardTimedQuery(env, 'guru', 'learning_progress', () => sbRows(env, 'learning_progress', { teacher_id:`eq.${id}`, order:'last_updated_at.desc.nullslast,created_at.desc', limit:'120' })),
+      dashboardTimedQuery(env, 'guru', 'replacement_schedules', () => sbRowsSafe(env, 'replacement_schedules', { teacher_id:`eq.${id}`, order:'scheduled_date.desc.nullslast,created_at.desc' })),
+      dashboardTimedQuery(env, 'guru', 'announcements', () => sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc', limit:'120' })),
+      dashboardTimedQuery(env, 'guru', 'student_report_publications', () => sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'160' })),
+      dashboardTimedQuery(env, 'guru', 'schedule_overrides', () => getScheduleOverrideRowsForSession(env, session).catch(error => { console.error('Optional schedule overrides failed:', error); return []; })),
     ]);
 
   const teacher = teachers[0];
   if (!teacher) throw new Error('Data guru tidak ditemukan di Supabase.');
 
+  const directById = new Map(directStudents.map(student => [String(student.student_id || ''), student]));
+  const classStudentIds = [...new Set(teacherClasses.map(row => String(row.student_id || '').trim()).filter(Boolean))];
+  const missingIds = classStudentIds.filter(studentId => !directById.has(studentId));
+
+  let classStudents = [];
+  if (missingIds.length) {
+    const cleanIds = missingIds.map(value => String(value).replace(/[(),"]/g,'')).filter(Boolean);
+    if (cleanIds.length) {
+      classStudents = await sbPagedRows(env, 'students', {
+        student_id:`in.(${cleanIds.join(',')})`,
+        order:'name.asc'
+      });
+    }
+  }
+
+  const studentMap = new Map();
+  [...directStudents, ...classStudents].forEach(student => {
+    if (student && student.student_id) studentMap.set(String(student.student_id), student);
+  });
+  const students = [...studentMap.values()].sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'id'));
+  const operationalSchedules = filterOperationalScheduleRows(schedules, students);
+
   const classMap = new Map();
-  for (const row of classes) {
+  for (const row of teacherClasses) {
     const key = String(row.student_id || '');
     if (!classMap.has(key)) classMap.set(key, []);
     classMap.get(key).push(row);
@@ -3556,16 +4256,7 @@ async function buildTeacherDashboardSupabase(env, session) {
   const studentNames = new Set();
 
   for (const student of students) {
-    const allClasses = classMap.get(student.student_id) || [];
-    const teacherClassesRaw = allClasses.filter(row => String(row.teacher_id || '') === id);
-
-    const shouldInclude =
-      teacherClassesRaw.length > 0 ||
-      String(student.teacher_id || '') === id ||
-      (!student.teacher_id && allClasses.length === 0);
-
-    if (!shouldInclude) continue;
-
+    const teacherClassesRaw = classMap.get(String(student.student_id || '')) || [];
     const kelasList = teacherClassesRaw.map(row => mapClassRow(row, schedules));
     const instruments = uniqueText(kelasList.map(x => x.instrumen));
     const grades = uniqueText(kelasList.map(x => x.grade));
@@ -3591,7 +4282,7 @@ async function buildTeacherDashboardSupabase(env, session) {
   }
 
   const todayName = jakartaWeekday();
-  const todayCount = schedules.filter(row =>
+  const todayCount = operationalSchedules.filter(row =>
     String(row.status || 'Aktif') === 'Aktif' &&
     String(row.day_name || '').trim().toLowerCase() === todayName
   ).length;
@@ -3607,31 +4298,32 @@ async function buildTeacherDashboardSupabase(env, session) {
       String(publication.sentByID || '').trim() === String(id || '').trim()
     )
     .map(publication => {
-    const progressItem = progressById.get(String(publication?.progressID || '')) || null;
-    const publicStudentId = String(publication?.studentID || '');
-    const student = studentByPublicId.get(publicStudentId) || null;
-    const studentClassList = teacherStudents.find(item => String(item.siswaID || '') === publicStudentId)?.kelasList || [];
-    const matchingClass = studentClassList.find(item =>
-      progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
-    ) || studentClassList[0] || null;
+      const progressItem = progressById.get(String(publication?.progressID || '')) || null;
+      const publicStudentId = String(publication?.studentID || '');
+      const student = studentByPublicId.get(publicStudentId) || null;
+      const studentClassList = teacherStudents.find(item => String(item.siswaID || '') === publicStudentId)?.kelasList || [];
+      const matchingClass = studentClassList.find(item =>
+        progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
+      ) || studentClassList[0] || null;
 
-    return {
-      ...(publication || {}),
-      studentID: publicStudentId,
-      studentName: student?.name || progressItem?.namaSiswa || '',
-      period: progressItem?.periode || '',
-      periodType: progressItem?.tipePeriode || '',
-      teacher: progressItem?.guru || teacher.name || publication?.sentBy || '',
-      instrument: matchingClass?.instrumen || student?.instrument || '',
-      grade: matchingClass?.grade || student?.grade || '',
-      status:'Terkirim'
-    };
-  });
+      return {
+        ...(publication || {}),
+        studentID: publicStudentId,
+        studentName: student?.name || progressItem?.namaSiswa || '',
+        period: progressItem?.periode || '',
+        periodType: progressItem?.tipePeriode || '',
+        teacher: progressItem?.guru || teacher.name || publication?.sentBy || '',
+        instrument: matchingClass?.instrumen || student?.instrument || '',
+        grade: matchingClass?.grade || student?.grade || '',
+        status:'Terkirim'
+      };
+    });
 
   return {
     success:true,
     dataSource:'supabase',
     userType:'guru',
+    partialModules:['attendance','assignments','progress'],
     guruInfo:{
       userID:teacher.teacher_id,
       nama:teacher.name || '',
@@ -3641,7 +4333,7 @@ async function buildTeacherDashboardSupabase(env, session) {
       foto:teacher.photo_url || ''
     },
     siswaList:teacherStudents,
-    jadwal:schedules.map(row => mapSchedule(row, true)),
+    jadwal:operationalSchedules.map(row => mapSchedule(row, true)),
     absensiList:attendance.map(mapAttendance),
     stats:{ totalSiswa:teacherStudents.length, sesiJadwalAktif:todayCount },
     tugasList:assignments.map(mapAssignment),
@@ -3658,22 +4350,23 @@ async function buildTeacherDashboardSupabase(env, session) {
 async function buildAdminDashboardSupabase(env, session) {
   const [admins, students, teachers, classes, schedules, attendance, progress, replacements, announcements, history, teacherAttendance, scheduleOverrides, publications] =
     await Promise.all([
-      sbRows(env, 'admins', { admin_id:`eq.${session.userID}`, limit:'1' }),
-      sbRows(env, 'students', { order:'name.asc' }),
-      sbRows(env, 'teachers', { order:'name.asc' }),
-      sbRows(env, 'student_classes', { order:'created_at.asc' }),
-      sbRows(env, 'schedules', { order:'created_at.asc' }),
-      sbRows(env, 'student_attendance', { order:'attendance_date.desc,created_at.desc' }),
-      sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc' }),
-      sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc' }),
-      getScheduleOverrideRowsForSession(env, session),
-      sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc' })
+      dashboardTimedQuery(env, 'admin', 'admins', () => sbRows(env, 'admins', { admin_id:`eq.${session.userID}`, limit:'1' })),
+      dashboardTimedQuery(env, 'admin', 'students', () => sbPagedRows(env, 'students', { order:'name.asc' })),
+      dashboardTimedQuery(env, 'admin', 'teachers', () => sbPagedRows(env, 'teachers', { order:'name.asc' })),
+      dashboardTimedQuery(env, 'admin', 'student_classes', () => sbPagedRows(env, 'student_classes', { order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'admin', 'schedules', () => sbPagedRows(env, 'schedules', { order:'created_at.asc' })),
+      dashboardTimedQuery(env, 'admin', 'student_attendance', () => sbRows(env, 'student_attendance', { select:DASHBOARD_ATTENDANCE_SELECT, order:'attendance_date.desc,created_at.desc', limit:'240' })),
+      dashboardTimedQuery(env, 'admin', 'learning_progress', () => sbRows(env, 'learning_progress', { order:'last_updated_at.desc.nullslast,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'admin', 'replacement_schedules', () => sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' })),
+      dashboardTimedQuery(env, 'admin', 'announcements', () => sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' })),
+      dashboardTimedQuery(env, 'admin', 'student_history', () => sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc', limit:'300' })),
+      dashboardTimedQuery(env, 'admin', 'teacher_attendance', () => sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'admin', 'schedule_overrides', () => getScheduleOverrideRowsForSession(env, session)),
+      dashboardTimedQuery(env, 'admin', 'student_report_publications', () => sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'220' })),
     ]);
 
   const admin = admins[0] || null;
+  const operationalSchedules = filterOperationalScheduleRows(schedules, students);
 
   const classMap = new Map();
   for (const row of classes) {
@@ -3721,10 +4414,12 @@ async function buildAdminDashboardSupabase(env, session) {
   const mappedAdminProgress = progress.map(mapProgress);
   const adminProgressById = new Map(mappedAdminProgress.map(item => [String(item.progressID || ''), item]));
   const adminStudentByPublicId = new Map(students.map(item => [String(item.student_id || ''), item]));
+  // Index once: avoid scanning the entire student roster for every publication.
+  const adminClassListByStudentId = new Map(siswaList.map(item => [String(item.siswaID || ''), item.kelasList || []]));
   const adminReports = publications.map(mapStudent360Publication).filter(Boolean).map(publication => {
     const progressItem = adminProgressById.get(String(publication.progressID || '')) || null;
     const student = adminStudentByPublicId.get(String(publication.studentID || '')) || null;
-    const studentClasses = siswaList.find(item => String(item.siswaID || '') === String(publication.studentID || ''))?.kelasList || [];
+    const studentClasses = adminClassListByStudentId.get(String(publication.studentID || '')) || [];
     const matchingClass = studentClasses.find(item =>
       progressItem && String(item.guru || '').trim().toLowerCase() === String(progressItem.guru || '').trim().toLowerCase()
     ) || studentClasses[0] || null;
@@ -3745,6 +4440,7 @@ async function buildAdminDashboardSupabase(env, session) {
     success:true,
     dataSource:'supabase',
     userType:'admin',
+    partialModules:['attendance','progress','teacher_attendance'],
     adminInfo:admin ? {
       userID:admin.admin_id,
       nama:admin.name || '',
@@ -3760,7 +4456,7 @@ async function buildAdminDashboardSupabase(env, session) {
     },
     siswaList,
     guruList,
-    jadwal:schedules
+    jadwal:operationalSchedules
       .filter(row => knownNames.has(String(row.student_name_snapshot || '').trim().toLowerCase()))
       .map(row => mapSchedule(row, true)),
     absensiList:attendance.map(mapAttendance),

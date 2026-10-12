@@ -10,7 +10,7 @@
     'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
     'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addJadwalPengganti','deleteJadwalPengganti',
     'addPengumuman','deletePengumuman','recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire',
-    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile'
+    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile','changeOwnPassword'
   ]);
 
   async function rawRpc(method, args) {
@@ -275,6 +275,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let loginType = 'siswa';
     let globalSiswaList = [];
     let globalJadwalList = [];
+
+    function isOperationalStudent(student) {
+      return String(student?.status || '').trim().toLowerCase() === 'aktif';
+    }
     let globalAbsensiList = [];
     let globalTugasList = [];
     let globalGuruList = [];
@@ -299,6 +303,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let globalLiveSyncTimer = null;
     let globalLiveSyncRunning = false;
     let globalLiveSyncVersions = {};
+    let globalLoadedModules = new Set();
+    let globalPartialModules = new Set();
+    let globalModuleLoadInFlight = new Map();
+    let globalLastInteractionAt = Date.now();
     let dashboardLoadInFlight = false;
     let dashboardRefreshQueued = false;
     let dashboardLastLoadedAt = 0;
@@ -413,32 +421,35 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function saveLoginSession(user) {
-      const session = { userType: user.userType || '', userID: user.userID || '', userName: user.userName || '' };
+      const localMaxAge = (user.userType === 'siswa' ? 7776000 : 2592000);
+      const session = { userType: user.userType || '', userID: user.userID || '', userName: user.userName || '', mustChangePassword:Boolean(user.mustChangePassword), expiresAt:Date.now() + localMaxAge * 1000 };
       const serialized = JSON.stringify(session);
       try { localStorage.setItem(AUTH_STORAGE_KEY, serialized); } catch (ignore) {}
       try {
         sessionStorage.setItem('userType', session.userType);
         sessionStorage.setItem('userID', session.userID);
         sessionStorage.setItem('userName', session.userName);
+        sessionStorage.setItem('mustChangePassword', session.mustChangePassword ? '1' : '0');
       } catch (ignore) {}
-      try { document.cookie = `${AUTH_COOKIE_KEY}=${encodeURIComponent(serialized)}; Max-Age=31536000; Path=/; SameSite=Lax; Secure`; } catch (ignore) {}
+      try { document.cookie = `${AUTH_COOKIE_KEY}=${encodeURIComponent(serialized)}; Max-Age=${localMaxAge}; Path=/; SameSite=Lax; Secure`; } catch (ignore) {}
     }
 
     function getSavedLoginSession() {
       try {
         const saved = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null');
-        if (saved && saved.userType && saved.userID && saved.userName) return saved;
+        if (saved && saved.expiresAt && Number(saved.expiresAt) <= Date.now()) localStorage.removeItem(AUTH_STORAGE_KEY);
+        else if (saved && saved.userType && saved.userID && saved.userName) return saved;
       } catch (ignore) {}
       try {
         const cookie = document.cookie.split('; ').find(item => item.startsWith(AUTH_COOKIE_KEY + '='));
         const saved = cookie ? JSON.parse(decodeURIComponent(cookie.substring(cookie.indexOf('=') + 1))) : null;
-        if (saved && saved.userType && saved.userID && saved.userName) return saved;
+        if (saved && (!saved.expiresAt || Number(saved.expiresAt) > Date.now()) && saved.userType && saved.userID && saved.userName) return saved;
       } catch (ignore) {}
       try {
         const userType = sessionStorage.getItem('userType');
         const userID = sessionStorage.getItem('userID');
         const userName = sessionStorage.getItem('userName');
-        return userType && userID && userName ? { userType, userID, userName } : null;
+        return userType && userID && userName ? { userType, userID, userName, mustChangePassword:sessionStorage.getItem('mustChangePassword') === '1' } : null;
       } catch (ignore) { return null; }
     }
 
@@ -465,9 +476,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
             }
             const payload = await response.json().catch(()=>null);
             if (response.ok && payload?.ok && payload.data) {
-              currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName };
+              currentUser = { userType:payload.data.userType, userID:payload.data.userID, userName:payload.data.userName, mustChangePassword:Boolean(payload.data.mustChangePassword) };
               saveLoginSession(currentUser);
               if (typeof hydrateFastIdentityShell === 'function') hydrateFastIdentityShell();
+              if (currentUser.mustChangePassword && typeof openForcePasswordModal === 'function') openForcePasswordModal();
             }
           })
           .catch(() => { clearTimeout(timer); /* cached session remains usable; API calls will validate it */ });
@@ -478,6 +490,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       document.getElementById('dashCurrentDate').textContent = now.toLocaleDateString('id-ID', options);
       const addDateInput = document.getElementById('addSiswaTanggalMasuk');
       if (addDateInput && !addDateInput.value) addDateInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      initLmcPersonFilterPickers();
     }
 
     function initSignaturePads() {
@@ -486,7 +499,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         const canvas = document.getElementById(id);
         if (!canvas) return;
         if (sigCanvases[id]) { resizeSignaturePad(id); return; }
-        const pad = { canvas, ctx: canvas.getContext('2d'), strokes: [], drawing: false, activeStroke: null, aspect: 0 };
+        const pad = { canvas, ctx: canvas.getContext('2d'), strokes: [], drawing: false, activeStroke: null, aspect: 0, originalWidth: 0 };
         sigCanvases[id] = pad;
         
         function getPos(e) {
@@ -506,6 +519,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
         function startDrawing(e) {
           e.preventDefault();
+          if (pad.fitAfterFullscreen) pad.fitAfterFullscreen = false;
           pad.drawing = true;
           pad.activeStroke = [getPos(e)];
           pad.strokes.push(pad.activeStroke);
@@ -563,13 +577,50 @@ let currentUser = { userType: '', userID: '', userName: '' };
       });
     }
 
+    // Fit fullscreen ink into the compact preview without stretching either axis.
+    // Source coordinates are measured in an aspect-corrected plane.
+    function drawSignatureFitted(ctx, strokes, width, height, lineWidth, aspect) {
+      const points = strokes.flat().filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+      if (!points.length) return;
+      const ratio = Math.max(0.01, aspect || width / Math.max(1, height));
+      const xs = points.map(p => p.x * ratio);
+      const ys = points.map(p => p.y);
+      const left = Math.min(...xs), right = Math.max(...xs);
+      const top = Math.min(...ys), bottom = Math.max(...ys);
+      const boxW = Math.max(0.012 * ratio, right - left);
+      const boxH = Math.max(0.012, bottom - top);
+      const margin = Math.min(width, height) * 0.09;
+      const scale = Math.min((width - 2 * margin) / boxW, (height - 2 * margin) / boxH);
+      const ox = (width - (right-left)*scale)/2 - left*scale;
+      const oy = (height - (bottom-top)*scale)/2 - top*scale;
+      ctx.strokeStyle = '#000000'; ctx.fillStyle = '#000000';
+      ctx.lineWidth = Math.max(0.5, Math.min(lineWidth, lineWidth * scale / Math.max(1, width/ratio)));
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      strokes.forEach(stroke => {
+        if (!stroke.length) return;
+        if (stroke.length === 1) {
+          ctx.beginPath(); ctx.arc(ox + stroke[0].x*ratio*scale, oy + stroke[0].y*scale, ctx.lineWidth/2, 0, Math.PI*2); ctx.fill(); return;
+        }
+        ctx.beginPath(); ctx.moveTo(ox + stroke[0].x*ratio*scale, oy + stroke[0].y*scale);
+        for (let i=1; i<stroke.length; i++) ctx.lineTo(ox + stroke[i].x*ratio*scale, oy + stroke[i].y*scale);
+        ctx.stroke();
+      });
+    }
+
     function redrawSignaturePad(pad) {
       if (!pad) return;
       const rect = pad.canvas.getBoundingClientRect();
       const width = Math.max(1, rect.width);
       const height = Math.max(1, rect.height);
       pad.ctx.clearRect(0, 0, width, height);
-      drawSignatureStrokes(pad.ctx, pad.strokes, width, height, 2, pad.aspect);
+      const viewport = getSignatureViewport(width, height, pad.aspect || width / height);
+      const baseWidth = Math.max(1, pad.originalWidth || viewport.width);
+      const scaledLineWidth = Math.max(0.5, 2 * viewport.width / baseWidth);
+      if (pad.fitAfterFullscreen && !pad.canvas.parentElement.classList.contains('signature-fullscreen')) {
+        drawSignatureFitted(pad.ctx, pad.strokes, width, height, scaledLineWidth, pad.aspect);
+      } else {
+        drawSignatureStrokes(pad.ctx, pad.strokes, width, height, scaledLineWidth, pad.aspect);
+      }
     }
 
     function clearSignature(canvasId) {
@@ -597,7 +648,12 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const tCtx = tempCanvas.getContext('2d');
       tCtx.fillStyle = '#FFFFFF';
       tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-      drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, 4, aspect);
+      const exportLineWidth = Math.max(0.5, 2 * tempCanvas.width / Math.max(1, pad.originalWidth || tempCanvas.width));
+      if (pad.fitAfterFullscreen) {
+        drawSignatureFitted(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, exportLineWidth, aspect);
+      } else {
+        drawSignatureStrokes(tCtx, pad.strokes, tempCanvas.width, tempCanvas.height, exportLineWidth, aspect);
+      }
       return tempCanvas.toDataURL('image/png');
     }
 
@@ -606,7 +662,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (!pad) return;
       const rect = pad.canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      if (!pad.aspect) pad.aspect = rect.width / rect.height;
+      if (!pad.aspect) {
+        pad.aspect = rect.width / rect.height;
+        pad.originalWidth = rect.width;
+      }
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
       pad.canvas.width = Math.max(1, Math.round(rect.width * dpr));
       pad.canvas.height = Math.max(1, Math.round(rect.height * dpr));
@@ -625,7 +684,8 @@ let currentUser = { userType: '', userID: '', userName: '' };
       }
       const maxWidth = Math.max(240, window.innerWidth - 40);
       const maxHeight = Math.max(160, window.innerHeight - 92);
-      if (isCanvasBlank(canvas.id)) pad.aspect = maxWidth / maxHeight;
+      // Preserve the original signing aspect ratio even when expanding a blank pad.
+      // Changing it here distorted signatures when returning to the compact canvas.
       canvas.style.width = Math.round(maxWidth) + 'px';
       canvas.style.height = Math.round(maxHeight) + 'px';
       canvas.style.left = '20px';
@@ -638,12 +698,27 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const container = pad.canvas.parentElement;
       const willOpen = forceClose ? false : !container.classList.contains('signature-fullscreen');
       document.querySelectorAll('.sig-canvas-container.signature-fullscreen').forEach(item => item.classList.remove('signature-fullscreen'));
-      if (willOpen) container.classList.add('signature-fullscreen');
+      if (willOpen) {
+        pad.fitAfterFullscreen = false;
+        container.classList.add('signature-fullscreen');
+      } else if (!isCanvasBlank(canvasId)) {
+        pad.fitAfterFullscreen = true;
+      }
       document.body.classList.toggle('signature-open', willOpen);
       const button = container.querySelector('.btn-expand-sig');
       if (button) button.textContent = willOpen ? 'Selesai' : 'Perbesar';
       requestAnimationFrame(() => {
         layoutSignatureCanvas(pad, willOpen);
+        // Any blank signature pad should use the fullscreen drawing plane.
+        // Otherwise the compact aspect letterboxes/clips pointer positions,
+        // especially on portrait phones. Fit-to-canvas remains active on close.
+        if (willOpen && isCanvasBlank(canvasId)) {
+          const bounds = pad.canvas.getBoundingClientRect();
+          if (bounds.width > 0 && bounds.height > 0) {
+            pad.aspect = bounds.width / bounds.height;
+            pad.originalWidth = bounds.width;
+          }
+        }
         requestAnimationFrame(() => resizeSignaturePad(canvasId));
       });
     }
@@ -696,12 +771,228 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
 
+
+    // Unified searchable person filter used across Admin/Guru/Siswa pages.
+    // The original <select> remains the source of truth so existing onchange
+    // handlers and business logic keep working unchanged.
+    const LMC_PERSON_FILTERS = {
+      adminSelectGuruFilter:'teacher',
+      lpPageTeacher:'teacher', lpPageStudent:'student',
+      repertoireTeacherFilter:'teacher', repertoireStudentFilter:'student',
+      studentReportGuru:'teacher',
+      filterSiswaGuru:'teacher', filterJadwalGuru:'teacher',
+      makeupFilterTeacher:'teacher', operationalCalendarTeacher:'teacher',
+      filterProgressGuru:'teacher', filterProgressSiswa:'student', absensiSiswa:'student',
+      taskStudentFilter:'student', practiceStudentFilter:'student', teacherAttendanceFilterTeacher:'teacher'
+    };
+
+    function lmcPersonInitials(name) {
+      const words=String(name||'').trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return '?';
+      return (words.length===1 ? words[0].slice(0,1) : words[0].slice(0,1)+words[1].slice(0,1)).toUpperCase();
+    }
+
+    function lmcPersonCleanLabel(label) {
+      return String(label||'').replace(/\s+/g,' ').trim();
+    }
+
+    function lmcPersonFindStudent(value, label) {
+      const v=String(value||'').trim().toLowerCase();
+      const text=lmcPersonCleanLabel(label).toLowerCase();
+      return (globalSiswaList||[]).find(s=>{
+        const id=String(s.siswaID||s.id||'').trim().toLowerCase();
+        const name=String(s.nama||'').trim().toLowerCase();
+        return (v && (v===id || v===name)) || (name && (text===name || text.startsWith(name+' ') || text.startsWith(name+'(') || text.startsWith(name+' -') || text.startsWith(name+' •')));
+      }) || null;
+    }
+
+    function lmcPersonFindTeacher(value, label) {
+      const v=String(value||'').trim().toLowerCase();
+      const text=lmcPersonCleanLabel(label).toLowerCase();
+      return (globalGuruList||[]).find(g=>{
+        const id=String(g.id||g.guruID||'').trim().toLowerCase();
+        const name=String(g.nama||'').trim().toLowerCase();
+        return (v && (v===id || v===name)) || (name && (text===name || text.startsWith(name+' ') || text.startsWith(name+'(') || text.startsWith(name+' -') || text.startsWith(name+' •')));
+      }) || null;
+    }
+
+    function lmcPersonStudentMeta(student, fallback='') {
+      if (!student) return fallback || 'Siswa';
+      const classes=Array.isArray(student.kelasList)?student.kelasList:[];
+      const cls=classes[0]||{};
+      return [cls.instrumen||student.instrumen||'', cls.grade||cls.kelas||student.kelas||''].filter(Boolean).join(' • ') || 'Siswa';
+    }
+
+    function lmcPersonTeacherMeta(teacher, fallback='') {
+      if (!teacher) return fallback || 'Guru Pengajar';
+      return String(teacher.instrumen||'Guru Pengajar').trim() || 'Guru Pengajar';
+    }
+
+    function lmcPersonPhotoCandidates(value) {
+      const raw=String(value||'').trim();
+      if(!raw)return [];
+      const list=[];
+      const push=url=>{const clean=String(url||'').trim();if(clean&&!list.includes(clean))list.push(clean);};
+      if(/^data:image\//i.test(raw)||/^blob:/i.test(raw)){push(raw);return list;}
+      let match=raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+      if(!match)match=raw.match(/[?&]id=([^&#]+)/i);
+      if(!match)match=raw.match(/googleusercontent\.com\/d\/([^/?#]+)/i);
+      if(match&&match[1]){
+        const id=decodeURIComponent(match[1]);
+        push(`https://lh3.googleusercontent.com/d/${id}`);
+        push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w400`);
+        push(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
+      }
+      push(raw);
+      return list;
+    }
+
+    function lmcPersonAvatarFallback(img) {
+      if(!img)return;
+      try{
+        const list=JSON.parse(img.dataset.lmcPhotoFallbacks||'[]');
+        const index=Number(img.dataset.lmcPhotoFallbackIndex||0);
+        if(index<list.length){img.dataset.lmcPhotoFallbackIndex=String(index+1);img.src=list[index];return;}
+      }catch(_){}
+      img.style.display='none';
+      if(img.nextElementSibling)img.nextElementSibling.style.display='grid';
+    }
+
+    function lmcPersonAvatar(person, kind, fallbackName) {
+      const name=String(person?.nama||fallbackName||'').trim();
+      const photo=String(person?.foto||person?.photoUrl||person?.fotoProfil||person?.photo_url||'').trim();
+      const initials=lmcPersonInitials(name);
+      const candidates=lmcPersonPhotoCandidates(photo);
+      if(candidates.length){
+        const fallbacks=escapeTaskHtml(JSON.stringify(candidates.slice(1)));
+        return `<span class="lmc-person-avatar"><img src="${escapeTaskHtml(candidates[0])}" data-lmc-photo-fallbacks='${fallbacks}' data-lmc-photo-fallback-index="0" alt="${escapeTaskHtml(name)}" onerror="lmcPersonAvatarFallback(this)"><span style="display:none">${escapeTaskHtml(initials)}</span></span>`;
+      }
+      return `<span class="lmc-person-avatar"><span>${escapeTaskHtml(initials)}</span></span>`;
+    }
+
+    function lmcPersonFilterOptionModel(select, option, kind) {
+      const label=lmcPersonCleanLabel(option.textContent||option.label||'');
+      const value=String(option.value??'');
+      const generic=!value || /^(semua|pilih|--)/i.test(label);
+      if (generic) return {value,label:label||((kind==='teacher')?'Semua Guru':'Semua Siswa'),meta:kind==='teacher'?'Tampilkan semua guru':'Tampilkan semua siswa',person:null,generic:true};
+      const person=kind==='teacher'?lmcPersonFindTeacher(value,label):lmcPersonFindStudent(value,label);
+      const name=person?.nama || label.replace(/\s*[\(•—-].*$/,'').trim() || label;
+      const meta=kind==='teacher'?lmcPersonTeacherMeta(person,label===name?'':label.replace(name,'').replace(/^[\s(•—-]+|[)\s]+$/g,'')):lmcPersonStudentMeta(person,label===name?'':label.replace(name,'').replace(/^[\s(•—-]+|[)\s]+$/g,''));
+      return {value,label:name,meta,person,generic:false};
+    }
+
+    function closeLmcPersonFilterPickers(except=null) {
+      document.querySelectorAll('.lmc-person-filter.open').forEach(host=>{
+        if (host===except) return;
+        host.classList.remove('open');
+        host.querySelector('.lmc-person-filter-trigger')?.setAttribute('aria-expanded','false');
+      });
+    }
+
+    function lmcPersonFilterSearch(host, query) {
+      const q=String(query||'').trim().toLowerCase(); let count=0;
+      host.querySelectorAll('.lmc-person-filter-option').forEach(row=>{
+        const ok=!q || String(row.dataset.search||'').includes(q);
+        row.hidden=!ok; if(ok)count++;
+      });
+      const empty=host.querySelector('.lmc-person-filter-empty'); if(empty) empty.hidden=count>0;
+    }
+
+    function lmcPersonFilterChoose(selectId, encodedValue) {
+      const select=document.getElementById(selectId); if(!select)return;
+      let value=''; try{value=decodeURIComponent(encodedValue||'');}catch(_){value=encodedValue||'';}
+      select.value=value;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+      closeLmcPersonFilterPickers();
+      requestAnimationFrame(()=>refreshLmcPersonFilterPicker(select));
+    }
+
+    function refreshLmcPersonFilterPicker(select) {
+      if (!select || !LMC_PERSON_FILTERS[select.id]) return;
+      const kind=LMC_PERSON_FILTERS[select.id];
+      let host=select.nextElementSibling;
+      if (!host || !host.classList.contains('lmc-person-filter')) return enhanceLmcPersonFilter(select);
+      const options=[...select.options].map(o=>lmcPersonFilterOptionModel(select,o,kind));
+      const selected=options.find(o=>String(o.value)===String(select.value)) || options[0] || {label:kind==='teacher'?'Pilih Guru':'Pilih Siswa',meta:'',generic:true};
+      const triggerPerson=selected.generic
+        ? `<span class="lmc-person-avatar generic">${kind==='teacher'?'🎓':'◎'}</span>`
+        : lmcPersonAvatar(selected.person,kind,selected.label);
+      const trigger=host.querySelector('.lmc-person-filter-trigger');
+      trigger.disabled=!!select.disabled;
+      host.classList.toggle('is-disabled',!!select.disabled);
+      trigger.innerHTML=`<span class="lmc-person-filter-person">${triggerPerson}<span><b>${escapeTaskHtml(selected.label)}</b><small>${escapeTaskHtml(selected.meta||'')}</small></span></span><span class="lmc-person-filter-chevron">⌄</span>`;
+      const list=host.querySelector('.lmc-person-filter-options');
+      if(list) list.innerHTML=options.map(item=>{
+        const avatar=item.generic?`<span class="lmc-person-avatar generic">${kind==='teacher'?'🎓':'◎'}</span>`:lmcPersonAvatar(item.person,kind,item.label);
+        const active=String(item.value)===String(select.value)?' active':'';
+        const search=escapeTaskHtml(`${item.label} ${item.meta}`.toLowerCase());
+        return `<button type="button" class="lmc-person-filter-option${active}" data-search="${search}" data-choice="${encodeURIComponent(item.value)}">${avatar}<span><b>${escapeTaskHtml(item.label)}</b><small>${escapeTaskHtml(item.meta||'')}</small></span></button>`;
+      }).join('')+`<div class="lmc-person-filter-empty" hidden>Tidak ada ${kind==='teacher'?'guru':'siswa'} yang cocok.</div>`;
+    }
+
+    function enhanceLmcPersonFilter(select) {
+      if (!select || !LMC_PERSON_FILTERS[select.id]) return;
+      if (select.id==='taskStudentFilter' && currentUser?.userType==='siswa') {
+        select.classList.add('lmc-person-filter-native');
+        const oldHost=select.nextElementSibling;
+        if(oldHost?.classList?.contains('lmc-person-filter')) oldHost.remove();
+        return;
+      }
+      if (select.nextElementSibling?.classList.contains('lmc-person-filter')) return refreshLmcPersonFilterPicker(select);
+      const kind=LMC_PERSON_FILTERS[select.id];
+      select.classList.add('lmc-person-filter-native');
+      const host=document.createElement('div'); host.className='lmc-person-filter'; host.dataset.forSelect=select.id;
+      host.innerHTML=`<button type="button" class="lmc-person-filter-trigger" aria-expanded="false"></button><button type="button" class="lmc-person-filter-backdrop" aria-label="Tutup pilihan"></button><div class="lmc-person-filter-menu"><div class="lmc-person-filter-head"><div><b>${kind==='teacher'?'Pilih Guru':'Pilih Siswa'}</b><small>Cari berdasarkan nama, instrumen, atau kelas</small></div><button type="button" class="lmc-person-filter-close" aria-label="Tutup">×</button></div><div class="lmc-person-filter-search"><span>⌕</span><input type="search" placeholder="Cari ${kind==='teacher'?'guru':'siswa'}..."></div><div class="lmc-person-filter-options"></div></div>`;
+      select.insertAdjacentElement('afterend',host);
+      const trigger=host.querySelector('.lmc-person-filter-trigger');
+      trigger.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();refreshLmcPersonFilterPicker(select);if(select.disabled)return;const open=!host.classList.contains('open');closeLmcPersonFilterPickers(host);host.classList.toggle('open',open);trigger.setAttribute('aria-expanded',open?'true':'false');if(open)setTimeout(()=>host.querySelector('input[type="search"]')?.focus(),20);});
+      // Use a delegated listener instead of inline onclick. On iOS, option buttons
+      // live inside a fixed bottom sheet and must be handled within this picker.
+      host.querySelector('.lmc-person-filter-options').addEventListener('click', event => {
+        const option = event.target.closest('.lmc-person-filter-option');
+        if (!option || !host.contains(option)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        lmcPersonFilterChoose(select.id, option.dataset.choice || '');
+      });
+      host.querySelector('.lmc-person-filter-close').addEventListener('click',()=>closeLmcPersonFilterPickers());
+      host.querySelector('.lmc-person-filter-backdrop').addEventListener('click',()=>closeLmcPersonFilterPickers());
+      host.querySelector('input[type="search"]').addEventListener('input',event=>lmcPersonFilterSearch(host,event.target.value));
+      select.addEventListener('change',()=>requestAnimationFrame(()=>refreshLmcPersonFilterPicker(select)));
+      refreshLmcPersonFilterPicker(select);
+    }
+
+    function refreshAllLmcPersonFilterPickers() {
+      Object.keys(LMC_PERSON_FILTERS).forEach(id=>{const select=document.getElementById(id);if(select)enhanceLmcPersonFilter(select);});
+    }
+
+    function initLmcPersonFilterPickers() {
+      if (window.__lmcPersonFiltersReady) { refreshAllLmcPersonFilterPickers(); return; }
+      window.__lmcPersonFiltersReady=true;
+      refreshAllLmcPersonFilterPickers();
+      document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('.lmc-person-filter'))closeLmcPersonFilterPickers();},true);
+      document.addEventListener('keydown',event=>{if(event.key==='Escape')closeLmcPersonFilterPickers();});
+      const observer=new MutationObserver(records=>{
+        let needs=false;
+        for(const record of records){
+          const target=record.target;
+          if(target?.id && LMC_PERSON_FILTERS[target.id]){needs=true;break;}
+          if(target?.closest){const select=target.closest('select');if(select?.id && LMC_PERSON_FILTERS[select.id]){needs=true;break;}}
+          if([...record.addedNodes||[]].some(node=>node.nodeType===1 && (node.matches?.('select') || node.querySelector?.('select')))){needs=true;break;}
+        }
+        if(needs) requestAnimationFrame(refreshAllLmcPersonFilterPickers);
+      });
+      observer.observe(document.body,{childList:true,subtree:true});
+    }
+
 (function () {
   'use strict';
 
-  const ACTIVE_INTERVAL = 1800;
-  const FOCUS_REFRESH_MIN_AGE = 1800;
+  const ACTIVE_INTERVAL = 4000;
+  const IDLE_INTERVAL = 12000;
+  const FOCUS_REFRESH_MIN_AGE = 2500;
   let lastPollAt = 0;
+  let attendanceDetailsLoaded = false;
   let refreshTimer = null;
   let deltaTimer = null;
   const moduleQueue = new Set();
@@ -779,18 +1070,59 @@ let currentUser = { userType: '', userID: '', userName: '' };
       window.globalAnnualExamList = data.exams;
       if (typeof renderAnnualExamList === 'function') renderAnnualExamList();
     }
+    if (set.has('practice')) {
+      if (Array.isArray(data.practiceResources)) practiceResources = data.practiceResources;
+      if (Array.isArray(data.mediaEvaluations)) mediaEvaluations = data.mediaEvaluations;
+      if (typeof renderPracticeHub === 'function') renderPracticeHub();
+    }
+  }
+
+  function markModulesLoaded(modules) {
+    (modules || []).forEach(module => {
+      globalLoadedModules.add(module);
+      globalPartialModules.delete(module);
+    });
+  }
+
+  async function ensureLiveModules(modules, options = {}) {
+    const requested = [...new Set((modules || []).filter(Boolean))];
+    const needed = requested.filter(module => options.force || (module === 'attendance' && !attendanceDetailsLoaded) || globalPartialModules.has(module) || !globalLoadedModules.has(module));
+    if (!needed.length || !currentUser?.userType) return true;
+    const key = needed.slice().map(module => module === 'attendance' ? 'attendance_detail' : module).sort().join(',');
+    if (globalModuleLoadInFlight.has(key)) return globalModuleLoadInFlight.get(key);
+    // A user opening the attendance screen needs the existing detailed signature
+    // window; routine background sync only needs a small recent window.
+    const requestedRpcModules = needed.map(module => module === 'attendance' ? 'attendance_detail' : module);
+    const task = LegacyAPI.rpc('getLiveModuleData', [{ modules:requestedRpcModules }])
+      .then(res => {
+        if (!res || res.success === false) throw new Error(res?.message || 'Data modul gagal dimuat.');
+        renderChangedModules(needed, res);
+        if (needed.includes('attendance')) attendanceDetailsLoaded = true;
+        markModulesLoaded(needed);
+        return true;
+      })
+      .catch(error => {
+        console.warn('[Legacy Module Loader]', needed.join(','), error?.message || error);
+        return false;
+      })
+      .finally(() => globalModuleLoadInFlight.delete(key));
+    globalModuleLoadInFlight.set(key, task);
+    return task;
   }
 
   async function flushModuleQueue() {
     deltaTimer = null;
     if (!currentUser || !currentUser.userType || !moduleQueue.size) return;
     const modules = [...moduleQueue]; moduleQueue.clear();
-    const lightweight = modules.filter(x => ['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams'].includes(x));
+    const lightweight = modules.filter(x => ['announcements','attendance','assignments','progress','schedules','teacher_attendance','repertoire','exams','practice'].includes(x));
     const heavy = modules.filter(x => !lightweight.includes(x));
     try {
       if (lightweight.length) {
         const res = await LegacyAPI.rpc('getLiveModuleData', [{ modules:lightweight }]);
-        if (res && res.success !== false) renderChangedModules(lightweight, res);
+        if (res && res.success !== false) {
+          renderChangedModules(lightweight, res);
+          markModulesLoaded(lightweight);
+        }
       }
     } catch (error) {
       console.debug('[Legacy Live Sync] delta sync skipped:', error?.message || error);
@@ -827,16 +1159,34 @@ let currentUser = { userType: '', userID: '', userName: '' };
     } finally { globalLiveSyncRunning = false; }
   }
 
+  function nextSyncDelay() {
+    const recentlyActive = Date.now() - (globalLastInteractionAt || 0) < 30000;
+    return recentlyActive ? ACTIVE_INTERVAL : IDLE_INTERVAL;
+  }
+
+  function scheduleNextPoll() {
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
+    if (!currentUser?.userType) return;
+    globalLiveSyncTimer = setTimeout(async () => {
+      globalLiveSyncTimer = null;
+      await pollLiveSync(false);
+      scheduleNextPoll();
+    }, nextSyncDelay());
+  }
+
   function configureGlobalLiveSync() {
     if (!currentUser || !currentUser.userType) return;
-    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
-    pollLiveSync(true);
-    globalLiveSyncTimer = setInterval(() => pollLiveSync(false), ACTIVE_INTERVAL);
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
+    pollLiveSync(true).finally(scheduleNextPoll);
   }
 
   function stopGlobalLiveSync() {
-    if (globalLiveSyncTimer) clearInterval(globalLiveSyncTimer);
+    if (globalLiveSyncTimer) clearTimeout(globalLiveSyncTimer);
     globalLiveSyncTimer = null; globalLiveSyncVersions = {}; globalLiveSyncRunning = false;
+    attendanceDetailsLoaded = false;
+    globalLoadedModules.clear();
+    globalPartialModules.clear();
+    globalModuleLoadInFlight.clear();
     moduleQueue.clear();
     if (deltaTimer) clearTimeout(deltaTimer); deltaTimer = null;
   }
@@ -846,22 +1196,38 @@ let currentUser = { userType: '', userID: '', userName: '' };
     addTugasCombined:'assignments',submitTugasJawaban:'assignments',deleteTugas:'assignments',saveLearningProgress:'progress',deleteLearningProgress:'progress',
     updateJadwal:'schedules',deleteJadwal:'schedules',saveScheduleOverride:'schedules',deleteScheduleOverride:'schedules',addJadwalPengganti:'schedules',deleteJadwalPengganti:'schedules',
     recordTeacherAttendance:'teacher_attendance',deleteTeacherAttendance:'teacher_attendance',saveStudentRepertoire:'repertoire',deleteStudentRepertoire:'repertoire',
-    saveAnnualExam:'exams',publishAnnualExam:'exams',deleteAnnualExam:'exams',addGuru:'people',updateGuru:'people',deleteGuru:'people',addSiswaCombined:'people',updateSiswa:'people',deleteSiswa:'people',deleteExitedStudentRecord:'people'
+    saveAnnualExam:'exams',publishAnnualExam:'exams',deleteAnnualExam:'exams',savePracticeResource:'practice',deletePracticeResource:'practice',saveMediaEvaluation:'practice',deleteMediaEvaluation:'practice',addGuru:'people',updateGuru:'people',deleteGuru:'people',addSiswaCombined:'people',updateSiswa:'people',deleteSiswa:'people',deleteExitedStudentRecord:'people'
   };
 
   window.addEventListener('legacy:data-mutated', event => {
     const method = event?.detail?.method || '';
     const module = mutationToModule[method];
     if (module) queueModuleSync([module]);
-    setTimeout(() => pollLiveSync(true), 260);
+    setTimeout(() => pollLiveSync(true), 140);
   });
-  window.addEventListener('focus', () => { if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && currentUser?.userType) pollLiveSync(true); });
+  ['pointerdown','keydown','touchstart'].forEach(type => {
+    window.addEventListener(type, () => { globalLastInteractionAt = Date.now(); }, { passive:true });
+  });
+  window.addEventListener('focus', () => {
+    globalLastInteractionAt = Date.now();
+    if (currentUser?.userType && Date.now() - (dashboardLastLoadedAt || 0) > FOCUS_REFRESH_MIN_AGE) pollLiveSync(true);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentUser?.userType) {
+      globalLastInteractionAt = Date.now();
+      pollLiveSync(true);
+      scheduleNextPoll();
+    }
+  });
 
   window.configureGlobalLiveSync = configureGlobalLiveSync;
   window.stopGlobalLiveSync = stopGlobalLiveSync;
   window.requestFastDashboardRefresh = requestFastDashboardRefresh;
   window.queueLiveModuleSync = queueModuleSync;
+  window.ensureLiveModules = ensureLiveModules;
+  window.ensureAttendanceSignatures = () => ensureLiveModules(['attendance']);
+  window.invalidateAttendanceSignatures = () => { attendanceDetailsLoaded = false; };
+  window.applyLiveModulePayload = renderChangedModules;
 })();
 
     function setLoginType(type) {
@@ -885,9 +1251,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
         btn.disabled = false; btn.textContent = 'Login';
         if (!res.success) { document.getElementById('loginError').textContent = res.message; document.getElementById('loginError').style.display = 'block'; } 
         else {
-          currentUser = { userType: res.userType, userID: res.userID, userName: res.userName };
+          currentUser = { userType: res.userType, userID: res.userID, userName: res.userName, mustChangePassword:Boolean(res.mustChangePassword) };
           saveLoginSession(currentUser);
           showApp();
+          if (currentUser.mustChangePassword) setTimeout(openForcePasswordModal, 0);
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Login';
@@ -908,9 +1275,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
         sessionStorage.removeItem('userType');
         sessionStorage.removeItem('userID');
         sessionStorage.removeItem('userName');
+        sessionStorage.removeItem('mustChangePassword');
       } catch (ignore) {}
       try { document.cookie = `${AUTH_COOKIE_KEY}=; Max-Age=0; Path=/; SameSite=Lax; Secure`; } catch (ignore) {}
-      currentUser = { userType: '', userID: '', userName: '' };
+      currentUser = { userType: '', userID: '', userName: '', mustChangePassword:false };
       showLogin();
     }
     function showLogin() { document.getElementById('appView').style.display = 'none'; document.getElementById('loginView').style.display = 'flex'; }
@@ -950,13 +1318,53 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
     window.addEventListener('legacy:session-expired', () => {
       try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
-      try { sessionStorage.removeItem('userType'); sessionStorage.removeItem('userID'); sessionStorage.removeItem('userName'); } catch (_) {}
+      try { sessionStorage.removeItem('userType'); sessionStorage.removeItem('userID'); sessionStorage.removeItem('userName');
+        sessionStorage.removeItem('mustChangePassword'); } catch (_) {}
       if (typeof stopGlobalLiveSync === 'function') stopGlobalLiveSync();
-      currentUser = { userType:'', userID:'', userName:'' };
+      currentUser = { userType:'', userID:'', userName:'', mustChangePassword:false };
       showLogin();
       const msg = document.getElementById('loginError');
       if (msg) { msg.textContent = 'Sesi login berakhir. Silakan login kembali.'; msg.style.display = 'block'; }
     });
+
+
+    function openForcePasswordModal(){
+      openChangePasswordModal(true);
+    }
+    function openChangePasswordModal(forced=false){
+      const modal=document.getElementById('modalForcePassword'); if(!modal)return;
+      modal.dataset.forced = forced ? '1' : '0';
+      document.getElementById('forcePasswordNew').value='';
+      document.getElementById('forcePasswordConfirm').value='';
+      const close=document.getElementById('forcePasswordClose'); if(close) close.style.display=forced?'none':'block';
+      const title=document.getElementById('forcePasswordTitle'); if(title) title.textContent=forced?'Buat Password Baru':'Ubah Password';
+      const subtitle=document.getElementById('forcePasswordSubtitle'); if(subtitle) subtitle.textContent=forced?'Password awal hanya boleh digunakan sekali.':'Gunakan password yang unik dan tidak dibagikan.';
+      const msg=document.getElementById('forcePasswordMessage'); if(msg){msg.textContent=forced?'Untuk keamanan akun, buat password baru sebelum melanjutkan.':'Password minimal 8 karakter dan mengandung huruf serta angka.';msg.className='force-password-message';}
+      modal.style.display='flex';
+      setTimeout(()=>document.getElementById('forcePasswordNew')?.focus(),80);
+    }
+    function closeChangePasswordModal(){
+      const modal=document.getElementById('modalForcePassword'); if(!modal)return;
+      if(modal.dataset.forced==='1') return;
+      modal.style.display='none';
+    }
+    function handleForcePasswordChange(event){
+      event.preventDefault();
+      const password=document.getElementById('forcePasswordNew').value;
+      const confirmPassword=document.getElementById('forcePasswordConfirm').value;
+      const btn=document.getElementById('forcePasswordSubmit');
+      const msg=document.getElementById('forcePasswordMessage');
+      if(password.length<8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)){msg.textContent='Password minimal 8 karakter dan harus mengandung huruf serta angka.';msg.className='force-password-message error';return false;}
+      if(password!==confirmPassword){msg.textContent='Konfirmasi password tidak sama.';msg.className='force-password-message error';return false;}
+      btn.disabled=true;btn.textContent='Menyimpan...';
+      google.script.run.withSuccessHandler(res=>{
+        btn.disabled=false;btn.textContent='Simpan Password Baru';
+        if(!res?.success){msg.textContent=res?.message||'Gagal memperbarui password.';msg.className='force-password-message error';return;}
+        currentUser.mustChangePassword=false;saveLoginSession(currentUser);
+        document.getElementById('modalForcePassword').style.display='none';
+      }).withFailureHandler(error=>{btn.disabled=false;btn.textContent='Simpan Password Baru';msg.textContent=error?.message||String(error);msg.className='force-password-message error';}).changeOwnPassword({password,confirmPassword});
+      return false;
+    }
 
     function buildNavigation() {
       const icons = {
@@ -976,6 +1384,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         monitoring: `<svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 16l4-5 4 3 5-7"></path></svg>`,
         operasional: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"></rect><line x1="8" y1="2" x2="8" y2="6"></line><line x1="16" y1="2" x2="16" y2="6"></line><line x1="3" y1="9" x2="21" y2="9"></line><path d="M8 13h3v3H8z"></path></svg>`,
         backup: `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
+        practice: `<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M4 4h16v16H6.5A2.5 2.5 0 0 1 4 17.5z"></path><path d="M8 8h8"></path><path d="M8 12h5"></path></svg>`,
         manajemen: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
       };
 
@@ -983,16 +1392,23 @@ let currentUser = { userType: '', userID: '', userName: '' };
       let menus = [];
       
       if(currentUser.userType === 'siswa') {
-        menus = [ 
-          { id: 'dashboard-siswa', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Sertifikat', icon: icons.sertifikat },
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
-          { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas } 
+        menus = [
+          { id:'dashboard-siswa', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Belajar', key:'student-learning', icon:icons.progress, items:[
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
+            { id:'section-tugas', label:'Tugas', icon:icons.tugas },
+            { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
+            { id:'section-practice-hub', label:'Latihan Mandiri', icon:icons.practice },
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress }
+          ]},
+          { group:'Hasil', key:'student-results', icon:icons.laporan, items:[
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan },
+            { id:'section-annual-exam', label:'Sertifikat', icon:icons.sertifikat }
+          ]},
+          { group:'Jadwal & Info', key:'student-info', icon:icons.jadwal, items:[
+            { id:'section-pengganti', label:'Jadwal Pengganti', icon:icons.pengganti },
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman }
+          ]}
         ];
       } else if(currentUser.userType === 'admin') {
         menus = [
@@ -1001,7 +1417,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
             { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
             { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
             { id:'section-annual-exam', label:'Ujian & Sertifikat', icon:icons.sertifikat },
-            { id:'section-progress', label:'Materi & Progress', icon:icons.progress },
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
             { id:'section-laporan', label:'Laporan', icon:icons.laporan }
           ]},
           { group:'Siswa & Kelas', key:'students', icon:icons.siswa, items:[
@@ -1028,35 +1444,31 @@ let currentUser = { userType: '', userID: '', userName: '' };
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'none');
       } else {
-        menus = [ 
-          { id: 'dashboard-guru', label: 'Beranda', icon: icons.beranda }, 
-          { id: 'section-learning-progress', label: 'Progress Belajar', icon: icons.progress },
-          { id: 'section-repertoire', label: 'Repertoire', icon: icons.repertoire },
-          { id: 'section-laporan', label: 'Laporan', icon: icons.laporan },
-          { id: 'section-annual-exam', label: 'Ujian Tahunan', icon: icons.sertifikat },
-          { id: 'section-siswa', label: 'Daftar Siswa', icon: icons.siswa }, 
-          { id: 'section-jadwal', label: 'Jadwal Pelajaran', icon: icons.jadwal }, 
-          { id: 'section-pengganti', label: 'Jadwal Pengganti', icon: icons.pengganti },
-          { id: 'section-pengumuman', label: 'Pengumuman', icon: icons.pengumuman },
-          { id: 'section-progress', label: 'Materi & Progress', icon: icons.progress }, 
-          { id: 'section-tugas', label: 'Tugas & Latihan', icon: icons.tugas }, 
-          { id: 'fitur-guru', label: 'Manajemen Kelas', icon: icons.manajemen } 
+        menus = [
+          { id:'dashboard-guru', label:'Beranda', icon:icons.beranda, standalone:true },
+          { group:'Pembelajaran', key:'teacher-learning', icon:icons.progress, items:[
+            { id:'section-progress', label:'Materi & Absensi', icon:icons.progress },
+            { id:'section-tugas', label:'Tugas', icon:icons.tugas },
+            { id:'section-repertoire', label:'Repertoire', icon:icons.repertoire },
+            { id:'section-practice-hub', label:'Latihan Mandiri', icon:icons.practice },
+            { id:'section-learning-progress', label:'Progress Belajar', icon:icons.progress },
+            { id:'section-annual-exam', label:'Ujian Tahunan', icon:icons.sertifikat }
+          ]},
+          { group:'Siswa & Jadwal', key:'teacher-students', icon:icons.siswa, items:[
+            { id:'section-siswa', label:'Daftar Siswa', icon:icons.siswa },
+            { id:'section-jadwal', label:'Jadwal Pelajaran', icon:icons.jadwal },
+            { id:'section-pengganti', label:'Jadwal Pengganti', icon:icons.pengganti },
+            { id:'fitur-guru', label:'Manajemen Kelas', icon:icons.manajemen }
+          ]},
+          { group:'Komunikasi', key:'teacher-comms', icon:icons.pengumuman, items:[
+            { id:'section-pengumuman', label:'Pengumuman', icon:icons.pengumuman },
+            { id:'section-laporan', label:'Laporan', icon:icons.laporan }
+          ]}
         ];
         document.querySelectorAll('.admin-hide-item').forEach(el => el.style.display = 'flex');
       }
-      
-      if (currentUser.userType === 'admin') {
-        renderAdminGroupedNavigation(navMenu, menus);
-      } else {
-        menus.forEach((item, index) => {
-          const li = document.createElement('li'); const a = document.createElement('a');
-          a.className = 'nav-link' + (index === 0 ? ' active' : '');
-          a.id = 'nav-' + item.id;
-          a.innerHTML = `${item.icon} <span>${item.label}</span>`;
-          a.onclick = () => switchTab(item.id);
-          li.appendChild(a); navMenu.appendChild(li);
-        });
-      }
+
+      renderAdminGroupedNavigation(navMenu, menus);
       document.querySelectorAll('.admin-only-quick-action').forEach(el => el.style.display = currentUser.userType === 'admin' ? 'flex' : 'none');
       const teacherManagementBox = document.getElementById('adminTeacherManagementBox');
       if (teacherManagementBox) teacherManagementBox.style.display = currentUser.userType === 'admin' ? 'block' : 'none';
@@ -1083,7 +1495,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function renderAdminGroupedNavigation(navMenu, menus) {
-      const stored = (() => { try { return JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}'); } catch (_) { return {}; } })();
+      const stored = (() => { try { return JSON.parse(localStorage.getItem(`legacyNavGroups_${currentUser.userType}`) || '{}'); } catch (_) { return {}; } })();
       menus.forEach((item, index) => {
         if (item.standalone) {
           const li = document.createElement('li');
@@ -1127,14 +1539,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const next = forceOpen === null ? !group.classList.contains('expanded') : Boolean(forceOpen);
       group.classList.toggle('expanded', next);
       try {
-        const stored = JSON.parse(localStorage.getItem('legacyAdminNavGroups') || '{}');
+        const stored = JSON.parse(localStorage.getItem(`legacyNavGroups_${currentUser.userType}`) || '{}');
         stored[key] = next;
-        localStorage.setItem('legacyAdminNavGroups', JSON.stringify(stored));
+        localStorage.setItem(`legacyNavGroups_${currentUser.userType}`, JSON.stringify(stored));
       } catch (_) {}
     }
 
     function revealAdminNavSection(sectionId) {
-      if (currentUser.userType !== 'admin') return;
       const link = document.getElementById('nav-' + sectionId);
       const group = link ? link.closest('.admin-nav-group') : null;
       if (group && !group.classList.contains('expanded')) toggleAdminNavGroup(group.dataset.group, true);
@@ -1142,6 +1553,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
     function switchTab(sectionId) {
       revealAdminNavSection(sectionId);
+      const lazyModulesBySection = {
+        'section-progress':['attendance'],
+        'section-tugas':['assignments'],
+        'section-learning-progress':['progress'],
+        'section-jadwal':['schedules'],
+        'section-pengganti':['schedules'],
+        'section-absensi-guru':['teacher_attendance']
+      };
+      const lazyModules = lazyModulesBySection[sectionId];
+      if (lazyModules && typeof ensureLiveModules === 'function') {
+        ensureLiveModules(lazyModules).catch(() => {});
+      }
       document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
       const activeLink = document.getElementById('nav-' + sectionId) || (sectionId === 'section-profil' ? document.getElementById('navProfilLink') : null);
       if(activeLink) activeLink.classList.add('active');
@@ -1168,6 +1591,10 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (sectionId === 'section-repertoire') {
         setTimeout(() => loadRepertoirePage(), 0);
+      }
+
+      if (sectionId === 'section-practice-hub') {
+        setTimeout(() => loadPracticeHub(), 0);
       }
 
       if (sectionId === 'section-annual-exam') {
@@ -1345,16 +1772,46 @@ let currentUser = { userType: '', userID: '', userName: '' };
           saveLoginSession(currentUser);
         }
 
-        globalAbsensiList = data.absensiList || [];
+        // Boot data may be signature-light. Preserve detailed image references
+        // already resolved on the open attendance screen during background refresh.
+        const priorAttendanceById = new Map((globalAbsensiList || []).map(row => [String(row.absensiID || ''), row]));
+        globalAbsensiList = (data.absensiList || []).map(row => {
+          const prior = priorAttendanceById.get(String(row.absensiID || ''));
+          return prior ? {
+            ...row,
+            tandaTangan: row.tandaTangan || prior.tandaTangan || '',
+            ttdSiswa: row.ttdSiswa || prior.ttdSiswa || ''
+          } : row;
+        });
+        if (typeof invalidateAttendanceSignatures === 'function') invalidateAttendanceSignatures();
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];
         globalJadwalPenggantiList = data.jadwalPenggantiList || [];
         globalScheduleOverrides = data.scheduleOverrides || [];
         globalPengumumanList = data.pengumumanList || [];
         globalLearningProgressList = data.learningProgressList || [];
-        globalRepertoireList = [];
+        // Repertoire is loaded independently. Do not clear its live list on a
+        // background dashboard refresh: card clicks and student filters need
+        // the same in-memory records until getRepertoireData updates them.
+        if (!Array.isArray(globalRepertoireList)) globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
-        globalTeacherAttendanceList = data.teacherAttendanceList || [];
+        if (Array.isArray(data.teacherAttendanceList)) globalTeacherAttendanceList = data.teacherAttendanceList;
+
+        // Dashboard V3 loads only the data needed to paint the first screen quickly.
+        // Historical modules can be completed lazily when their page is opened.
+        globalPartialModules = new Set(Array.isArray(data.partialModules) ? data.partialModules : []);
+        globalLoadedModules = new Set();
+        const bootModules = {
+          attendance:Array.isArray(data.absensiList),
+          assignments:Array.isArray(data.tugasList),
+          progress:Array.isArray(data.learningProgressList),
+          schedules:Array.isArray(data.jadwal || data.schedules),
+          announcements:Array.isArray(data.pengumumanList),
+          teacher_attendance:Array.isArray(data.teacherAttendanceList)
+        };
+        Object.entries(bootModules).forEach(([module, present]) => {
+          if (present && !globalPartialModules.has(module)) globalLoadedModules.add(module);
+        });
 
         // Do not make a second blocking request for Guru List after dashboard load.
         // Admin already receives guruList from the same Supabase dashboard response;
@@ -1378,22 +1835,35 @@ let currentUser = { userType: '', userID: '', userName: '' };
         renderLearningProgressViews();
         if (typeof ensureStudent360SelfReportButton === 'function') ensureStudent360SelfReportButton();
 
+        // Paint the primary dashboard before constructing off-screen tables and widgets.
+        // This doesn't change data freshness or the completion semantics of the API call.
         setupFilterDropdown();
         renderTabelJadwal();
-        if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
-        renderTabelRiwayat();
-        renderTabelTugas();
-        renderTabelJadwalPengganti();
         renderPengumumanList();
         renderDashboardAcademyUpdates();
-        setupMakeupFilters();
-        setupRoomFilters();
-        renderRoomAvailability();
         renderNotificationCenter();
         if (notificationTimer) clearInterval(notificationTimer);
         notificationTimer = setInterval(renderNotificationCenter, 60000);
         if (typeof configureAdminAttendanceLiveSync === 'function') configureAdminAttendanceLiveSync();
         if (typeof configureLiveAnnouncementSync === 'function') configureLiveAnnouncementSync();
+        const secondaryRenderUser = String(currentUser.userID || '');
+        const secondaryRenderRole = String(currentUser.userType || '');
+        const renderDeferredDashboardSections = () => {
+          if (String(currentUser.userID || '') !== secondaryRenderUser || String(currentUser.userType || '') !== secondaryRenderRole) return;
+          if (calendarInstance && typeof renderCalendarEvents === 'function') renderCalendarEvents();
+          renderTabelRiwayat();
+          renderTabelTugas();
+          renderTabelJadwalPengganti();
+          setupMakeupFilters();
+          setupRoomFilters();
+          renderRoomAvailability();
+        };
+        // A browser rendering opportunity between essential and secondary content.
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => setTimeout(renderDeferredDashboardSections, 0));
+        } else {
+          setTimeout(renderDeferredDashboardSections, 0);
+        }
 
         // Small diagnostic marker for troubleshooting. It is intentionally not shown
         // as a normal UI element, but can be checked in DevTools if ever needed.
@@ -1456,11 +1926,28 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return '🎸';
     }
 
-    function getFormattedDateString(hariStr) {
-      const today = new Date();
+    function getNextScheduleDate(hariStr, jamMulai) {
+      const dayMap = {minggu:0,ahad:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,"jum'at":5,sabtu:6};
+      const target = dayMap[String(hariStr || '').trim().toLowerCase()];
+      const now = new Date();
+      if (target == null) return new Date(now);
+      let addDays = (target - now.getDay() + 7) % 7;
+      if (addDays === 0 && jamMulai) {
+        const parts = String(jamMulai).match(/^(\d{1,2}):(\d{2})/);
+        if (parts) {
+          const start = new Date(now); start.setHours(Number(parts[1]), Number(parts[2]), 0, 0);
+          if (start <= now) addDays = 7;
+        }
+      }
+      const next = new Date(now); next.setDate(now.getDate() + addDays); next.setHours(0,0,0,0);
+      return next;
+    }
+
+    function getFormattedDateString(hariStr, jamMulai) {
+      const next = getNextScheduleDate(hariStr, jamMulai);
       const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-      const hari = hariStr || "Rabu";
-      return `${hari}, ${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear()}`;
+      const dayNames = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+      return `${dayNames[next.getDay()]}, ${next.getDate()} ${monthNames[next.getMonth()]} ${next.getFullYear()}`;
     }
 
     function renderSiswa(data) {
@@ -1485,12 +1972,13 @@ let currentUser = { userType: '', userID: '', userName: '' };
       container.innerHTML = '';
 
       if (data.schedules && data.schedules.length > 0) {
-        data.schedules.forEach(nextJadwal => {
+        const upcomingSchedules = [...data.schedules].sort((a,b)=>getNextScheduleDate(a.hari,a.jamMulai)-getNextScheduleDate(b.hari,b.jamMulai));
+        upcomingSchedules.forEach(nextJadwal => {
         const instrumenNama = nextJadwal.instrumen || (data.siswaInfo ? data.siswaInfo.instrumen : 'Gitar');
         const siswaNama = currentUser.userName;
         const iconInstrumen = getInstrumenIcon(instrumenNama);
         const durationStr = calculateDurationMinutes(nextJadwal.jamMulai, nextJadwal.jamSelesai);
-        const dateStr = getFormattedDateString(nextJadwal.hari);
+        const dateStr = getFormattedDateString(nextJadwal.hari, nextJadwal.jamMulai);
         
         const coachNama = nextJadwal.guru || (data.siswaInfo ? data.siswaInfo.guru : '');
         const coachObj = globalGuruList.find(g => String(g.nama).trim().toLowerCase() === String(coachNama).trim().toLowerCase());
@@ -1544,7 +2032,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           </div>`);
         });
       } else {
-        container.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Belum ada jadwal pelajaran mendatang.</div>`;
+        container.innerHTML = `<div class="student-dashboard-empty">Belum ada jadwal pelajaran mendatang.</div>`;
       }
 
       if (typeof renderStudent360Access === 'function') renderStudent360Access(data);
@@ -1573,7 +2061,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         document.getElementById('adminOngoingClassWidgetBox').style.display = 'block';
         const controlBox = document.getElementById('adminControlCenterBox');
         if (controlBox) controlBox.style.display = 'block';
-        setTimeout(() => loadAdminControlCenter(true), 0);
+        if (!globalAdminControlSummary) setTimeout(() => loadAdminControlCenter(false), 0);
 
         document.getElementById('formJadwalPenggantiBox').style.display = 'block';
         document.getElementById('formPengumumanBox').style.display = 'block';
@@ -1812,7 +2300,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
       if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
       if (instrumentGroup) instrumentGroup.style.display = isStudent ? 'none' : 'block';
-      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (searchGroup) searchGroup.style.display = (isStudent || isAdmin) ? 'none' : 'block';
       if (studentGroup) studentGroup.style.display = isStudent ? 'none' : 'block';
 
       if (isAdmin && teacherSelect) {
@@ -1858,7 +2346,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const teacherValue = isAdmin ? String(document.getElementById('lpPageTeacher')?.value || '').trim() : '';
       const instrumentValue = !isStudent ? String(document.getElementById('lpPageInstrument')?.value || '').trim() : '';
       const searchInput = document.getElementById('lpPageStudentSearch');
-      const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      const searchTerm = !isStudent && !isAdmin && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
 
       let roleStudents = isStudent
         ? [{ nama:currentUser.userName, siswaID:currentUser.userID }]
@@ -1996,7 +2484,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function openLearningProgressModal() {
       if (currentUser.userType !== 'guru') return;
       const select = document.getElementById('lpStudent');
-      const students = (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+      const students = (globalSiswaList || []).filter(isOperationalStudent);
       select.innerHTML = students.map(item => `<option value="${escapeTaskHtml(item.nama)}">${escapeTaskHtml(item.nama)} (${escapeTaskHtml(item.instrumen || 'Kelas Musik')})</option>`).join('');
       const selected = globalSelectedLearningProgressStudent && students.some(item => item.nama === globalSelectedLearningProgressStudent) ? globalSelectedLearningProgressStudent : (students[0] ? students[0].nama : '');
       if (!selected) { showAlert('alertDanger', 'Belum ada siswa yang dapat diisi progressnya.'); return; }
@@ -2337,7 +2825,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       const currentAbsent = absentSelect.value;
       const currentSlot = slotSelect.value;
       const students = (globalSiswaList || [])
-        .filter(item => String(item.status || '').toLowerCase() !== 'keluar')
+        .filter(isOperationalStudent)
         .filter(item => scheduleOverrideStudentHasInstrument(item, instrument))
         .sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''),'id'));
       const instrumentSuffix = instrument ? ` • ${escapeTaskHtml(instrument)}` : '';
@@ -3169,7 +3657,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       let students = (globalSiswaList || []).slice();
       if (currentUser.userType === 'guru') {
         // globalSiswaList pada dashboard guru memang hanya berisi siswa yang dapat diakses guru tersebut.
-        students = students.filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+        students = students.filter(isOperationalStudent);
       }
       students.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
       select.innerHTML = '<option value="">Pilih Siswa...</option>' + students.map(item => `<option value="${escapeTaskHtml(item.siswaID || '')}">${escapeTaskHtml(item.nama || '-')} • ${escapeTaskHtml(item.instrumen || 'Musik')}</option>`).join('');
@@ -3219,9 +3707,40 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
             showAlert('alertDanger', (result && result.message) || 'Repertoire gagal disimpan.');
             return;
           }
+          // Pastikan lapisan pemilih siswa (termasuk portal iPhone) tertutup
+          // sebelum modal disembunyikan; lapisan tertinggal dapat menahan klik detail.
+          const pickerClose = document.querySelector('.lmc-unified-menu.is-portal-open .lmc-unified-close')
+            || document.querySelector('#modalRepertoire .lmc-unified-picker.is-open .lmc-unified-close');
+          if (pickerClose) pickerClose.click();
           closeRepertoireModal();
+          // Respons simpan sudah berisi baris terbaru. Tampilkan langsung agar
+          // guru tidak harus menunggu pengambilan ulang semua repertoire.
+          const saved = result.item && String(result.item.repertoireID || '').trim() ? result.item : null;
+          if (saved) {
+            const savedId = String(saved.repertoireID);
+            const existingItems = Array.isArray(globalRepertoireList) ? globalRepertoireList : [];
+            globalRepertoireList = [saved, ...existingItems.filter(item => String(item.repertoireID || '') !== savedId)];
+            repertoirePageLoaded = true;
+            // Jangan biarkan respons refresh lama mengganti data yang baru disimpan.
+            ++repertoireLoadRequestId;
+            populateRepertoireFilters();
+            // Bila filter lama menyembunyikan lagu yang baru disimpan, buka filternya.
+            if (!repertoireFilteredItems().some(item => String(item.repertoireID || '') === savedId)) {
+              ['repertoireStudentFilter','repertoireTeacherFilter','repertoireInstrumentFilter','repertoireStatusFilter'].forEach(id => {
+                const field = document.getElementById(id);
+                if (field) field.value = '';
+              });
+              const search = document.getElementById('repertoireSearch');
+              if (search) search.value = '';
+            }
+            renderRepertoirePage();
+          }
           showAlert('alertSuccess', result.message || 'Repertoire berhasil disimpan.');
-          loadRepertoirePage();
+          // Jangan memuat ulang daftar tepat setelah Simpan: render ulang oleh
+          // request asinkron dapat membuat tombol Detail tidak responsif sesaat.
+          // Data yang dikembalikan server sudah dipasang di atas; pembukaan menu
+          // berikutnya tetap mengambil snapshot terbaru melalui loadRepertoirePage().
+          if (!saved) loadRepertoirePage();
         })
         .withFailureHandler(error => {
           if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Simpan Repertoire'; }
@@ -3340,9 +3859,576 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       win.focus();
     }
 
+    let practiceHubLoaded = false;
+    let practiceResources = [];
+    let mediaEvaluations = [];
+    let practiceActiveEvaluation = '';
+    let mediaEvalBrowseStudent = '';
+    let mediaEvalBrowseSource = '';
+    let mediaEvalBrowseQuery = '';
+    let practiceActiveTab = 'materials';
+
+    const MEDIA_EVAL_ASPECT_PRESETS = {
+      gitar:[
+        {key:'tone',label:'Tone',description:'Kualitas suara, kejernihan, sustain, dan konsistensi tone.'},
+        {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme, groove, dan kestabilan ketukan.'},
+        {key:'tempo',label:'Tempo',description:'Kestabilan tempo sepanjang lagu.'},
+        {key:'technique',label:'Teknik',description:'Fingering, picking, chord/scale, artikulasi, dan kontrol bunyi.'},
+        {key:'expression',label:'Ekspresi',description:'Musikalitas, dinamika, phrasing, dan penghayatan.'}
+      ],
+      piano:[
+        {key:'tone',label:'Tone & Touch',description:'Kontrol sentuhan, kualitas bunyi, dan keseimbangan tangan.'},
+        {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan kestabilan pulse.'},
+        {key:'tempo',label:'Tempo',description:'Kestabilan tempo serta kontrol perubahan tempo.'},
+        {key:'technique',label:'Teknik',description:'Fingering, koordinasi tangan, artikulasi, dan pedal.'},
+        {key:'expression',label:'Ekspresi',description:'Dinamika, phrasing, interpretasi, dan musikalitas.'}
+      ],
+      drum:[
+        {key:'timing',label:'Timing',description:'Ketepatan masuk beat dan konsistensi terhadap pulse.'},
+        {key:'groove',label:'Groove',description:'Feel, pocket, dan konsistensi pola irama.'},
+        {key:'tempo',label:'Tempo',description:'Kemampuan menjaga tempo dari awal hingga akhir.'},
+        {key:'technique',label:'Teknik',description:'Stick control, koordinasi, rudiment, dan kontrol dinamika.'},
+        {key:'dynamics',label:'Dinamika',description:'Kontrol keras-lembut, aksen, dan keseimbangan antar bagian drum.'}
+      ],
+      vocal:[
+        {key:'intonation',label:'Intonasi',description:'Ketepatan tinggi-rendah nada dan kestabilan pitch.'},
+        {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan penempatan frase terhadap beat.'},
+        {key:'breath',label:'Pernapasan',description:'Kontrol napas, support, dan pembagian frase.'},
+        {key:'technique',label:'Teknik Vokal',description:'Resonansi, artikulasi, register, dan kontrol suara.'},
+        {key:'expression',label:'Ekspresi',description:'Interpretasi, dinamika, emosi, dan komunikasi lagu.'}
+      ],
+      biola:[
+        {key:'intonation',label:'Intonasi',description:'Ketepatan pitch dan konsistensi posisi jari.'},
+        {key:'tone',label:'Tone',description:'Kualitas bunyi, kontrol bow, dan kejernihan suara.'},
+        {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan kestabilan pulse.'},
+        {key:'technique',label:'Teknik Bowing',description:'Arah bow, artikulasi, fingering, dan koordinasi.'},
+        {key:'expression',label:'Ekspresi',description:'Dinamika, phrasing, vibrato, dan musikalitas.'}
+      ],
+      violin:null,
+      cello:[
+        {key:'intonation',label:'Intonasi',description:'Ketepatan pitch dan konsistensi posisi jari.'},
+        {key:'tone',label:'Tone',description:'Kualitas bunyi, resonansi, dan kontrol bow.'},
+        {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan kestabilan pulse.'},
+        {key:'technique',label:'Teknik',description:'Bowing, fingering, shifting, dan koordinasi.'},
+        {key:'expression',label:'Ekspresi',description:'Dinamika, phrasing, vibrato, dan musikalitas.'}
+      ],
+      saxophone:[
+        {key:'tone',label:'Tone',description:'Kualitas tone, support udara, dan konsistensi bunyi.'},
+        {key:'intonation',label:'Intonasi',description:'Ketepatan pitch di seluruh register.'},
+        {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan kestabilan pulse.'},
+        {key:'articulation',label:'Artikulasi',description:'Tonguing, legato, attack, dan kejernihan frase.'},
+        {key:'expression',label:'Ekspresi',description:'Dinamika, phrasing, interpretasi, dan musikalitas.'}
+      ],
+      default:[
+        {key:'tone',label:'Tone',description:'Kualitas dan konsistensi bunyi.'},
+        {key:'rhythm',label:'Rhythm',description:'Ketepatan ritme dan kestabilan pulse.'},
+        {key:'tempo',label:'Tempo',description:'Kestabilan tempo.'},
+        {key:'technique',label:'Teknik',description:'Ketepatan dan kontrol teknik instrumen.'},
+        {key:'expression',label:'Ekspresi',description:'Musikalitas, dinamika, dan penghayatan.'}
+      ]
+    };
+    MEDIA_EVAL_ASPECT_PRESETS.violin = MEDIA_EVAL_ASPECT_PRESETS.biola;
+
+    function phEsc(value) {
+      return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
+    function phYoutubeId(url) {
+      const text = String(url || '').trim();
+      if (!text) return '';
+      const match = text.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{6,})/i);
+      return match ? match[1] : '';
+    }
+
+    function phFormatDate(value) {
+      if (!value) return '-';
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
+    }
+
+    function phStudent(studentId) {
+      return (globalSiswaList||[]).find(x=>String(x.siswaID||'')===String(studentId||'')) || {};
+    }
+
+    function phStudentClassLabel(student, preferredInstrument='') {
+      const classes=Array.isArray(student?.kelasList)?student.kelasList:[];
+      const match=classes.find(c=>String(c.instrumen||'').toLowerCase()===String(preferredInstrument||'').toLowerCase()) || classes[0] || {};
+      return [match.instrumen||student?.instrumen||'Musik',match.grade||match.kelas||student?.kelas||'Kelas Regular'].filter(Boolean).join(' • ');
+    }
+
+    function phStudentAvatar(student, size='md') {
+      const name=String(student?.nama||'S').trim();
+      const initial=phEsc(name.charAt(0).toUpperCase()||'S');
+      const photo=String(student?.foto||student?.photoUrl||student?.fotoProfil||student?.photo_url||'').trim();
+      const candidates=typeof lmcPersonPhotoCandidates==='function'?lmcPersonPhotoCandidates(photo):(photo?[photo]:[]);
+      if(candidates.length){
+        const fallbacks=phEsc(JSON.stringify(candidates.slice(1)));
+        return `<span class="ph-student-avatar ${size}"><img src="${phEsc(candidates[0])}" data-lmc-photo-fallbacks='${fallbacks}' data-lmc-photo-fallback-index="0" alt="${phEsc(name)}" onerror="if(typeof lmcPersonAvatarFallback==='function'){lmcPersonAvatarFallback(this)}else{this.style.display='none';this.nextElementSibling.style.display='grid'}"><span style="display:none">${initial}</span></span>`;
+      }
+      return `<span class="ph-student-avatar ${size}"><span>${initial}</span></span>`;
+    }
+
+    function loadPracticeHub() {
+      if (typeof ensureLiveModules === 'function') ensureLiveModules(['assignments']).catch(()=>{});
+      const loading = document.getElementById('practiceHubLoading');
+      if (loading) { loading.style.display='block'; loading.textContent = practiceHubLoaded ? 'Memperbarui materi latihan...' : 'Memuat materi latihan...'; }
+      google.script.run.withSuccessHandler(res => {
+        if (!res || res.success === false) {
+          if (loading) loading.style.display='none';
+          showAlert('alertDanger', res?.message || 'Materi latihan gagal dimuat.');
+          return;
+        }
+        practiceResources = Array.isArray(res.resources) ? res.resources : [];
+        mediaEvaluations = Array.isArray(res.evaluations) ? res.evaluations : [];
+        if (Array.isArray(res.repertoire)) globalRepertoireList = res.repertoire;
+        practiceHubLoaded = true;
+        populatePracticeFilters();
+        renderPracticeHub();
+      }).withFailureHandler(err => {
+        if (loading) loading.style.display='none';
+        showAlert('alertDanger','Materi latihan gagal dimuat: '+(err?.message||err));
+      }).getPracticeHubData();
+    }
+
+    function populatePracticeFilters() {
+      const studentFilter = document.getElementById('practiceStudentFilter');
+      const teacherActions = document.getElementById('practiceTeacherActions');
+      if (teacherActions) teacherActions.style.display = currentUser.userType === 'guru' ? 'flex' : 'none';
+      if (!studentFilter) return;
+      if (currentUser.userType === 'siswa') {
+        studentFilter.innerHTML = `<option value="${phEsc(currentUser.userID)}">${phEsc(currentUser.userName)}</option>`;
+        studentFilter.value = currentUser.userID;
+        studentFilter.closest('.form-group').style.display='none';
+        mediaEvalBrowseStudent = String(currentUser.userID||'');
+      } else {
+        studentFilter.closest('.form-group').style.display='block';
+        const old=studentFilter.value;
+        const students=(globalSiswaList||[]).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id'));
+        studentFilter.innerHTML='<option value="">Semua Siswa</option>'+students.map(s=>`<option value="${phEsc(s.siswaID)}">${phEsc(s.nama)} • ${phEsc(s.instrumen||'Musik')}</option>`).join('');
+        if ([...studentFilter.options].some(o=>o.value===old)) studentFilter.value=old;
+      }
+    }
+
+    function phFilteredResources() {
+      const sid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
+      const q=String(document.getElementById('practiceSearch')?.value||'').trim().toLowerCase();
+      return practiceResources.filter(x => (!sid || String(x.studentID||'')===sid) && (!q || [x.title,x.description,x.studentName,x.instrument].some(v=>String(v||'').toLowerCase().includes(q))));
+    }
+
+    function mediaEvalBrowseSourceItem(studentId, value) {
+      const raw=String(value||'');
+      if(!raw)return null;
+      const idx=raw.indexOf(':');
+      if(idx<0)return null;
+      const type=raw.slice(0,idx), id=raw.slice(idx+1);
+      return mediaEvalSourceItems(studentId).find(x=>String(x.type)===type&&String(x.id)===id) || null;
+    }
+
+    function mediaEvalLegacyMediaKey(url) {
+      const raw=String(url||'').trim();
+      if(!raw)return '';
+      const yid=phYoutubeId(raw);
+      if(yid)return `youtube:${yid}`;
+      try {
+        const parsed=new URL(raw,window.location.origin);
+        return `${parsed.origin}${parsed.pathname}`.replace(/\/$/,'').toLowerCase();
+      } catch (_) {
+        return raw.split(/[?#]/)[0].replace(/\/$/,'').toLowerCase();
+      }
+    }
+
+    function mediaEvalMatchesBrowseSource(item, sourceValue, studentId) {
+      const source=String(sourceValue||'');
+      if(!source)return true;
+      const idx=source.indexOf(':');
+      const type=idx>-1?source.slice(0,idx):'';
+      const id=idx>-1?source.slice(idx+1):'';
+      if(String(item.sourceType||'')===type && String(item.sourceID||'')===id)return true;
+      if(type==='repertoire' && String(item.repertoireID||'')===id)return true;
+      const selected=mediaEvalBrowseSourceItem(studentId,source);
+      const selectedLabel=String(selected?.label||'').trim().toLowerCase();
+      const itemLabel=String(item.sourceLabel||'').trim().toLowerCase();
+      if(selectedLabel && itemLabel && selectedLabel===itemLabel)return true;
+
+      // Kompatibilitas evaluasi lama sebelum source_type/source_id disimpan.
+      // Jika evaluasi dan Materi Latihan memakai media yang sama, anggap tertaut.
+      const hasExplicitSource=!!(String(item.sourceType||'').trim() || String(item.sourceID||'').trim() || String(item.sourceLabel||'').trim() || String(item.repertoireID||'').trim());
+      if(!hasExplicitSource && type==='practice' && selected){
+        const resource=practiceResources.find(r=>String(r.resourceID||'')===id);
+        const evalMedia=mediaEvalLegacyMediaKey(item.mediaUrl);
+        const resourceMedia=mediaEvalLegacyMediaKey(resource?.youtubeUrl);
+        if(evalMedia && resourceMedia && evalMedia===resourceMedia)return true;
+
+        // Data sangat lama tidak punya metadata sumber. Bila siswa hanya punya satu
+        // Materi Latihan pada instrumen yang sama, itu adalah fallback paling aman.
+        const sameInstrumentResources=practiceResources.filter(r=>String(r.studentID||'')===String(studentId||'') && String(r.instrument||'').trim().toLowerCase()===String(item.instrument||'').trim().toLowerCase());
+        if(sameInstrumentResources.length===1 && String(sameInstrumentResources[0].resourceID||'')===id)return true;
+      }
+      return false;
+    }
+
+    function phFilteredEvaluations() {
+      const generalSid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
+      const sid=mediaEvalBrowseStudent || generalSid;
+      const q=String(mediaEvalBrowseQuery||'').trim().toLowerCase();
+      return mediaEvaluations.filter(x => {
+        const haystack=[
+          x.title,x.studentName,x.instrument,x.strength,x.improvement,x.nextTarget,
+          x.sourceLabel,x.teacherName,x.notes,phFormatDate(x.updatedAt||x.createdAt)
+        ].map(v=>String(v||'').toLowerCase()).join(' ');
+        return (!sid || String(x.studentID||'')===sid) && mediaEvalMatchesBrowseSource(x,mediaEvalBrowseSource,sid) && (!q || haystack.includes(q));
+      });
+    }
+
+    function setPracticeHubTab(tab) {
+      practiceActiveTab = tab === 'evaluations' ? 'evaluations' : 'materials';
+      document.getElementById('practiceMaterialsPane')?.classList.toggle('active', practiceActiveTab === 'materials');
+      document.getElementById('practiceEvaluationsPane')?.classList.toggle('active', practiceActiveTab === 'evaluations');
+      document.getElementById('practiceTabMaterials')?.classList.toggle('active', practiceActiveTab === 'materials');
+      document.getElementById('practiceTabEvaluations')?.classList.toggle('active', practiceActiveTab === 'evaluations');
+      const addMaterial = document.getElementById('practiceAddMaterialBtn');
+      const addEvaluation = document.getElementById('practiceAddEvaluationBtn');
+      const generalFilter = document.querySelector('.practice-filter-box');
+      if (generalFilter) generalFilter.style.display = practiceActiveTab === 'materials' ? '' : 'none';
+      if (currentUser.userType === 'guru') {
+        if (addMaterial) addMaterial.style.display = practiceActiveTab === 'materials' ? 'inline-flex' : 'none';
+        if (addEvaluation) addEvaluation.style.display = practiceActiveTab === 'evaluations' ? 'inline-flex' : 'none';
+      }
+      try { sessionStorage.setItem('legacyPracticeTab', practiceActiveTab); } catch (_) {}
+    }
+
+    function renderPracticeHub() {
+      const loading=document.getElementById('practiceHubLoading'); if(loading) loading.style.display='none';
+      if (!practiceActiveTab) {
+        try { practiceActiveTab = sessionStorage.getItem('legacyPracticeTab') || 'materials'; } catch (_) { practiceActiveTab='materials'; }
+      }
+      setPracticeHubTab(practiceActiveTab);
+      renderPracticeResources();
+      renderMediaEvaluationBrowseFilters();
+      renderMediaEvaluations();
+      const r=phFilteredResources(), e=phFilteredEvaluations();
+      const a=document.getElementById('practiceStatResources'), b=document.getElementById('practiceStatVideos'), c=document.getElementById('practiceStatFiles'), d=document.getElementById('practiceStatEvaluations');
+      if(a)a.textContent=r.length;
+      if(b)b.textContent=r.filter(x=>x.youtubeUrl).length;
+      if(c)c.textContent=r.reduce((n,x)=>n+(Array.isArray(x.attachments)?x.attachments.length:0),0);
+      if(d)d.textContent=e.length;
+    }
+
+    function renderPracticeResources() {
+      const host=document.getElementById('practiceResourceList'); if(!host)return;
+      const items=phFilteredResources();
+      if(!items.length){host.innerHTML='<div class="practice-empty">Belum ada materi latihan untuk filter ini.</div>';return;}
+      host.innerHTML=items.map(item=>{
+        const files=Array.isArray(item.attachments)?item.attachments:[];
+        const hasVideo=!!phYoutubeId(item.youtubeUrl);
+        const desc=String(item.description||'').trim();
+        return `<article class="practice-resource-card practice-resource-summary" tabindex="0" role="button" onclick="openPracticeResourceDetail('${phEsc(item.resourceID)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPracticeResourceDetail('${phEsc(item.resourceID)}');}">
+          <div class="practice-card-head">
+            <div class="practice-card-main">
+              <span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span>
+              <h3>${phEsc(item.title||'Materi Latihan')}</h3>
+              <p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')}</p>
+            </div>
+            ${currentUser.userType==='guru'?`<div class="practice-card-actions" onclick="event.stopPropagation()"><button class="btn btn-export" onclick="openPracticeResourceModal('${phEsc(item.resourceID)}')">Edit</button><button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(item.resourceID)}')">Hapus</button></div>`:''}
+          </div>
+          ${desc?`<p class="practice-description clamp-3">${phEsc(desc)}</p>`:'<p class="practice-description practice-description-muted">Belum ada deskripsi materi.</p>'}
+          <div class="practice-card-summary-meta">
+            <span class="practice-summary-pill ${hasVideo?'has-media':''}">▶ ${hasVideo?'Video tersedia':'Tanpa video'}</span>
+            <span class="practice-summary-pill ${files.length?'has-media':''}">📄 ${files.length} file</span>
+            <span class="practice-summary-pill">🕒 ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</span>
+          </div>
+          <div class="practice-card-footer"><span>Klik untuk membuka detail materi</span><span class="media-eval-arrow">›</span></div>
+        </article>`;
+      }).join('');
+    }
+
+    function openPracticeResourceDetail(id){
+      const item=practiceResources.find(x=>String(x.resourceID)===String(id));if(!item)return;
+      const host=document.getElementById('practiceResourceDetailBody');if(!host)return;
+      const yid=phYoutubeId(item.youtubeUrl);
+      const files=Array.isArray(item.attachments)?item.attachments:[];
+      host.innerHTML=`<div class="practice-resource-detail-layout">
+        <div class="practice-resource-detail-main">
+          <div class="practice-resource-detail-head">
+            <div>
+              <span class="practice-kicker">${phEsc(item.instrument||'Materi Latihan')}</span>
+              <h2>${phEsc(item.title||'Materi Latihan')}</h2>
+              <p>${phEsc(item.studentName||'')} • ${phEsc(item.teacherName||'')} • Diperbarui ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</p>
+            </div>
+            <div class="practice-card-summary-meta">
+              <span class="practice-summary-pill ${yid?'has-media':''}">▶ ${yid?'Video tersedia':'Tanpa video'}</span>
+              <span class="practice-summary-pill ${files.length?'has-media':''}">📄 ${files.length} file</span>
+            </div>
+          </div>
+          <div class="media-player-card practice-resource-detail-copy">
+            <div class="practice-section-title"><div><h3>Deskripsi / Petunjuk</h3><p>Materi latihan mandiri untuk siswa.</p></div></div>
+            <div class="practice-description">${phEsc(item.description||'Belum ada deskripsi materi.')}</div>
+          </div>
+          ${yid?`<div class="media-player-card"><div class="practice-section-title"><div><h3>Video Tutorial</h3><p>YouTube Unlisted</p></div></div><div class="practice-video"><iframe src="https://www.youtube.com/embed/${phEsc(yid)}" title="${phEsc(item.title||'Video Tutorial')}" loading="lazy" allowfullscreen></iframe></div></div>`:''}
+          ${files.length?`<div class="media-player-card"><div class="practice-section-title"><div><h3>File / PDF</h3><p>Lampiran latihan mandiri.</p></div></div><div class="practice-files">${files.map(f=>`<a class="practice-file" href="${phEsc(f.url||'#')}" target="_blank" rel="noopener"><span>📄</span><span><b>${phEsc(f.name||'File latihan')}</b><small>${phEsc(f.type||'File Google Drive')}</small></span></a>`).join('')}</div></div>`:''}
+        </div>
+      </div>`;
+      const actions=document.getElementById('practiceResourceDetailActions');
+      if(actions){actions.innerHTML=currentUser.userType==='guru'?`<button class="btn practice-danger" onclick="deletePracticeResource('${phEsc(id)}');closePracticeResourceDetail()">Hapus</button><button class="btn btn-export" onclick="closePracticeResourceDetail();openPracticeResourceModal('${phEsc(id)}')">Edit Materi</button><button class="btn btn-primary" onclick="closePracticeResourceDetail()">Tutup</button>`:`<button class="btn btn-primary" onclick="closePracticeResourceDetail()">Tutup</button>`;}
+      document.getElementById('modalPracticeResourceDetail').style.display='flex';
+    }
+    function closePracticeResourceDetail(){document.getElementById('modalPracticeResourceDetail').style.display='none';}
+
+    function phScoreLabel(score) {
+      const n=Number(score||0); if(n>=85)return 'Sangat Baik'; if(n>=70)return 'Baik'; if(n>=60)return 'Cukup'; return 'Perlu Latihan';
+    }
+
+    function mediaEvalSourceItems(studentId) {
+      const sid=String(studentId||'');
+      const s=phStudent(sid); const name=String(s.nama||'').trim().toLowerCase();
+      const tasks=(globalTugasList||[]).filter(t=>String(t.siswaID||'')===sid || (!t.siswaID && String(t.namaSiswa||'').trim().toLowerCase()===name)).map(t=>({type:'assignment',id:String(t.tugasID||''),label:String(t.judulTugas||'Tugas'),meta:`Tugas • ${t.tipeTugas||'Latihan'}`}));
+      const resources=practiceResources.filter(r=>String(r.studentID||'')===sid).map(r=>({type:'practice',id:String(r.resourceID||''),label:String(r.title||'Latihan Mandiri'),meta:`Latihan • ${r.instrument||'Musik'}`}));
+      const repertoire=(globalRepertoireList||[]).filter(r=>String(r.siswaID||'')===sid).map(r=>({type:'repertoire',id:String(r.repertoireID||''),label:String(r.judulLagu||'Repertoire'),meta:'Repertoire'}));
+      return [...resources,...tasks,...repertoire].filter(x=>x.id);
+    }
+
+    function mediaEvalSourceOptions(studentId, selected='') {
+      const items=mediaEvalSourceItems(studentId); const groups=[['practice','Latihan Mandiri'],['assignment','Tugas'],['repertoire','Repertoire']];
+      let html='<option value="">Semua / Tanpa sumber khusus</option>';
+      groups.forEach(([type,label])=>{const rows=items.filter(x=>x.type===type);if(rows.length)html+=`<optgroup label="${label}">${rows.map(x=>`<option value="${phEsc(`${x.type}:${x.id}`)}" ${`${x.type}:${x.id}`===selected?'selected':''}>${phEsc(x.label)}</option>`).join('')}</optgroup>`;});
+      return html;
+    }
+
+    function renderStudentPicker(hostId, studentId, onPickName, allowAll=false) {
+      const host=document.getElementById(hostId); if(!host)return;
+      const student=phStudent(studentId);
+      const triggerLabel=student?.siswaID ? `<span class="ph-picker-student">${phStudentAvatar(student,'sm')}<span><b>${phEsc(student.nama||'-')}</b><small>${phEsc(phStudentClassLabel(student))}</small></span></span>` : `<span class="ph-picker-placeholder">${allowAll?'Semua Siswa':'Pilih Siswa'}</span>`;
+      const rows=(globalSiswaList||[]).filter(s=>allowAll?true:isOperationalStudent(s)).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id'));
+      host.innerHTML=`<button type="button" class="ph-picker-trigger" aria-expanded="false" onclick="togglePhStudentPicker('${phEsc(hostId)}',event)">${triggerLabel}<span class="ph-picker-chevron">⌄</span></button><button type="button" class="ph-picker-backdrop" aria-label="Tutup pilihan siswa" onclick="closePhStudentPickers()"></button><div class="ph-picker-menu"><div class="ph-picker-menu-head"><div><b>Pilih Siswa</b><small>Cari berdasarkan nama, instrumen, atau kelas</small></div><button type="button" class="ph-picker-close" onclick="closePhStudentPickers()">×</button></div><div class="ph-picker-search-wrap"><span>⌕</span><input type="search" class="ph-picker-search" placeholder="Cari siswa..." oninput="filterPhStudentPicker('${phEsc(hostId)}',this.value)"></div><div class="ph-picker-options">${allowAll?`<button type="button" class="ph-picker-option" data-search="semua siswa" onclick="${onPickName}('')"><span class="ph-picker-all">◎</span><span><b>Semua Siswa</b><small>Tampilkan seluruh evaluasi</small></span></button>`:''}${rows.map(s=>{const search=phEsc(`${s.nama||''} ${phStudentClassLabel(s)}`.toLowerCase());return `<button type="button" class="ph-picker-option ${String(s.siswaID)===String(studentId)?'active':''}" data-search="${search}" onclick="${onPickName}('${phEsc(s.siswaID)}')">${phStudentAvatar(s,'sm')}<span><b>${phEsc(s.nama||'-')}</b><small>${phEsc(phStudentClassLabel(s))}</small></span></button>`;}).join('')}<div class="ph-picker-empty" hidden>Tidak ada siswa yang cocok.</div></div></div>`;
+    }
+
+    function closePhStudentPickers(){
+      document.querySelectorAll('.ph-student-picker.open').forEach(el=>{el.classList.remove('open');el.querySelector('.ph-picker-trigger')?.setAttribute('aria-expanded','false');});
+    }
+    function togglePhStudentPicker(hostId,event){
+      event?.stopPropagation?.();
+      const host=document.getElementById(hostId);if(!host)return;
+      const willOpen=!host.classList.contains('open');
+      closePhStudentPickers();
+      if(willOpen){host.classList.add('open');host.querySelector('.ph-picker-trigger')?.setAttribute('aria-expanded','true');setTimeout(()=>host.querySelector('.ph-picker-search')?.focus(),30);}
+    }
+    function filterPhStudentPicker(hostId,value){
+      const host=document.getElementById(hostId);if(!host)return;
+      const q=String(value||'').trim().toLowerCase();let shown=0;
+      host.querySelectorAll('.ph-picker-option').forEach(option=>{const ok=!q||String(option.dataset.search||'').includes(q);option.hidden=!ok;if(ok)shown++;});
+      const empty=host.querySelector('.ph-picker-empty');if(empty)empty.hidden=shown>0;
+    }
+    if(!window.__lmcStudentPickerOutsideBound){
+      window.__lmcStudentPickerOutsideBound=true;
+      document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('.ph-student-picker'))closePhStudentPickers();},true);
+      document.addEventListener('keydown',event=>{if(event.key==='Escape')closePhStudentPickers();});
+    }
+
+    function chooseMediaEvalBrowseStudent(studentId){mediaEvalBrowseStudent=String(studentId||'');mediaEvalBrowseSource='';renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function setMediaEvalBrowseQuery(value){mediaEvalBrowseQuery=String(value||'');renderMediaEvaluations();}
+    function chooseMediaEvalFormStudent(studentId){const sel=document.getElementById('mediaEvalStudent');if(sel)sel.value=studentId;document.getElementById('mediaEvalStudentPicker')?.classList.remove('open');syncEvaluationInstrument();renderStudentPicker('mediaEvalStudentPicker',studentId,'chooseMediaEvalFormStudent',false);}
+
+    function closeMediaSourcePickers(){document.querySelectorAll('.media-source-picker.open').forEach(el=>el.classList.remove('open'));}
+    function toggleMediaSourcePicker(event){event?.stopPropagation();const host=document.getElementById('mediaEvalBrowseSourcePicker');if(!host||host.classList.contains('disabled'))return;const open=!host.classList.contains('open');closeMediaSourcePickers();closePhStudentPickers();if(open)host.classList.add('open');}
+    function chooseMediaEvalBrowseSource(value){mediaEvalBrowseSource=String(value||'');closeMediaSourcePickers();renderMediaEvaluationBrowseFilters();renderMediaEvaluations();}
+    function renderMediaEvalBrowseSourcePicker(studentId){
+      const host=document.getElementById('mediaEvalBrowseSourcePicker');if(!host)return;
+      const items=mediaEvalSourceItems(studentId);
+      const selected=mediaEvalBrowseSourceItem(studentId,mediaEvalBrowseSource);
+      const label=selected?.label||'Semua / Tanpa sumber khusus';
+      const groups=[['practice','Latihan Mandiri'],['assignment','Tugas'],['repertoire','Repertoire']];
+      const options=groups.map(([type,groupLabel])=>{const rows=items.filter(x=>x.type===type);if(!rows.length)return '';return `<div class="media-source-group"><div class="media-source-group-label">${phEsc(groupLabel)}</div>${rows.map(x=>{const value=`${x.type}:${x.id}`;return `<button type="button" class="media-source-option ${value===mediaEvalBrowseSource?'active':''}" onclick="chooseMediaEvalBrowseSource('${phEsc(value)}')"><span class="media-source-option-icon">${type==='practice'?'📚':type==='assignment'?'📝':'🎵'}</span><span><b>${phEsc(x.label)}</b><small>${phEsc(x.meta||groupLabel)}</small></span><span class="media-source-check">${value===mediaEvalBrowseSource?'✓':''}</span></button>`;}).join('')}</div>`;}).join('');
+      host.classList.toggle('disabled',!studentId);
+      host.innerHTML=`<button type="button" class="media-source-trigger" aria-haspopup="listbox" onclick="toggleMediaSourcePicker(event)" ${studentId?'':'disabled'}><span><b>${phEsc(label)}</b><small>${studentId?'Filter berdasarkan tugas, latihan, atau repertoire':'Pilih siswa terlebih dahulu'}</small></span><span class="ph-picker-chevron">⌄</span></button><button type="button" class="media-source-backdrop" aria-label="Tutup pilihan" onclick="closeMediaSourcePickers()"></button><div class="media-source-menu"><div class="media-source-menu-head"><div><b>Pilih Tugas / Latihan</b><small>Materi latihan, tugas, atau repertoire siswa.</small></div><button type="button" class="ph-picker-close" onclick="closeMediaSourcePickers()">×</button></div><div class="media-source-options"><button type="button" class="media-source-option ${!mediaEvalBrowseSource?'active':''}" onclick="chooseMediaEvalBrowseSource('')"><span class="media-source-option-icon">◎</span><span><b>Semua / Tanpa sumber khusus</b><small>Tampilkan seluruh evaluasi</small></span><span class="media-source-check">${!mediaEvalBrowseSource?'✓':''}</span></button>${options||'<div class="ph-picker-empty">Belum ada tugas, latihan, atau repertoire.</div>'}</div></div>`;
+    }
+
+    if(!window.__lmcMediaSourcePickerOutsideBound){
+      window.__lmcMediaSourcePickerOutsideBound=true;
+      document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('.media-source-picker'))closeMediaSourcePickers();},true);
+      document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMediaSourcePickers();});
+    }
+
+    function renderMediaEvaluationBrowseFilters(){
+      const host=document.getElementById('mediaEvaluationBrowseFilters');if(!host)return;
+      const isStudent=currentUser.userType==='siswa';
+      if(isStudent)mediaEvalBrowseStudent=String(currentUser.userID||'');
+      const sid=mediaEvalBrowseStudent;
+      const sourceField=`<div><label>Pilih Tugas / Latihan</label><div id="mediaEvalBrowseSourcePicker" class="media-source-picker"></div></div>`;
+      const searchField=`<div><label>Cari / Filter Evaluasi</label><div class="media-eval-search-field"><span>⌕</span><input type="search" value="${phEsc(mediaEvalBrowseQuery)}" placeholder="Cari judul, materi, repertoire, instrumen..." oninput="setMediaEvalBrowseQuery(this.value)"></div></div>`;
+      if(isStudent){
+        host.innerHTML=`<div class="media-eval-browse-grid student-only with-source">${sourceField}${searchField}</div>`;
+        renderMediaEvalBrowseSourcePicker(sid);
+      }else{
+        host.innerHTML=`<div class="media-eval-browse-grid with-source"><div><label>Pilih Siswa</label><div id="mediaEvalBrowseStudentPicker" class="ph-student-picker"></div></div>${sourceField}${searchField}</div>`;
+        renderStudentPicker('mediaEvalBrowseStudentPicker',sid,'chooseMediaEvalBrowseStudent',true);
+        renderMediaEvalBrowseSourcePicker(sid);
+      }
+    }
+
+    function renderMediaEvaluations() {
+      const host=document.getElementById('mediaEvaluationList'); if(!host)return;
+      const items=phFilteredEvaluations();
+      if(!items.length){host.innerHTML='<div class="practice-empty">Belum ada Evaluasi Audio/Video untuk pilihan ini.</div>';return;}
+      host.innerHTML=items.map(item=>{
+        const score=Math.round(Number(item.averageScore||0));
+        const hasMedia=!!String(item.mediaUrl||'').trim();
+        return `<button type="button" class="media-eval-card media-eval-card-compact" onclick="openMediaEvaluationDetail('${phEsc(item.evaluationID)}')">
+          <div class="media-eval-card-top">
+            <div class="media-eval-score" style="--score:${score}%"><strong>${score}%</strong><span>${phEsc(phScoreLabel(score))}</span></div>
+            <div class="media-eval-copy"><span class="practice-kicker">${phEsc(item.instrument||'Evaluasi')}</span><h3>${phEsc(item.title||'Evaluasi Audio / Video')}</h3><p>${phEsc(item.studentName||'')}</p></div>
+          </div>
+          <div class="practice-card-summary-meta">
+            <span class="practice-summary-pill ${hasMedia?'has-media':''}">🎬 ${hasMedia?'Media tersedia':'Belum ada media'}</span>
+            <span class="practice-summary-pill">🎵 ${phEsc(item.sourceLabel||item.teacherName||'Evaluasi')}</span>
+            <span class="practice-summary-pill">🕒 ${phEsc(phFormatDate(item.updatedAt||item.createdAt))}</span>
+          </div>
+          <div class="practice-card-footer"><span>Lihat detail evaluasi</span><span class="media-eval-arrow">›</span></div>
+        </button>`;
+      }).join('');
+    }
+
+    function practiceStudentOptions(selected='') {
+      return (globalSiswaList||[]).filter(isOperationalStudent).slice().sort((a,b)=>String(a.nama||'').localeCompare(String(b.nama||''),'id')).map(s=>`<option value="${phEsc(s.siswaID)}" ${String(s.siswaID)===String(selected)?'selected':''}>${phEsc(s.nama)} • ${phEsc(s.instrumen||'Musik')}</option>`).join('');
+    }
+
+    function practiceInstrumentForStudent(studentId) {
+      const s=phStudent(studentId);
+      const classes=Array.isArray(s?.kelasList)?s.kelasList:[];
+      return [...new Set([...(classes.map(x=>x.instrumen)),s?.instrumen].filter(Boolean))];
+    }
+
+    function syncPracticeResourceInstrument() {
+      const sid=document.getElementById('practiceResourceStudent')?.value;
+      const sel=document.getElementById('practiceResourceInstrument'); if(!sel)return;
+      const values=practiceInstrumentForStudent(sid); const old=sel.value;
+      sel.innerHTML=(values.length?values:['Musik']).map(v=>`<option value="${phEsc(v)}">${phEsc(v)}</option>`).join('');
+      if(values.includes(old))sel.value=old;
+    }
+
+    function openPracticeResourceModal(id='') {
+      if(currentUser.userType!=='guru') return;
+      const item=practiceResources.find(x=>String(x.resourceID)===String(id));
+      document.getElementById('practiceResourceId').value=item?.resourceID||'';
+      document.getElementById('practiceResourceStudent').innerHTML=practiceStudentOptions(item?.studentID||'');
+      document.getElementById('practiceResourceTitle').value=item?.title||'';
+      document.getElementById('practiceResourceDescription').value=item?.description||'';
+      document.getElementById('practiceResourceYoutube').value=item?.youtubeUrl||'';
+      document.getElementById('practiceResourceFiles').value='';
+      syncPracticeResourceInstrument();
+      if(item?.instrument) document.getElementById('practiceResourceInstrument').value=item.instrument;
+      document.getElementById('practiceResourceModalTitle').textContent=item?'Edit Materi Latihan':'Tambah Materi Latihan';
+      document.getElementById('modalPracticeResource').style.display='flex';
+    }
+    function closePracticeResourceModal(){document.getElementById('modalPracticeResource').style.display='none';}
+
+    function practiceFilesPayload(files){return Promise.all(files.map(file=>new Promise((resolve,reject)=>{const r=new FileReader();r.onload=e=>resolve({dataUrl:e.target.result,name:file.name,type:file.type||'application/octet-stream',size:file.size});r.onerror=()=>reject(new Error('Gagal membaca '+file.name));r.readAsDataURL(file);})));}
+
+    function savePracticeResource(event){
+      event.preventDefault();
+      const btn=document.getElementById('btnSavePracticeResource'); const files=Array.from(document.getElementById('practiceResourceFiles').files||[]);
+      if(files.length>5){showAlert('alertDanger','Maksimal 5 file per materi.');return false;}
+      if(files.some(f=>String(f.type||'').startsWith('video/'))){showAlert('alertDanger','Video tutorial gunakan link YouTube Unlisted. File video tidak diunggah ke Google Drive.');return false;}
+      btn.disabled=true;btn.textContent='Menyimpan...';
+      practiceFilesPayload(files).then(uploadFiles=>{
+        const payload={resourceID:document.getElementById('practiceResourceId').value,studentID:document.getElementById('practiceResourceStudent').value,instrument:document.getElementById('practiceResourceInstrument').value,title:document.getElementById('practiceResourceTitle').value.trim(),description:document.getElementById('practiceResourceDescription').value.trim(),youtubeUrl:document.getElementById('practiceResourceYoutube').value.trim(),files:uploadFiles};
+        google.script.run.withSuccessHandler(res=>{btn.disabled=false;btn.textContent='Simpan Materi';if(res?.success){closePracticeResourceModal();showAlert('alertSuccess',res.message||'Materi latihan tersimpan.');loadPracticeHub();}else showAlert('alertDanger',res?.message||'Gagal menyimpan materi.');}).withFailureHandler(err=>{btn.disabled=false;btn.textContent='Simpan Materi';showAlert('alertDanger',err?.message||String(err));}).savePracticeResource(payload);
+      }).catch(err=>{btn.disabled=false;btn.textContent='Simpan Materi';showAlert('alertDanger',err.message);});
+      return false;
+    }
+
+    function deletePracticeResource(id){if(!confirm('Hapus materi latihan ini?'))return;google.script.run.withSuccessHandler(res=>{showAlert(res?.success?'alertSuccess':'alertDanger',res?.message||'');if(res?.success)loadPracticeHub();}).deletePracticeResource(id);}
+
+    function mediaEvalPresetForInstrument(instrument) {
+      const key=String(instrument||'').trim().toLowerCase();
+      return (MEDIA_EVAL_ASPECT_PRESETS[key]||MEDIA_EVAL_ASPECT_PRESETS.default).map(x=>({...x,score:0}));
+    }
+
+    function normalizeMediaEvalAspects(item, instrument) {
+      if(Array.isArray(item?.aspects)&&item.aspects.length)return item.aspects.map((x,i)=>({key:String(x.key||`aspect_${i+1}`),label:String(x.label||`Aspek ${i+1}`),description:String(x.description||''),score:Math.max(0,Math.min(100,Number(x.score||0)))}));
+      const s=item?.scores||{}; const preset=mediaEvalPresetForInstrument(instrument||item?.instrument);
+      return preset.map(x=>({...x,score:Number(s[x.key]??s[{tone:'tone',rhythm:'rhythm',tempo:'tempo',technique:'technique',expression:'expression'}[x.key]]??0)}));
+    }
+
+    function renderMediaEvalAspectEditor(aspects) {
+      const host=document.getElementById('mediaEvalAspectEditor');if(!host)return;
+      host.innerHTML=(aspects||[]).map((a,i)=>`<div class="media-aspect-editor-row" data-index="${i}" data-key="${phEsc(a.key||`aspect_${i+1}`)}"><div class="media-aspect-editor-title"><input class="media-aspect-label-input" value="${phEsc(a.label||`Aspek ${i+1}`)}" aria-label="Nama aspek"><small>${phEsc(a.description||'')}</small></div><input class="media-aspect-range" type="range" min="0" max="100" value="${Math.max(0,Math.min(100,Number(a.score||0)))}" oninput="this.nextElementSibling.value=this.value;updateMediaAspectBadge(this.closest('.media-aspect-editor-row'))"><input class="media-aspect-number" type="number" min="0" max="100" value="${Math.max(0,Math.min(100,Number(a.score||0)))}" oninput="this.previousElementSibling.value=Math.max(0,Math.min(100,Number(this.value||0)));updateMediaAspectBadge(this.closest('.media-aspect-editor-row'))"><span class="media-aspect-badge">${phEsc(phScoreLabel(a.score))}</span></div>`).join('');
+    }
+    function updateMediaAspectBadge(row){if(!row)return;const n=Math.max(0,Math.min(100,Number(row.querySelector('.media-aspect-number')?.value||0)));const badge=row.querySelector('.media-aspect-badge');if(badge)badge.textContent=phScoreLabel(n);}
+    function collectMediaEvalAspects(host=document.getElementById('mediaEvalAspectEditor')){return [...(host?.querySelectorAll('.media-aspect-editor-row')||[])].map((row,i)=>({key:String(row.dataset.key||`aspect_${i+1}`),label:String(row.querySelector('.media-aspect-label-input')?.value||`Aspek ${i+1}`).trim(),description:String(row.querySelector('small')?.textContent||'').trim(),score:Math.max(0,Math.min(100,Number(row.querySelector('.media-aspect-number')?.value||0)))}));}
+
+    function syncEvaluationInstrument(keepAspects=false) {
+      const sid=document.getElementById('mediaEvalStudent')?.value, sel=document.getElementById('mediaEvalInstrument'); if(!sel)return;
+      const vals=practiceInstrumentForStudent(sid); const old=sel.value; sel.innerHTML=(vals.length?vals:['Musik']).map(v=>`<option value="${phEsc(v)}">${phEsc(v)}</option>`).join('');if(vals.includes(old))sel.value=old;
+      const source=document.getElementById('mediaEvalSource');if(source){const selected=source.value;source.innerHTML=mediaEvalSourceOptions(sid,selected);}
+      const rep=document.getElementById('mediaEvalRepertoire');if(rep){const list=(globalRepertoireList||[]).filter(r=>String(r.siswaID)===String(sid));rep.innerHTML='<option value="">Tanpa Repertoire</option>'+list.map(r=>`<option value="${phEsc(r.repertoireID)}">${phEsc(r.judulLagu||'-')}</option>`).join('');}
+      if(!keepAspects)renderMediaEvalAspectEditor(mediaEvalPresetForInstrument(sel.value));
+    }
+
+    function onMediaEvalInstrumentChange(){renderMediaEvalAspectEditor(mediaEvalPresetForInstrument(document.getElementById('mediaEvalInstrument')?.value));}
+    function onMediaEvalSourceChange(){const value=String(document.getElementById('mediaEvalSource')?.value||'');const [type,id]=value.split(':');const item=mediaEvalSourceItems(document.getElementById('mediaEvalStudent')?.value).find(x=>x.type===type&&x.id===id);const title=document.getElementById('mediaEvalTitle');if(item&&title&&!title.value.trim())title.value=item.label;const rep=document.getElementById('mediaEvalRepertoire');if(rep)rep.value=type==='repertoire'?id:'';}
+
+    function openMediaEvaluationModal(id='') {
+      if(currentUser.userType!=='guru')return;
+      const item=mediaEvaluations.find(x=>String(x.evaluationID)===String(id));
+      const sid=item?.studentID || (mediaEvalBrowseStudent || (globalSiswaList?.[0]?.siswaID||''));
+      document.getElementById('mediaEvalId').value=item?.evaluationID||'';
+      document.getElementById('mediaEvalStudent').innerHTML=practiceStudentOptions(sid);
+      renderStudentPicker('mediaEvalStudentPicker',sid,'chooseMediaEvalFormStudent',false);
+      syncEvaluationInstrument(true);
+      if(item?.instrument)document.getElementById('mediaEvalInstrument').value=item.instrument;
+      const sourceValue=item?.sourceType&&item?.sourceID?`${item.sourceType}:${item.sourceID}`:(item?.repertoireID?`repertoire:${item.repertoireID}`:'');
+      document.getElementById('mediaEvalSource').innerHTML=mediaEvalSourceOptions(sid,sourceValue);
+      document.getElementById('mediaEvalSource').value=sourceValue;
+      if(item?.repertoireID)document.getElementById('mediaEvalRepertoire').value=item.repertoireID;
+      document.getElementById('mediaEvalTitle').value=item?.title||'';
+      document.getElementById('mediaEvalUrl').value=item?.mediaUrl||'';
+      renderMediaEvalAspectEditor(normalizeMediaEvalAspects(item,item?.instrument||document.getElementById('mediaEvalInstrument').value));
+      document.getElementById('mediaEvalStrength').value=item?.strength||'';
+      document.getElementById('mediaEvalImprovement').value=item?.improvement||'';
+      document.getElementById('mediaEvalNextTarget').value=item?.nextTarget||'';
+      document.getElementById('mediaEvalMarkers').value=(item?.markers||[]).map(m=>`${m.time||''} | ${m.text||''}`).join('\n');
+      document.getElementById('mediaEvalNotes').value=item?.notes||'';
+      document.getElementById('mediaEvaluationModalTitle').textContent=item?'Edit Evaluasi Audio/Video':'Evaluasi Audio/Video Baru';
+      document.getElementById('modalMediaEvaluation').style.display='flex';
+    }
+    function closeMediaEvaluationModal(){document.getElementById('modalMediaEvaluation').style.display='none';document.getElementById('mediaEvalStudentPicker')?.classList.remove('open');}
+
+    function buildMediaEvaluationPayloadFromForm(){
+      const sourceValue=String(document.getElementById('mediaEvalSource')?.value||'');const idx=sourceValue.indexOf(':');const sourceType=idx>-1?sourceValue.slice(0,idx):'';const sourceID=idx>-1?sourceValue.slice(idx+1):'';const sourceItem=mediaEvalSourceItems(document.getElementById('mediaEvalStudent').value).find(x=>x.type===sourceType&&x.id===sourceID);
+      return {evaluationID:document.getElementById('mediaEvalId').value,studentID:document.getElementById('mediaEvalStudent').value,instrument:document.getElementById('mediaEvalInstrument').value,repertoireID:sourceType==='repertoire'?sourceID:document.getElementById('mediaEvalRepertoire').value,sourceType,sourceID,sourceLabel:sourceItem?.label||'',title:document.getElementById('mediaEvalTitle').value.trim(),mediaUrl:document.getElementById('mediaEvalUrl').value.trim(),aspects:collectMediaEvalAspects(),strength:document.getElementById('mediaEvalStrength').value.trim(),improvement:document.getElementById('mediaEvalImprovement').value.trim(),nextTarget:document.getElementById('mediaEvalNextTarget').value.trim(),markers:document.getElementById('mediaEvalMarkers').value,notes:document.getElementById('mediaEvalNotes').value.trim()};
+    }
+
+    function saveMediaEvaluation(event){event.preventDefault();const btn=document.getElementById('btnSaveMediaEvaluation');btn.disabled=true;btn.textContent='Menyimpan...';const payload=buildMediaEvaluationPayloadFromForm();google.script.run.withSuccessHandler(res=>{btn.disabled=false;btn.textContent='Simpan Evaluasi';if(res?.success){closeMediaEvaluationModal();showAlert('alertSuccess',res.message||'Evaluasi tersimpan.');loadPracticeHub();}else showAlert('alertDanger',res?.message||'Gagal menyimpan evaluasi.');}).withFailureHandler(err=>{btn.disabled=false;btn.textContent='Simpan Evaluasi';showAlert('alertDanger',err?.message||String(err));}).saveMediaEvaluation(payload);return false;}
+
+    function mediaEvalDetailAspectRows(item){
+      const aspects=normalizeMediaEvalAspects(item,item.instrument); const editable=currentUser.userType==='guru';
+      return aspects.map((a,i)=>`<div class="media-detail-aspect" data-key="${phEsc(a.key||`aspect_${i+1}`)}" data-description="${phEsc(a.description||'')}"><div class="media-detail-aspect-copy">${editable?`<input class="media-detail-aspect-label" value="${phEsc(a.label)}">`:`<b>${phEsc(a.label)}</b>`}<small>${phEsc(a.description||'')}</small></div><div class="media-detail-score-control"><input class="media-detail-range" type="range" min="0" max="100" value="${Number(a.score||0)}" ${editable?'':'disabled'} oninput="this.nextElementSibling.value=this.value;this.closest('.media-detail-aspect').querySelector('.media-detail-score-badge').textContent=phScoreLabel(this.value)"><input class="media-detail-number" type="number" min="0" max="100" value="${Number(a.score||0)}" ${editable?'':'readonly'} oninput="this.previousElementSibling.value=Math.max(0,Math.min(100,Number(this.value||0)));this.closest('.media-detail-aspect').querySelector('.media-detail-score-badge').textContent=phScoreLabel(this.value)"><span class="media-detail-score-badge">${phEsc(phScoreLabel(a.score))}</span></div></div>`).join('');
+    }
+
+    function openMediaEvaluationDetail(id){
+      const item=mediaEvaluations.find(x=>String(x.evaluationID)===String(id));if(!item)return;practiceActiveEvaluation=id;
+      const yid=phYoutubeId(item.mediaUrl);const student=phStudent(item.studentID);
+      document.getElementById('mediaEvaluationDetailBody').innerHTML=`<div class="media-eval-reference-layout"><div class="media-eval-reference-main"><div class="media-eval-detail-student"><div>${phStudentAvatar(student,'md')}<div><span class="practice-kicker">${phEsc(item.instrument||'Evaluasi')}</span><h2>${phEsc(item.studentName||student.nama||'-')}</h2><p>${phEsc(phStudentClassLabel(student,item.instrument))}</p></div></div><div class="media-eval-source-pill"><span>🎵</span><div><small>Tugas / Latihan</small><b>${phEsc(item.sourceLabel||item.title||'Evaluasi Audio/Video')}</b></div></div></div><div class="media-player-card"><div class="practice-section-title"><div><h3>Pemutar Media</h3><p>${phEsc(item.title||'Evaluasi Audio/Video')}</p></div></div>${item.mediaUrl?(yid?`<div class="practice-video"><iframe src="https://www.youtube.com/embed/${phEsc(yid)}" allowfullscreen></iframe></div>`:`<a class="btn btn-export" href="${phEsc(item.mediaUrl)}" target="_blank" rel="noopener">▶ Buka Audio / Video</a>`):'<div class="practice-empty">Tidak ada link media.</div>'}</div><div class="media-aspect-panel"><div class="practice-section-title"><div><h3>Aspek Penilaian</h3><p>Aspek otomatis menyesuaikan instrumen. Guru dapat mengubah nilai langsung di sini.</p></div></div><div id="mediaDetailAspectList">${mediaEvalDetailAspectRows(item)}</div>${currentUser.userType==='guru'?`<button type="button" class="btn btn-primary media-inline-save" onclick="saveMediaEvaluationInline('${phEsc(id)}')">Simpan Nilai</button>`:''}</div><div class="media-markers">${(item.markers||[]).map(m=>`<div><b>▶ ${phEsc(m.time||'')}</b><span>${phEsc(m.text||'')}</span></div>`).join('')}</div></div><aside class="media-eval-summary"><div class="media-ring" style="background:conic-gradient(#22c55e ${Math.round(Number(item.averageScore||0))}%,#e5e7eb 0)"><strong id="mediaDetailAverage">${Math.round(Number(item.averageScore||0))}%</strong><span>Skor Keseluruhan</span></div><div class="media-summary-box good"><b>🏆 Kekuatan Utama</b><p>${phEsc(item.strength||'-')}</p></div><div class="media-summary-box improve"><b>▥ Area yang Perlu Ditingkatkan</b><p>${phEsc(item.improvement||'-')}</p></div><div class="media-summary-box target"><b>🎯 Target Selanjutnya</b><p>${phEsc(item.nextTarget||'-')}</p></div>${item.notes?`<div class="media-summary-box"><b>Catatan Guru</b><p>${phEsc(item.notes)}</p></div>`:''}</aside></div>`;
+      const actions=document.getElementById('mediaEvaluationDetailActions');actions.innerHTML=currentUser.userType==='guru'?`<button class="btn practice-danger" onclick="deleteMediaEvaluation('${phEsc(id)}')">Hapus</button><button class="btn btn-export" onclick="closeMediaEvaluationDetail();openMediaEvaluationModal('${phEsc(id)}')">Edit Detail</button><button class="btn btn-primary" onclick="closeMediaEvaluationDetail()">Tutup</button>`:`<button class="btn btn-primary" onclick="closeMediaEvaluationDetail()">Tutup</button>`;
+      document.getElementById('modalMediaEvaluationDetail').style.display='flex';
+    }
+
+    function saveMediaEvaluationInline(id){
+      const item=mediaEvaluations.find(x=>String(x.evaluationID)===String(id));if(!item||currentUser.userType!=='guru')return;
+      const rows=[...(document.querySelectorAll('#mediaDetailAspectList .media-detail-aspect')||[])];
+      const aspects=rows.map((row,i)=>({key:String(row.dataset.key||`aspect_${i+1}`),label:String(row.querySelector('.media-detail-aspect-label')?.value||row.querySelector('b')?.textContent||`Aspek ${i+1}`).trim(),description:String(row.dataset.description||''),score:Math.max(0,Math.min(100,Number(row.querySelector('.media-detail-number')?.value||0)))}));
+      const payload={evaluationID:item.evaluationID,studentID:item.studentID,instrument:item.instrument,repertoireID:item.repertoireID||'',sourceType:item.sourceType||'',sourceID:item.sourceID||'',sourceLabel:item.sourceLabel||'',title:item.title,mediaUrl:item.mediaUrl,aspects,strength:item.strength,improvement:item.improvement,nextTarget:item.nextTarget,markers:(item.markers||[]).map(m=>`${m.time||''} | ${m.text||''}`).join('\n'),notes:item.notes};
+      const btn=document.querySelector('.media-inline-save');if(btn){btn.disabled=true;btn.textContent='Menyimpan...';}
+      google.script.run.withSuccessHandler(res=>{if(btn){btn.disabled=false;btn.textContent='Simpan Nilai';}if(res?.success){showAlert('alertSuccess','Nilai evaluasi diperbarui.');loadPracticeHub();closeMediaEvaluationDetail();}else showAlert('alertDanger',res?.message||'Gagal menyimpan nilai.');}).withFailureHandler(err=>{if(btn){btn.disabled=false;btn.textContent='Simpan Nilai';}showAlert('alertDanger',err?.message||String(err));}).saveMediaEvaluation(payload);
+    }
+
+    function closeMediaEvaluationDetail(){document.getElementById('modalMediaEvaluationDetail').style.display='none';practiceActiveEvaluation='';}
+    function deleteMediaEvaluation(id){if(!confirm('Hapus evaluasi Audio/Video ini?'))return;google.script.run.withSuccessHandler(res=>{showAlert(res?.success?'alertSuccess':'alertDanger',res?.message||'');if(res?.success){closeMediaEvaluationDetail();loadPracticeHub();}}).deleteMediaEvaluation(id);}
+
     let globalAdminAuditLog = [];
     let globalAdminQualityFindings = [];
     let globalAdminControlSummary = null;
+    let adminControlLoadInFlight = false;
 
     function loadAdminControlCenter(force = false) {
       if (currentUser.userType !== 'admin') return;
@@ -3352,8 +4438,11 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         renderAdminControlCenter(globalAdminControlSummary);
         return;
       }
+      if (adminControlLoadInFlight) return;
+      adminControlLoadInFlight = true;
       box.classList.add('admin-control-loading');
       google.script.run.withSuccessHandler(result => {
+        adminControlLoadInFlight = false;
         box.classList.remove('admin-control-loading');
         if (!result || result.success === false) {
           renderAdminControlCenter({ success:false, message:(result && result.message) || 'Dashboard kontrol gagal dimuat.' });
@@ -3362,6 +4451,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         globalAdminControlSummary = result;
         renderAdminControlCenter(result);
       }).withFailureHandler(error => {
+        adminControlLoadInFlight = false;
         box.classList.remove('admin-control-loading');
         renderAdminControlCenter({ success:false, message:error.message || String(error) });
       }).getAdminControlCenter();
@@ -4196,10 +5286,13 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function renderGuruSiswaBody(list) {
       const sBody = document.getElementById('guruSiswaBody'); sBody.innerHTML = '';
 
-      const selects = document.querySelectorAll('#absensiSiswa, #editJadwalSiswa, #tugasPilihSiswa, #penggantiSiswaSelect, #pengumumanSiswaDetailSelect');
-      let options = '<option value="">Pilih Siswa...</option>';
-      globalSiswaList.forEach(s => options += `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`);
-      selects.forEach(sel => sel.innerHTML = options);
+      const allStudentSelects = document.querySelectorAll('#editJadwalSiswa, #pengumumanSiswaDetailSelect');
+      const operationalStudentSelects = document.querySelectorAll('#absensiSiswa, #tugasPilihSiswa, #penggantiSiswaSelect');
+      const buildStudentOptions = students => '<option value="">Pilih Siswa...</option>' + students.map(s => `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`).join('');
+      const allOptions = buildStudentOptions(globalSiswaList || []);
+      const operationalOptions = buildStudentOptions((globalSiswaList || []).filter(isOperationalStudent));
+      allStudentSelects.forEach(sel => sel.innerHTML = allOptions);
+      operationalStudentSelects.forEach(sel => sel.innerHTML = operationalOptions);
 
       if (list.length === 0) {
         sBody.innerHTML = `<tr class="table-empty-row"><td class="table-empty-cell" colspan="9">Data siswa tidak ditemukan.</td></tr>`;
@@ -5253,7 +6346,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length
           ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(285px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, true)).join('')}</div>`
-          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
+          : `<div class="student360-empty-state">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
         applyStudent360TeacherFilters();
         return;
       }
@@ -5261,7 +6354,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if (filters) filters.style.display = 'none';
       historyBox.innerHTML = reports.length
         ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, false)).join('')}</div>`
-        : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
+        : `<div class="student360-empty-state">Belum ada laporan perkembangan yang dikirim.</div>`;
     }
 
     function applyJadwalFilters() {
@@ -5419,9 +6512,98 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       body.innerHTML = records.length ? records.map((item, index) => {
         const statusLabel = item.statusSesudah || (String(item.jenis).toLowerCase() === 'keluar' ? 'Keluar' : 'Aktif');
         const statusClass = String(statusLabel).toLowerCase() === 'keluar' ? 'badge-danger' : (String(statusLabel).toLowerCase() === 'cuti' ? 'badge-warning' : 'badge-success');
-        const deleteAction = isExitView ? `<td data-label="Aksi"><button type="button" class="btn" style="padding:7px 10px;background:#fee2e2;color:#b91c1c;" onclick="event.stopPropagation();deleteExitedStudentRecord(decodeURIComponent('${encodeURIComponent(item.siswaID || item.nama || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Hapus Data</button></td>` : '';
+        const deleteAction = isExitView ? `<td data-label="Aksi"><div class="student-archive-actions"><button type="button" class="btn student-archive-open" onclick="event.stopPropagation();openExitedStudentArchive(decodeURIComponent('${encodeURIComponent(item.siswaID || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Lihat Arsip</button><button type="button" class="btn student-archive-delete" onclick="event.stopPropagation();deleteExitedStudentRecord(decodeURIComponent('${encodeURIComponent(item.siswaID || item.nama || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Hapus Data</button></div></td>` : '';
         return `<tr class="student-report-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td class="student-report-no" data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td class="student-report-name" data-label="Nama Siswa"><b>${escapeTaskHtml(item.nama || '-')}</b></td><td data-label="Jenis"><span class="badge ${String(item.jenis).toLowerCase() === 'keluar' ? 'badge-danger' : 'badge-success'}">${escapeTaskHtml(item.jenis)}</span></td><td class="student-report-instrument" data-label="Instrumen">${escapeTaskHtml(item.instrumen || '-')}</td><td data-label="Guru">${escapeTaskHtml(item.guru || '-')}</td><td class="student-report-status" data-label="Status"><span class="badge ${statusClass}">${escapeTaskHtml(statusLabel)}</span><span class="student-report-chevron">⌄</span></td><td data-label="Keterangan">${escapeTaskHtml(item.keterangan || '-')}</td>${deleteAction}</tr>`;
       }).join('') : `<tr><td class="student-report-empty" colspan="${isExitView ? 9 : 8}">Tidak ada data ${escapeTaskHtml(studentReportView.toLowerCase())} pada periode ini.</td></tr>`;
+    }
+
+    function ensureExitedStudentArchiveModal() {
+      let modal = document.getElementById('modalExitedStudentArchive');
+      if (modal) return modal;
+      modal = document.createElement('div');
+      modal.id = 'modalExitedStudentArchive';
+      modal.className = 'modal exited-student-archive-modal';
+      modal.innerHTML = `<div class="modal-content exited-student-archive-content" role="dialog" aria-modal="true" aria-labelledby="exitedStudentArchiveTitle">
+        <div class="modal-header exited-student-archive-header">
+          <div><h2 id="exitedStudentArchiveTitle" style="margin:0">Arsip Siswa</h2><div id="exitedStudentArchiveSubtitle" class="exited-student-archive-subtitle"></div></div>
+          <button type="button" class="modal-close" aria-label="Tutup arsip siswa" onclick="closeExitedStudentArchive()">&times;</button>
+        </div>
+        <div id="exitedStudentArchiveBody" class="exited-student-archive-body"><div class="archive-loading">Memuat arsip siswa...</div></div>
+        <div class="exited-student-archive-footer"><button type="button" class="btn btn-primary" onclick="closeExitedStudentArchive()">Tutup</button></div>
+      </div>`;
+      modal.addEventListener('click', event => { if (event.target === modal) closeExitedStudentArchive(); });
+      document.body.appendChild(modal);
+      return modal;
+    }
+
+    function closeExitedStudentArchive() {
+      const modal = document.getElementById('modalExitedStudentArchive');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function archiveDate(value) {
+      if (!value) return '-';
+      const raw = String(value);
+      const iso = raw.slice(0,10);
+      return formatAcademyDate(iso) || raw;
+    }
+
+    function archiveEmpty(label) {
+      return `<div class="archive-empty">Belum ada ${escapeTaskHtml(label)} yang tersimpan.</div>`;
+    }
+
+    function archiveTable(headers, rows) {
+      if (!rows || !rows.length) return '';
+      return `<div class="archive-table-wrap"><table class="archive-table"><thead><tr>${headers.map(h=>`<th>${escapeTaskHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+    }
+
+    function renderExitedStudentArchive(data) {
+      const body = document.getElementById('exitedStudentArchiveBody');
+      const subtitle = document.getElementById('exitedStudentArchiveSubtitle');
+      if (!body) return;
+      if (!data || data.success !== true) {
+        body.innerHTML = `<div class="archive-error">${escapeTaskHtml(data?.message || 'Arsip siswa tidak dapat dibuka.')}</div>`;
+        if (subtitle) subtitle.textContent = '';
+        return;
+      }
+      const p = data.profile || {};
+      if (subtitle) subtitle.textContent = `${p.nama || '-'} • ${p.instrumen || '-'} • ${p.status || 'Keluar'}`;
+      const limited = data.limited ? `<div class="archive-warning"><b>Arsip historis terbatas.</b> Data utama siswa sudah tidak ada di tabel siswa, jadi hanya data riwayat yang masih tersimpan di database yang dapat ditampilkan.</div>` : '';
+      const counts = data.counts || {};
+      const statLabels = [
+        ['Absensi','absensi'],['Tugas','tugas'],['Repertoire','repertoire'],['Progress','progress'],['Materi Latihan','materiLatihan'],['Evaluasi','evaluasi'],['Ujian','ujian'],['Laporan','laporan']
+      ];
+      const stats = statLabels.map(([label,key])=>`<div class="archive-stat"><span>${escapeTaskHtml(label)}</span><b>${Number(counts[key]||0)}</b></div>`).join('');
+      const historyRows = (data.history||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(x.jenis||'-')}</td><td>${escapeTaskHtml(x.statusSesudah||x.statusSebelum||'-')}</td><td>${escapeTaskHtml(x.keterangan||'-')}</td></tr>`);
+      const attendanceRows = (data.attendance||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(String(x.pertemuan||'-'))}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${escapeTaskHtml(x.materi||'-')}</td></tr>`);
+      const taskRows = (data.assignments||[]).map(x=>`<tr><td>${escapeTaskHtml(x.judul||'-')}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${escapeTaskHtml(archiveDate(x.deadline))}</td><td>${escapeTaskHtml(x.jawaban ? 'Ada jawaban' : '-')}</td></tr>`);
+      const repertoireRows = (data.repertoire||[]).map(x=>`<tr><td>${escapeTaskHtml(x.judul||'-')}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${Number(x.progress||0)}%</td><td>${escapeTaskHtml(x.guru||'-')}</td></tr>`);
+      const progressRows = (data.progress||[]).map(x=>`<tr><td>${escapeTaskHtml(x.periode||'-')}</td><td>${escapeTaskHtml(x.level||'-')}</td><td>${Number(x.nilai||0)}%</td><td>${escapeTaskHtml(x.guru||'-')}</td></tr>`);
+      const examRows = (data.exams||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(x.grade||'-')}</td><td>${Number(x.nilai||0)}</td><td>${escapeTaskHtml(x.status||x.predikat||'-')}</td></tr>`);
+      body.innerHTML = `${limited}
+        <section class="archive-profile"><div><span>Nama</span><b>${escapeTaskHtml(p.nama||'-')}</b></div><div><span>ID Siswa</span><b>${escapeTaskHtml(p.siswaID||'-')}</b></div><div><span>Instrumen</span><b>${escapeTaskHtml(p.instrumen||'-')}</b></div><div><span>Guru</span><b>${escapeTaskHtml(p.guru||'-')}</b></div><div><span>Grade</span><b>${escapeTaskHtml(p.grade||'-')}</b></div><div><span>Status</span><b>${escapeTaskHtml(p.status||'Keluar')}</b></div><div><span>Tanggal Masuk</span><b>${escapeTaskHtml(archiveDate(p.tanggalMasuk))}</b></div><div><span>Tanggal Keluar</span><b>${escapeTaskHtml(archiveDate(p.tanggalKeluar))}</b></div><div class="wide"><span>Alasan/Keterangan Keluar</span><b>${escapeTaskHtml(p.alasanKeluar||'-')}</b></div></section>
+        <div class="archive-stats">${stats}</div>
+        <details class="archive-section" open><summary>Riwayat Status (${(data.history||[]).length})</summary>${historyRows.length ? archiveTable(['Tanggal','Jenis','Status','Keterangan'],historyRows) : archiveEmpty('riwayat status')}</details>
+        <details class="archive-section"><summary>Absensi (${(data.attendance||[]).length})</summary>${attendanceRows.length ? archiveTable(['Tanggal','Pertemuan','Status','Materi'],attendanceRows) : archiveEmpty('data absensi')}</details>
+        <details class="archive-section"><summary>Tugas (${(data.assignments||[]).length})</summary>${taskRows.length ? archiveTable(['Judul','Status','Deadline','Jawaban'],taskRows) : archiveEmpty('data tugas')}</details>
+        <details class="archive-section"><summary>Repertoire (${(data.repertoire||[]).length})</summary>${repertoireRows.length ? archiveTable(['Judul','Status','Progress','Guru'],repertoireRows) : archiveEmpty('repertoire')}</details>
+        <details class="archive-section"><summary>Progress Belajar (${(data.progress||[]).length})</summary>${progressRows.length ? archiveTable(['Periode','Level','Nilai','Guru'],progressRows) : archiveEmpty('progress belajar')}</details>
+        <details class="archive-section"><summary>Ujian Tahunan (${(data.exams||[]).length})</summary>${examRows.length ? archiveTable(['Tanggal','Grade','Nilai','Status'],examRows) : archiveEmpty('ujian tahunan')}</details>`;
+    }
+
+    function openExitedStudentArchive(identifier, nama) {
+      if (currentUser.userType !== 'admin') return;
+      const modal = ensureExitedStudentArchiveModal();
+      const body = document.getElementById('exitedStudentArchiveBody');
+      const subtitle = document.getElementById('exitedStudentArchiveSubtitle');
+      if (subtitle) subtitle.textContent = nama || identifier || '';
+      if (body) body.innerHTML = '<div class="archive-loading">Memuat arsip siswa...</div>';
+      modal.style.display = 'flex';
+      google.script.run.withSuccessHandler(res => {
+        renderExitedStudentArchive(res);
+      }).withFailureHandler(error => {
+        if (body) body.innerHTML = `<div class="archive-error">${escapeTaskHtml(error?.message || String(error || 'Gagal membuka arsip siswa.'))}</div>`;
+      }).getExitedStudentArchive(identifier || '', nama || '');
     }
 
     function printStudentReport(mode) {
@@ -5617,7 +6799,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
         <div class="annual-exam-card-actions">
           ${currentUser.userType==='guru'?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button>`:''}
-          ${!isStudent?`<button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          <button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">${isStudent?'Form Penilaian':'Form Nilai'}</button>
           <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
           ${currentUser.userType==='guru'&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
           ${currentUser.userType==='guru'?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
@@ -5706,7 +6888,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
-      const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');
+      const students=(globalSiswaList||[]).filter(isOperationalStudent);
       const studentOptions=students.map(s=>`<option value="${annualExamEscape(s.siswaID||'')}">${annualExamEscape(s.nama)} — ${annualExamEscape(s.instrumen||'Musik')}</option>`).join('');
       const examinerOptions=(globalGuruList||[]).map(g=>`<option value="${annualExamEscape(g.nama)}">${annualExamEscape(g.nama)}${g.instrumen?' — '+annualExamEscape(g.instrumen):''}</option>`).join('');
       const today=new Date().toISOString().slice(0,10);
@@ -5764,12 +6946,12 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function annualExamRenderScoreRows(items=null){
       const inst=document.getElementById('annualExamInstrument')?.value||'Gitar';
       const source=Array.isArray(items)&&items.length?items:annualExamTemplate(inst);
-      document.getElementById('annualExamScoreBody').innerHTML=source.map((item,i)=>`<tr data-index="${i}"><td><b>${annualExamEscape(item.aspect)}</b></td><td>${annualExamEscape(item.description)}</td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-1" value="${Number(item.scoreExaminer1||0)}" oninput="annualExamRecalculate()"></td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-2" value="${Number(item.scoreExaminer2||0)}" oninput="annualExamRecalculate()"></td><td class="annual-score-avg">0</td><input type="hidden" class="annual-aspect" value="${annualExamEscape(item.aspect)}"><input type="hidden" class="annual-desc" value="${annualExamEscape(item.description)}"></tr>`).join('');
+      document.getElementById('annualExamScoreBody').innerHTML=source.map((item,i)=>`<tr data-index="${i}"><td><b>${annualExamEscape(item.aspect)}</b></td><td>${annualExamEscape(item.description)}</td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-1" value="${Number(item.scoreExaminer1||0)}" oninput="annualExamRecalculate()"></td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-2" value="${Number(item.scoreExaminer2||0)}" oninput="annualExamRecalculate()"></td><td class="annual-score-avg"><span class="annual-score-avg-value">0</span></td><input type="hidden" class="annual-aspect" value="${annualExamEscape(item.aspect)}"><input type="hidden" class="annual-desc" value="${annualExamEscape(item.description)}"></tr>`).join('');
       annualExamRecalculate();
     }
     function annualExamRecalculate(){
       let total=0;
-      document.querySelectorAll('#annualExamScoreBody tr').forEach(row=>{const a=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-1').value)||0));const b=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-2').value)||0));const avg=(a+b)/2;row.querySelector('.annual-score-avg').textContent=avg.toFixed(avg%1?1:0);total+=avg;});
+      document.querySelectorAll('#annualExamScoreBody tr').forEach(row=>{const a=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-1').value)||0));const b=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-2').value)||0));const avg=(a+b)/2;(row.querySelector('.annual-score-avg-value')||row.querySelector('.annual-score-avg')).textContent=avg.toFixed(avg%1?1:0);total+=avg;});
       total=Math.round(total*10)/10; const passed=total>=60; const pred=annualExamPredicate(total); const grade=document.getElementById('annualExamGrade')?.value||'Beginner';
       document.getElementById('annualExamTotal').textContent=total;document.getElementById('annualExamPredicate').textContent=pred;document.getElementById('annualExamPassStatus').textContent=passed?'Lulus':'Belum Lulus';document.getElementById('annualExamNextGrade').textContent=annualExamNextGrade(grade,passed);document.getElementById('annualExamStatusPreview').value=`${total} • ${pred} • ${passed?'Lulus':'Belum Lulus'}`;
     }
@@ -6142,7 +7324,6 @@ Guru: ${props.guru}`);
     function refreshAbsensiStudentOptions() {
       const select = document.getElementById('absensiSiswa');
       if (!select || currentUser.userType === 'siswa') return;
-      const search = String(document.getElementById('absensiSiswaSearch')?.value || '').trim().toLowerCase();
       const formDay = String(document.getElementById('absensiHariFilter')?.value || '').trim().toLowerCase();
       const day = formDay;
       const currentValue = select.value;
@@ -6160,9 +7341,9 @@ Guru: ${props.guru}`);
         });
       }
       const students = (globalSiswaList || []).filter(student => {
+        if (!isOperationalStudent(student)) return false;
         const name = String(student.nama || '').trim();
         if (!name) return false;
-        if (search && !name.toLowerCase().includes(search)) return false;
         if (day && !scheduleNames.has(name.toLowerCase())) return false;
         return true;
       }).sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
@@ -6187,16 +7368,20 @@ Guru: ${props.guru}`);
       const selectedDay = String(document.getElementById('filterProgressHari')?.value || '').trim().toLowerCase();
       const currentValue = String(select.value || '').trim();
 
+      // The teacher dashboard already contains schedules scoped to the logged-in teacher.
+      // Use those assignments when choosing a student: a child enrolled in two
+      // instruments must not be included just because of an unrelated class.
       const allowedNames = new Set((globalJadwalList || [])
         .filter(item => !selectedDay || String(item.hari || '').trim().toLowerCase() === selectedDay)
         .map(item => String(item.namaSiswa || '').trim().toLowerCase())
         .filter(Boolean));
+      const restrictToTeacherSchedule = currentUser.userType === 'guru' && allowedNames.size > 0;
 
       const students = (globalSiswaList || [])
         .filter(student => {
           const name = String(student.nama || '').trim();
           if (!name) return false;
-          if (selectedDay && !allowedNames.has(name.toLowerCase())) return false;
+          if ((selectedDay || restrictToTeacherSchedule) && !allowedNames.has(name.toLowerCase())) return false;
           return true;
         })
         .sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
@@ -6280,10 +7465,8 @@ Guru: ${props.guru}`);
       }
 
       const filterSiswaContainer = document.getElementById('containerFilterProgressSiswa');
-      const searchSiswaContainer = document.getElementById('containerSearchProgressSiswa');
       const filterHariContainer = document.getElementById('containerFilterProgressHari');
       const filterSiswaEl = document.getElementById('filterProgressSiswa');
-      if (searchSiswaContainer) searchSiswaContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if (filterHariContainer) filterHariContainer.style.display = (isGuru || isAdmin) ? 'block' : 'none';
       if ((isGuru || isAdmin) && filterSiswaEl && filterSiswaContainer) {
         filterSiswaContainer.style.display = 'block';
@@ -6305,11 +7488,29 @@ Guru: ${props.guru}`);
       toggleExportMonthHint();
     }
 
+    // An enrolment can have several instruments. Attendance belongs to its
+    // recording teacher, not to every class that shares the student's name.
+    function attendanceBelongsToCurrentTeacher(item) {
+      if (currentUser.userType !== 'guru') return true;
+      const recordTeacherId = String(item.guruID || item.teacherID || '').trim();
+      const signedInTeacherId = String(currentUser.userID || '').trim();
+      if (recordTeacherId && signedInTeacherId) return recordTeacherId === signedInTeacherId;
+      // Legacy records with no teacher ID: only trust an explicit teacher name.
+      const recordedName = String(item.guruCatat || '').trim().toLowerCase();
+      const loggedName = String(currentUser.userName || '').trim().toLowerCase();
+      return !!recordedName && !!loggedName && recordedName === loggedName;
+    }
+
     function renderTabelRiwayat() {
       const tbody = document.getElementById('riwayatAbsensiBody'); 
       const thAksi = document.getElementById('thAbsensiAksi');
       const thTtdSiswa = document.getElementById('thAbsensiTtdSiswa');
       if(!tbody) return;
+      // Do not depend on opening the print dialog to load private Drive signatures.
+      // Only request the detailed attendance module when the history is visible.
+      if (tbody.getClientRects().length && typeof ensureAttendanceSignatures === 'function') {
+        ensureAttendanceSignatures().catch(error => console.warn('[Attendance signatures]', error));
+      }
       tbody.innerHTML = '';
 
       const isSiswa = currentUser.userType === 'siswa';
@@ -6321,20 +7522,17 @@ Guru: ${props.guru}`);
 
       const filterBulanVal = document.getElementById('filterRiwayatSelect') ? document.getElementById('filterRiwayatSelect').value.trim() : '';
       const filterSiswaVal = (!isSiswa && document.getElementById('filterProgressSiswa')) ? document.getElementById('filterProgressSiswa').value.trim().toLowerCase() : '';
-      const searchSiswaVal = (!isSiswa && document.getElementById('searchProgressSiswa')) ? document.getElementById('searchProgressSiswa').value.trim().toLowerCase() : '';
       const filterHariVal = (!isSiswa && document.getElementById('filterProgressHari')) ? document.getElementById('filterProgressHari').value.trim().toLowerCase() : '';
       const filterGuruVal = (isAdmin && document.getElementById('filterProgressGuru')) ? document.getElementById('filterProgressGuru').value.trim().toLowerCase() : '';
 
       let filteredList = globalAbsensiList.filter(item => {
+        if (!attendanceBelongsToCurrentTeacher(item)) return false;
         if (isAdmin && filterGuruVal !== '') {
           if (String(item.guruCatat || '').trim().toLowerCase() !== filterGuruVal) return false;
         }
 
         if (!isSiswa && filterSiswaVal !== '') {
           if (String(item.namaSiswa || '').trim().toLowerCase() !== filterSiswaVal) return false;
-        }
-        if (!isSiswa && searchSiswaVal !== '') {
-          if (!String(item.namaSiswa || '').trim().toLowerCase().includes(searchSiswaVal)) return false;
         }
         if (!isSiswa && filterHariVal !== '') {
           if (getIndonesianDayNameFromAttendanceDate(item.tanggal).toLowerCase() !== filterHariVal) return false;
@@ -6360,12 +7558,12 @@ Guru: ${props.guru}`);
         let displayName = item.namaSiswa || currentUser.userName;
 
         let ttdGuruHtml = item.tandaTangan || '-';
-        if (item.tandaTangan && item.tandaTangan.startsWith('data:image')) {
+        if (item.tandaTangan && (item.tandaTangan.startsWith('data:image') || item.tandaTangan.startsWith('/api/attendance-signature/'))) {
           ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">`;
         }
 
         let ttdSiswaHtml = item.ttdSiswa || '-';
-        if (item.ttdSiswa && item.ttdSiswa.startsWith('data:image')) {
+        if (item.ttdSiswa && (item.ttdSiswa.startsWith('data:image') || item.ttdSiswa.startsWith('/api/attendance-signature/'))) {
           ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa">`;
         }
 
@@ -6411,6 +7609,7 @@ Guru: ${props.guru}`);
       const startThreeMonths = new Date();
       startThreeMonths.setDate(1); startThreeMonths.setMonth(startThreeMonths.getMonth() - 2); startThreeMonths.setHours(0,0,0,0);
       return globalAbsensiList.filter(item => {
+        if (!attendanceBelongsToCurrentTeacher(item)) return false;
         if (student && String(item.namaSiswa || '').trim().toLowerCase() !== student) return false;
         if (teacher && String(item.guruCatat || '').trim().toLowerCase() !== teacher) return false;
         if (month && !String(item.tanggal || '').includes(month)) return false;
@@ -6434,14 +7633,26 @@ Guru: ${props.guru}`);
     }
 
 
-    function printAbsensiReport() {
+    async function printAbsensiReport() {
       if (currentUser.userType === 'siswa') { showAlert('alertDanger', 'Cetak laporan hanya tersedia untuk guru dan admin.'); return; }
-      const records = getAbsensiReportData();
-      if (!records.length) { showAlert('alertDanger', 'Tidak ada data Absensi pada filter dan periode yang dipilih.'); return; }
+      // Open immediately to avoid popup blocking after an asynchronous fetch.
       const printWindow = window.open('', '_blank', 'width=1200,height=820');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
-      const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
-      buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      printWindow.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Menyiapkan laporan</title></head><body style="font:16px Arial;padding:32px">Mengambil tanda tangan untuk laporan. Mohon tunggu...</body></html>');
+      printWindow.document.close();
+      try {
+        if (typeof ensureAttendanceSignatures === 'function') {
+          const ok = await ensureAttendanceSignatures();
+          if (!ok) throw new Error('Gagal mengambil tanda tangan dari server.');
+        }
+        const records = getAbsensiReportData();
+        if (!records.length) throw new Error('Tidak ada absensi pada filter dan periode yang dipilih.');
+        const logoDataUrl = new URL('/assets/logo/legacy-logo.png', window.location.origin).href;
+        buildAbsensiPrintWindow(records, printWindow, logoDataUrl);
+      } catch (error) {
+        printWindow.document.body.textContent = 'Laporan belum bisa dibuat: ' + (error?.message || error);
+        showAlert('alertDanger', 'Laporan gagal dimuat. Coba lagi setelah koneksi stabil.');
+      }
     }
     function buildAbsensiPrintWindow(records, printWindow, logoDataUrl) {
       const studentFilter = document.getElementById('filterProgressSiswa')?.value || 'Semua Siswa';
@@ -6452,7 +7663,7 @@ Guru: ${props.guru}`);
       const periodLabel = selectedMonth || (periodType === 'all' ? 'Semua Riwayat' : '3 Bulan Terakhir');
       const present = records.filter(item => item.status === 'Masuk').length;
       const rows = records.map((item, index) => {
-        const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
+        const signature = value => value && (String(value).startsWith('data:image') || String(value).startsWith('/api/attendance-signature/')) ? `<img src="${value}" alt="Tanda tangan">` : escapeTaskHtml(value || '-');
         return `<tr><td class="center">${index + 1}</td><td>${escapeTaskHtml(item.tanggal || '-')}</td><td class="center">${escapeTaskHtml(item.pertemuanKe || '-')}</td><td><b>${escapeTaskHtml(item.namaSiswa || '-')}</b></td><td class="center">${escapeTaskHtml(item.status || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.materi || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.lagu || '-')}</td><td style="white-space:pre-line">${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td><td class="signature">${signature(item.ttdSiswa)}</td></tr>`;
       }).join('');
       const safeName = String(studentFilter || 'Semua-Siswa').replace(/[^a-z0-9_-]+/gi,'-');
@@ -6652,31 +7863,27 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
       if (!file || !file.url) return '';
       const name = escapeTaskHtml(file.name || 'File lampiran');
       const url = escapeTaskHtml(file.url);
-      const driveId = getTaskDriveFileId(file);
-      const previewRaw = driveId ? `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview` : (file.previewUrl || file.url);
-      const previewUrl = escapeTaskHtml(previewRaw);
       const downloadUrl = escapeTaskHtml(file.downloadUrl || file.url);
       const type = String(file.type || '').toLowerCase();
       const rawName = String(file.name || '').toLowerCase();
       const isAudio = type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/.test(rawName);
       const isVideo = type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv)$/.test(rawName);
       const isImage = type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|heic)$/.test(rawName);
+      const isPdf = type.includes('pdf') || /\.pdf$/.test(rawName);
+      const icon = isVideo ? '🎬' : isAudio ? '🎧' : isImage ? '🖼️' : isPdf ? '📄' : '📎';
+      const kind = isVideo ? 'Video' : isAudio ? 'Audio' : isImage ? 'Gambar' : isPdf ? 'PDF' : 'File';
       let preview = '';
-      if (isAudio) {
-        preview = `<iframe class="attachment-preview-frame" src="${previewUrl}" allow="autoplay" title="Putar ${name}"></iframe>`;
-      } else if (isVideo) {
-        preview = `<iframe class="attachment-preview-frame video" src="${previewUrl}" allow="autoplay; fullscreen" allowfullscreen title="Putar ${name}"></iframe>`;
-      } else if (isImage) {
+      if (isImage) {
         const candidates = taskAttachmentImageCandidates(file);
         if (candidates.length) {
           const first = escapeTaskHtml(candidates[0]);
           const fallbacks = escapeTaskHtml(JSON.stringify(candidates.slice(1)));
-          preview = `<img class="attachment-image" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
+          preview = `<img class="attachment-image compact" loading="lazy" src="${first}" data-fallbacks='${fallbacks}' data-fallback-index="0" onerror="taskAttachmentImageFallback(this)" alt="${name}">`;
         }
       }
-      return `<div class="attachment-box">
+      return `<div class="attachment-box task-attachment-compact">
         <div class="attachment-head">
-          <div class="attachment-name">${name}</div>
+          <div class="task-attachment-file"><span class="task-attachment-icon">${icon}</span><span><b class="attachment-name">${name}</b><small>${kind} • Google Drive</small></span></div>
           <div class="attachment-actions">
             <a class="attachment-link" href="${url}" target="_blank" rel="noopener">Buka</a>
             <a class="attachment-link" href="${downloadUrl}" target="_blank" rel="noopener" download>Download</a>
@@ -6795,12 +8002,18 @@ function normalizeTaskStatus(task) {
     function updateTaskStudentFilter() {
       const select = document.getElementById('taskStudentFilter');
       if (!select) return;
+      const toolbar=select.closest('.task-toolbar');
+      const customPicker=select.nextElementSibling?.classList?.contains('lmc-person-filter') ? select.nextElementSibling : null;
       if (currentUser.userType === 'siswa') {
         select.style.display = 'none';
         select.value = 'semua';
+        if(customPicker) customPicker.style.display='none';
+        toolbar?.classList.add('student-mode');
         return;
       }
       select.style.display = '';
+      if(customPicker) customPicker.style.display='';
+      toolbar?.classList.remove('student-mode');
       const selected = select.value || 'semua';
       const names = [...new Set(globalTugasList.map(task => String(task.namaSiswa || '').trim()).filter(Boolean))]
         .sort((a,b) => a.localeCompare(b, 'id'));
@@ -6849,7 +8062,8 @@ function normalizeTaskStatus(task) {
       const summary = document.getElementById('taskListSummary');
       if (summary) summary.textContent = `Menampilkan ${filtered.length} dari ${total} tugas`;
       if (filtered.length === 0) {
-        container.innerHTML = `<div class="task-empty"><strong>Belum ada tugas yang ditampilkan</strong><span>Coba ubah pencarian, nama siswa, atau filter status.</span></div>`;
+        const hint=currentUser.userType==='siswa'?'Coba ubah pencarian atau filter status.':'Coba ubah pencarian, nama siswa, atau filter status.';
+        container.innerHTML = `<div class="task-empty"><strong>Belum ada tugas yang ditampilkan</strong><span>${hint}</span></div>`;
         return;
       }
 
@@ -6909,13 +8123,15 @@ function normalizeTaskStatus(task) {
       </div>`;
 
       const isSiswa = currentUser.userType === 'siswa';
-      if (isSiswa && String(task.status || '').toLowerCase() !== 'selesai') {
-        footer.innerHTML = `<button type="button" class="btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn btn-primary" onclick="closeTaskDetailModal();openKerjakanModal('${escapeTaskHtml(task.tugasID)}')">Kerjakan & Kumpulkan</button>`;
+      const hasSubmittedAnswer = Boolean(task.tanggalKirimSiswa || task.jawabanTeks || answers.length);
+      if (isSiswa && !hasSubmittedAnswer) {
+        footer.innerHTML = `<button type="button" class="btn task-detail-close-btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn btn-primary task-submit-open-btn" onclick="closeTaskDetailModal();openKerjakanModal('${escapeTaskHtml(task.tugasID)}')">Kumpulkan Tugas</button>`;
       } else if (!isSiswa) {
         footer.innerHTML = `<button type="button" class="btn" onclick="closeTaskDetailModal()">Tutup</button><button type="button" class="btn-action btn-delete" onclick="closeTaskDetailModal();handleDeleteTugas('${escapeTaskHtml(task.tugasID)}')">Hapus Tugas</button>`;
       } else {
         footer.innerHTML = '<button type="button" class="btn btn-primary" onclick="closeTaskDetailModal()">Selesai</button>';
       }
+      footer.classList.toggle('single-action',footer.children.length===1);
       modal.style.display = 'flex';
     }
 
@@ -7004,7 +8220,7 @@ function normalizeTaskStatus(task) {
           document.getElementById('taskMaterialSelection').innerHTML = '';
           document.getElementById('tugasYoutubePreview').innerHTML = '';
           toggleCreateTaskForm(false);
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
+          fetchDashboardData();
         }
       }).withFailureHandler(error => {
         btn.disabled = false; btn.textContent = 'Kirim Tugas ke Siswa';
@@ -7014,6 +8230,7 @@ function normalizeTaskStatus(task) {
 
     function openKerjakanModal(tugasID) {
       const task = globalTugasList.find(item => String(item.tugasID) === String(tugasID));
+      if (!task) { showAlert('alertDanger','Data tugas tidak ditemukan.'); return; }
       document.getElementById('modalTugasID').value = tugasID;
       document.getElementById('modalJudulTugas').value = task ? task.judulTugas : '';
       document.getElementById('modalJawabanTeks').value = '';
@@ -7051,7 +8268,7 @@ function normalizeTaskStatus(task) {
         google.script.run.withSuccessHandler(res => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if (res.success) { closeKerjakanModal(); if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']); }
+          if (res.success) { closeKerjakanModal(); fetchDashboardData(); }
         }).withFailureHandler(error => {
           btn.disabled = false; btn.textContent = 'Kirim Jawaban';
           showAlert('alertDanger', 'Gagal mengunggah jawaban: ' + error.message);
@@ -7066,7 +8283,7 @@ function normalizeTaskStatus(task) {
       if(confirm('Apakah Anda yakin ingin menghapus tugas ini?')) {
         google.script.run.withSuccessHandler(res => {
           showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
-          if(res.success && typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['assignments']);
+          if(res.success) fetchDashboardData();
         }).deleteTugas(id);
       }
     }
@@ -7414,7 +8631,7 @@ function normalizeTaskStatus(task) {
         attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map((item, index) => {
           const statusKey = String(item.status || '').toLowerCase();
           const badgeClass = statusKey === 'hadir' ? 'badge-success' : (statusKey === 'alpa' ? 'badge-danger' : 'badge-warning');
-          const signature = item.tandaTangan && String(item.tandaTangan).startsWith('data:image') ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
+          const signature = item.tandaTangan && (String(item.tandaTangan).startsWith('data:image') || (String(item.tandaTangan).startsWith('/api/attendance-signature/') || String(item.tandaTangan).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
           return `<tr class="teacher-attendance-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td data-label="Status"><span><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Jam Masuk">${escapeTaskHtml(item.jamMasuk || '-')}</td><td data-label="Jam Keluar">${escapeTaskHtml(item.jamKeluar || '-')}</td><td data-label="Catatan">${escapeTaskHtml(item.catatan || '-')}</td><td data-label="TTD">${signature}</td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditTeacherAttendance(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteTeacherAttendanceRecord(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Hapus</button></div></td></tr>`;
         }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Tidak ada absensi guru sesuai filter.</td></tr>';
       }
@@ -7487,7 +8704,15 @@ function normalizeTaskStatus(task) {
         btn.disabled = false;
         btn.textContent = 'Simpan Absensi Guru';
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menyimpan absensi guru.');
-        if (res && res.success) { cancelEditTeacherAttendance(); fetchDashboardData(); }
+        if (res && res.success) {
+          cancelEditTeacherAttendance();
+          // Update only the teacher-attendance module, without re-fetching the entire dashboard.
+          if (typeof ensureLiveModules === 'function') {
+            ensureLiveModules(['teacher_attendance'], { force:true }).then(ok => {
+              if (!ok) showAlert('alertDanger', 'Data tersimpan, tetapi daftar belum dapat diperbarui. Coba buka ulang Absensi Guru.');
+            });
+          } else fetchDashboardData({ silent:true });
+        }
       }).withFailureHandler(error => {
         btn.disabled = false;
         btn.textContent = document.getElementById('editAbsensiGuruID').value ? 'Update Absensi Guru' : 'Simpan Absensi Guru';
@@ -7529,7 +8754,14 @@ function normalizeTaskStatus(task) {
       if (!confirm('Hapus catatan absensi guru ini?')) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus absensi guru.');
-        if (res && res.success) { cancelEditTeacherAttendance(); fetchDashboardData(); }
+        if (res && res.success) {
+          cancelEditTeacherAttendance();
+          globalTeacherAttendanceList = (globalTeacherAttendanceList || []).filter(row => String(row.absensiGuruID || '') !== String(absensiGuruID));
+          renderAdminTeacherManagement();
+          if (typeof renderTeacherMonitoring === 'function') renderTeacherMonitoring();
+          // Confirm with server in the background; do not block removal from the list.
+          if (typeof ensureLiveModules === 'function') ensureLiveModules(['teacher_attendance'], { force:true });
+        }
       }).deleteTeacherAttendance(absensiGuruID, currentUser.userType);
     }
 
@@ -7552,9 +8784,9 @@ function normalizeTaskStatus(task) {
       const printWindow = window.open('', '_blank', 'width=1000,height=760');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
       const hadir = records.filter(item => String(item.status).toLowerCase() === 'hadir').length;
-      const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : '-';
+      const signature = value => value && (String(value).startsWith('data:image') || (String(value).startsWith('/api/attendance-signature/') || String(value).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${value}" alt="Tanda tangan">` : '-';
       const rows = records.map((item,index) => `<tr><td>${index+1}</td><td>${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td>${escapeTaskHtml(item.status || '-')}</td><td>${escapeTaskHtml(item.jamMasuk || '-')}</td><td>${escapeTaskHtml(item.jamKeluar || '-')}</td><td>${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td></tr>`).join('');
-      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Absensi Guru</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:10px}.head{display:flex;justify-content:space-between;align-items:end;border-bottom:3px solid #f15a24;padding-bottom:10px;margin-bottom:12px}.head h1{margin:0;font-size:20px}.orange{color:#f15a24}.summary{display:flex;gap:10px;margin-bottom:12px}.summary div{padding:9px 12px;border:1px solid #fed9c6;background:#fff7f2;border-radius:8px}.summary b{font-size:17px;color:#f15a24;margin-left:6px}table{width:100%;border-collapse:collapse}th{background:#f15a24;color:#fff;text-align:left;padding:7px}td{border:1px solid #dfe6ee;padding:7px;vertical-align:middle}.signature{text-align:center}.signature img{max-width:100px;max-height:38px;object-fit:contain}.foot{margin-top:10px;color:#94a3b8;text-align:right;font-size:8px}</style></head><body><div class="head"><div><b class="orange">LEGACY MUSIC CENTER</b><div style="margin-top:4px;color:#64748b">Laporan Kehadiran Pengajar</div></div><div style="text-align:right"><h1>Absensi Guru</h1><div>${new Date().toLocaleDateString('id-ID')}</div></div></div><div class="summary"><div>Total Data <b>${records.length}</b></div><div>Hadir <b>${hadir}</b></div><div>Tidak Hadir <b>${records.length-hadir}</b></div></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Guru</th><th>Status</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Catatan</th><th>Tanda Tangan</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">Dicetak dari sistem Legacy Music Center</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
+      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Absensi Guru</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:10px}.head{display:flex;justify-content:space-between;align-items:end;border-bottom:3px solid #f15a24;padding-bottom:10px;margin-bottom:12px}.head h1{margin:0;font-size:20px}.orange{color:#f15a24}.summary{display:flex;gap:10px;margin-bottom:12px}.summary div{padding:9px 12px;border:1px solid #fed9c6;background:#fff7f2;border-radius:8px}.summary b{font-size:17px;color:#f15a24;margin-left:6px}table{width:100%;border-collapse:collapse}th{background:#f15a24;color:#fff;text-align:left;padding:7px}td{border:1px solid #dfe6ee;padding:7px;vertical-align:middle}.signature{text-align:center}.signature img{max-width:100px;max-height:38px;object-fit:contain}.foot{margin-top:10px;color:#94a3b8;text-align:right;font-size:8px}</style></head><body><div class="head"><div><b class="orange">LEGACY MUSIC CENTER</b><div style="margin-top:4px;color:#64748b">Laporan Kehadiran Pengajar</div></div><div style="text-align:right"><h1>Absensi Guru</h1><div>${new Date().toLocaleDateString('id-ID')}</div></div></div><div class="summary"><div>Total Data <b>${records.length}</b></div><div>Hadir <b>${hadir}</b></div><div>Tidak Hadir <b>${records.length-hadir}</b></div></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Guru</th><th>Status</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Catatan</th><th>Tanda Tangan</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">Dicetak dari sistem Legacy Music Center</div><script>window.addEventListener('load',async()=>{await Promise.all(Array.from(document.images).map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.onload=resolve;img.onerror=resolve;})));window.print();});<\/script></body></html>`;
       printWindow.document.open(); printWindow.document.write(report); printWindow.document.close();
     }
 
@@ -7563,7 +8795,22 @@ function normalizeTaskStatus(task) {
       if (!confirm(message)) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus data siswa keluar.');
-        if (res && res.success) fetchDashboardData();
+        if (res && res.success) {
+          const idKey = String(identifier || '').trim();
+          const nameKey = String(nama || '').trim().toLowerCase();
+          if (Array.isArray(globalStudentHistory)) {
+            globalStudentHistory = globalStudentHistory.filter(item => {
+              const sameId = idKey && String(item.siswaID || '').trim() === idKey;
+              const sameName = nameKey && String(item.nama || '').trim().toLowerCase() === nameKey;
+              return !(sameId || sameName);
+            });
+          }
+          closeExitedStudentArchive?.();
+          renderStudentReports?.();
+          fetchDashboardData();
+        }
+      }).withFailureHandler(error => {
+        showAlert('alertDanger', 'Gagal menghapus data siswa keluar: ' + (error?.message || error));
       }).deleteExitedStudentRecord(identifier, currentUser.userType);
     }
 
@@ -7674,6 +8921,9 @@ function normalizeTaskStatus(task) {
         btn.disabled = false; btn.textContent = 'Simpan Siswa & Jadwal';
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if(res.success) {
+          if (res.initialPassword) {
+            setTimeout(()=>alert(`Siswa berhasil dibuat.\n\nPassword awal: ${res.initialPassword}\n\nBerikan password ini kepada siswa/orang tua. Saat login pertama, siswa wajib membuat password baru.`), 50);
+          }
           document.getElementById('formTambahSiswaCombined').reset();
           document.getElementById('addStudentExtraClasses').innerHTML = '';
           const now = new Date();
@@ -7690,7 +8940,7 @@ function normalizeTaskStatus(task) {
       if (!row || typeof row !== 'object') return null;
       const rawDate = String(row.attendance_date || row.tanggal || fallback.tanggal || '').slice(0,10);
       const dateParts = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      return {
+      const mapped = {
         absensiID: row.attendance_id || row.absensiID || '',
         namaSiswa: row.student_name_snapshot || row.namaSiswa || fallback.namaSiswa || '',
         tanggal: dateParts ? `${dateParts[3]}-${dateParts[2]}-${dateParts[1]}` : (row.tanggal || fallback.tanggal || ''),
@@ -7703,6 +8953,16 @@ function normalizeTaskStatus(task) {
         guruCatat: row.teacher_name_snapshot ?? row.guruCatat ?? fallback.guru ?? currentUser.userName ?? '',
         ttdSiswa: row.student_signature_data ?? row.ttdSiswa ?? fallback.ttdSiswa ?? ''
       };
+      // Google Drive signatures are stored as internal markers. The UI must use
+      // the session-checked Worker image URL, never the raw marker or a data URI
+      // from the outgoing form after a successful private upload.
+      for (const [key,kind] of [['tandaTangan','teacher'],['ttdSiswa','student']]) {
+        const value = String(mapped[key] || '');
+        if (value.startsWith('lmc-drive-signature:') && mapped.absensiID) {
+          mapped[key] = `/api/attendance-signature/${encodeURIComponent(String(mapped.absensiID))}/${kind}`;
+        }
+      }
+      return mapped;
     }
 
     function upsertAttendanceLocally(item) {
@@ -7716,6 +8976,8 @@ function normalizeTaskStatus(task) {
 
     function addAbsensiCombined(e) {
       e.preventDefault();
+      const saveButton = document.getElementById('btnSubmitAbsensi');
+      if (saveButton?.disabled) return false;
       
       let ttdGuruVal = '';
       let ttdSiswaVal = '';
@@ -7745,8 +9007,20 @@ function normalizeTaskStatus(task) {
         guru: currentUser.userName
       };
 
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.setAttribute('aria-busy', 'true');
+        saveButton.textContent = 'Sedang menyimpan...';
+      }
+      const restoreSaveButton = () => {
+        if (!saveButton) return;
+        saveButton.disabled = false;
+        saveButton.removeAttribute('aria-busy');
+        saveButton.textContent = 'Simpan Kehadiran';
+      };
       google.script.run.withSuccessHandler(res => {
-        showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
+        restoreSaveButton();
+        showAlert(res?.success ? 'alertSuccess' : 'alertDanger', res?.message || 'Tidak dapat menyimpan absensi.');
         if(res.success) {
           const localItem = mapAttendanceMutationForUi(res.attendance || res.item || null, payload);
           if (localItem) upsertAttendanceLocally(localItem);
@@ -7756,8 +9030,14 @@ function normalizeTaskStatus(task) {
           }
           // Do not reload the whole dashboard after one attendance mutation.
           // The local row is already visible; only the attendance module is reconciled.
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+          // Reconcile this module without touching the dashboard. The saved row
+          // stays visible immediately while the source of truth is rechecked.
+          if (typeof ensureLiveModules === 'function') ensureLiveModules(['attendance'], { force:true });
+          else if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
         }
+      }).withFailureHandler(error => {
+        restoreSaveButton();
+        showAlert('alertDanger', 'Gagal menyimpan kehadiran: ' + (error?.message || String(error)));
       }).recordAbsensi(payload);
     }
 
@@ -7780,3 +9060,99 @@ function normalizeTaskStatus(task) {
     }
 
     function showAlert(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 4000); }
+
+/* Patch 04H: presentation-only searchable student selector; native select remains source of truth. */
+(function(){
+  const IDS=['tugasPilihSiswa','repertoireSiswa','practiceResourceStudent','lpStudent','annualExamStudent'];
+  const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const normalize=s=>String(s??'').toLocaleLowerCase('id').trim();
+  let lockedScrollY=null;
+  function lockPage(){
+    if(lockedScrollY!==null)return;
+    lockedScrollY=window.scrollY||document.documentElement.scrollTop||0;
+    document.body.style.setProperty('--lmc-picker-scroll-y',`${lockedScrollY}px`);
+    document.body.classList.add('lmc-student-picker-page-locked');
+  }
+  function unlockPage(){
+    if(lockedScrollY===null)return;
+    const y=lockedScrollY;lockedScrollY=null;
+    document.body.classList.remove('lmc-student-picker-page-locked');
+    document.body.style.removeProperty('--lmc-picker-scroll-y');
+    window.scrollTo(0,y);
+  }
+  function alignMobileViewport(){
+    const vv=window.visualViewport;
+    document.documentElement.style.setProperty('--lmc-picker-visible-top',`${Math.max(0,vv?.offsetTop||0)}px`);
+    document.documentElement.style.setProperty('--lmc-picker-visible-height',`${Math.max(240,vv?.height||window.innerHeight)}px`);
+  }
+  window.visualViewport?.addEventListener('resize',alignMobileViewport);
+  window.visualViewport?.addEventListener('scroll',alignMobileViewport);
+  window.addEventListener('orientationchange',alignMobileViewport);
+  function closeAll(){
+    document.querySelectorAll('.lmc-unified-picker.is-open').forEach(el=>{
+      el.classList.remove('is-open');
+      el.querySelector('.lmc-unified-trigger')?.setAttribute('aria-expanded','false');
+      const menu=document.querySelector('.lmc-unified-menu.is-portal-open');
+      const backdrop=document.querySelector('.lmc-unified-backdrop.is-portal-open');
+      if(menu&&menu._lmcOwner===el){menu.classList.remove('is-portal-open');el.appendChild(menu);}
+      if(backdrop&&backdrop._lmcOwner===el){backdrop.classList.remove('is-portal-open');el.appendChild(backdrop);}
+    });
+    unlockPage();
+  }
+  function avatarFor(option){
+    const id=String(option.value||'');
+    const student=(typeof globalSiswaList!=='undefined'&&Array.isArray(globalSiswaList)?globalSiswaList:[]).find(s=>String(s.siswaID||'')===id || String(s.nama||'').toLowerCase()===id.toLowerCase());
+    if(student&&typeof phStudentAvatar==='function')return phStudentAvatar(student,'sm');
+    const ch=String(student?.nama||option.textContent||'?').trim().charAt(0).toUpperCase();
+    return `<span class="ph-student-avatar sm"><span>${escHtml(ch)}</span></span>`;
+  }
+  function setup(select){
+    if(select.dataset.lmcUnified==='1')return;
+    select.dataset.lmcUnified='1';select.classList.add('lmc-unified-native');
+    const root=document.createElement('div');root.className='lmc-unified-picker';
+    root.innerHTML='<button type="button" class="lmc-unified-trigger" aria-expanded="false"><span class="lmc-unified-selected">Pilih Siswa</span><span aria-hidden="true">⌄</span></button><div class="lmc-unified-backdrop"></div><div class="lmc-unified-menu"><div class="lmc-unified-heading"><strong>Pilih Siswa</strong><button type="button" class="lmc-unified-close" aria-label="Tutup">×</button></div><input class="lmc-unified-search" type="search" placeholder="Cari nama siswa atau instrumen..." aria-label="Cari siswa"><div class="lmc-unified-options"></div><div class="lmc-unified-empty" hidden>Tidak ada siswa yang cocok.</div></div>';
+    select.insertAdjacentElement('afterend',root);
+    const trigger=root.querySelector('.lmc-unified-trigger'), search=root.querySelector('.lmc-unified-search'), list=root.querySelector('.lmc-unified-options'), menu=root.querySelector('.lmc-unified-menu'), backdrop=root.querySelector('.lmc-unified-backdrop');
+    const sync=()=>{
+      const opt=select.selectedOptions?.[0];
+      root.querySelector('.lmc-unified-selected').innerHTML=opt&&opt.value?`${avatarFor(opt)}<span>${escHtml(opt.textContent)}</span>`:`<span>${escHtml(opt?.textContent?.trim()||'Pilih Siswa...')}</span>`;
+      trigger.disabled=select.disabled;
+    };
+    const rebuild=()=>{
+      list.replaceChildren();
+      Array.from(select.options).forEach(opt=>{
+        const btn=document.createElement('button');btn.type='button';btn.className='lmc-unified-item';
+        btn.dataset.search=normalize(opt.textContent);btn.dataset.value=opt.value;
+        btn.disabled=opt.disabled;btn.setAttribute('aria-selected',String(opt.selected));
+        btn.innerHTML=`${opt.value?avatarFor(opt):'<span class="ph-student-avatar sm"><span>◎</span></span>'}<span>${escHtml(opt.textContent)}</span>`;
+        btn.addEventListener('click',()=>{
+          select.value=opt.value;
+          select.dispatchEvent(new Event('change',{bubbles:true}));
+          sync();closeAll();
+        });list.appendChild(btn);
+      });sync();filter();
+    };
+    const filter=()=>{const q=normalize(search.value);let count=0;list.querySelectorAll('.lmc-unified-item').forEach(btn=>{const yes=!q||btn.dataset.search.includes(q);btn.hidden=!yes;if(yes)count++;});root.querySelector('.lmc-unified-empty').hidden=count!==0;};
+    trigger.addEventListener('click',()=>{const opening=!root.classList.contains('is-open');closeAll();if(opening){rebuild();search.value='';filter();alignMobileViewport();root.classList.add('is-open');trigger.setAttribute('aria-expanded','true');if(window.innerWidth<=600){lockPage();menu._lmcOwner=root;backdrop._lmcOwner=root;document.body.appendChild(backdrop);document.body.appendChild(menu);backdrop.classList.add('is-portal-open');menu.classList.add('is-portal-open');}else setTimeout(()=>search.focus(),20);}});
+    search.addEventListener('input',filter);
+    search.addEventListener('focus',()=>{
+      if(window.innerWidth<=600){
+        const y=lockedScrollY;
+        requestAnimationFrame(()=>{alignMobileViewport();if(y!==null&&window.scrollY!==0)window.scrollTo(0,0);});
+      }else alignMobileViewport();
+    });
+    root.querySelector('.lmc-unified-close').addEventListener('click',closeAll);
+    root.querySelector('.lmc-unified-backdrop').addEventListener('click',closeAll);
+    select.addEventListener('change',sync);
+    new MutationObserver(()=>{if(root.classList.contains('is-open'))rebuild();else sync();}).observe(select,{childList:true,subtree:true,attributes:true,attributeFilter:['selected','disabled']});
+    sync();
+  }
+  function init(){IDS.forEach(id=>{const el=document.getElementById(id);if(el)setup(el);});
+    const exam=document.getElementById('annualExamStudent');if(exam)setup(exam);
+  }
+  document.addEventListener('click',e=>{if(!e.target.closest('.lmc-unified-picker')&&!e.target.closest('.lmc-unified-menu.is-portal-open')&&!e.target.closest('.lmc-unified-backdrop.is-portal-open'))closeAll();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAll();});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+  // Annual exam form is dynamically injected and rebuilt.
+  new MutationObserver(()=>{const el=document.getElementById('annualExamStudent');if(el&&!el.dataset.lmcUnified)setup(el);}).observe(document.documentElement,{childList:true,subtree:true});
+})();

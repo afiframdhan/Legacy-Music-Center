@@ -113,7 +113,7 @@
         attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map((item, index) => {
           const statusKey = String(item.status || '').toLowerCase();
           const badgeClass = statusKey === 'hadir' ? 'badge-success' : (statusKey === 'alpa' ? 'badge-danger' : 'badge-warning');
-          const signature = item.tandaTangan && String(item.tandaTangan).startsWith('data:image') ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
+          const signature = item.tandaTangan && (String(item.tandaTangan).startsWith('data:image') || (String(item.tandaTangan).startsWith('/api/attendance-signature/') || String(item.tandaTangan).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
           return `<tr class="teacher-attendance-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td data-label="Status"><span><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Jam Masuk">${escapeTaskHtml(item.jamMasuk || '-')}</td><td data-label="Jam Keluar">${escapeTaskHtml(item.jamKeluar || '-')}</td><td data-label="Catatan">${escapeTaskHtml(item.catatan || '-')}</td><td data-label="TTD">${signature}</td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditTeacherAttendance(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteTeacherAttendanceRecord(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Hapus</button></div></td></tr>`;
         }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Tidak ada absensi guru sesuai filter.</td></tr>';
       }
@@ -186,7 +186,15 @@
         btn.disabled = false;
         btn.textContent = 'Simpan Absensi Guru';
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menyimpan absensi guru.');
-        if (res && res.success) { cancelEditTeacherAttendance(); fetchDashboardData(); }
+        if (res && res.success) {
+          cancelEditTeacherAttendance();
+          // Update only the teacher-attendance module, without re-fetching the entire dashboard.
+          if (typeof ensureLiveModules === 'function') {
+            ensureLiveModules(['teacher_attendance'], { force:true }).then(ok => {
+              if (!ok) showAlert('alertDanger', 'Data tersimpan, tetapi daftar belum dapat diperbarui. Coba buka ulang Absensi Guru.');
+            });
+          } else fetchDashboardData({ silent:true });
+        }
       }).withFailureHandler(error => {
         btn.disabled = false;
         btn.textContent = document.getElementById('editAbsensiGuruID').value ? 'Update Absensi Guru' : 'Simpan Absensi Guru';
@@ -228,7 +236,14 @@
       if (!confirm('Hapus catatan absensi guru ini?')) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus absensi guru.');
-        if (res && res.success) { cancelEditTeacherAttendance(); fetchDashboardData(); }
+        if (res && res.success) {
+          cancelEditTeacherAttendance();
+          globalTeacherAttendanceList = (globalTeacherAttendanceList || []).filter(row => String(row.absensiGuruID || '') !== String(absensiGuruID));
+          renderAdminTeacherManagement();
+          if (typeof renderTeacherMonitoring === 'function') renderTeacherMonitoring();
+          // Confirm with server in the background; do not block removal from the list.
+          if (typeof ensureLiveModules === 'function') ensureLiveModules(['teacher_attendance'], { force:true });
+        }
       }).deleteTeacherAttendance(absensiGuruID, currentUser.userType);
     }
 
@@ -251,9 +266,9 @@
       const printWindow = window.open('', '_blank', 'width=1000,height=760');
       if (!printWindow) { showAlert('alertDanger', 'Popup diblokir. Izinkan popup untuk mencetak laporan.'); return; }
       const hadir = records.filter(item => String(item.status).toLowerCase() === 'hadir').length;
-      const signature = value => value && String(value).startsWith('data:image') ? `<img src="${value}" alt="Tanda tangan">` : '-';
+      const signature = value => value && (String(value).startsWith('data:image') || (String(value).startsWith('/api/attendance-signature/') || String(value).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${value}" alt="Tanda tangan">` : '-';
       const rows = records.map((item,index) => `<tr><td>${index+1}</td><td>${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td>${escapeTaskHtml(item.status || '-')}</td><td>${escapeTaskHtml(item.jamMasuk || '-')}</td><td>${escapeTaskHtml(item.jamKeluar || '-')}</td><td>${escapeTaskHtml(item.catatan || '-')}</td><td class="signature">${signature(item.tandaTangan)}</td></tr>`).join('');
-      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Absensi Guru</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:10px}.head{display:flex;justify-content:space-between;align-items:end;border-bottom:3px solid #f15a24;padding-bottom:10px;margin-bottom:12px}.head h1{margin:0;font-size:20px}.orange{color:#f15a24}.summary{display:flex;gap:10px;margin-bottom:12px}.summary div{padding:9px 12px;border:1px solid #fed9c6;background:#fff7f2;border-radius:8px}.summary b{font-size:17px;color:#f15a24;margin-left:6px}table{width:100%;border-collapse:collapse}th{background:#f15a24;color:#fff;text-align:left;padding:7px}td{border:1px solid #dfe6ee;padding:7px;vertical-align:middle}.signature{text-align:center}.signature img{max-width:100px;max-height:38px;object-fit:contain}.foot{margin-top:10px;color:#94a3b8;text-align:right;font-size:8px}</style></head><body><div class="head"><div><b class="orange">LEGACY MUSIC CENTER</b><div style="margin-top:4px;color:#64748b">Laporan Kehadiran Pengajar</div></div><div style="text-align:right"><h1>Absensi Guru</h1><div>${new Date().toLocaleDateString('id-ID')}</div></div></div><div class="summary"><div>Total Data <b>${records.length}</b></div><div>Hadir <b>${hadir}</b></div><div>Tidak Hadir <b>${records.length-hadir}</b></div></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Guru</th><th>Status</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Catatan</th><th>Tanda Tangan</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">Dicetak dari sistem Legacy Music Center</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
+      const report = `<!doctype html><html><head><meta charset="utf-8"><title>Absensi Guru</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,sans-serif;color:#17232d;margin:0;font-size:10px}.head{display:flex;justify-content:space-between;align-items:end;border-bottom:3px solid #f15a24;padding-bottom:10px;margin-bottom:12px}.head h1{margin:0;font-size:20px}.orange{color:#f15a24}.summary{display:flex;gap:10px;margin-bottom:12px}.summary div{padding:9px 12px;border:1px solid #fed9c6;background:#fff7f2;border-radius:8px}.summary b{font-size:17px;color:#f15a24;margin-left:6px}table{width:100%;border-collapse:collapse}th{background:#f15a24;color:#fff;text-align:left;padding:7px}td{border:1px solid #dfe6ee;padding:7px;vertical-align:middle}.signature{text-align:center}.signature img{max-width:100px;max-height:38px;object-fit:contain}.foot{margin-top:10px;color:#94a3b8;text-align:right;font-size:8px}</style></head><body><div class="head"><div><b class="orange">LEGACY MUSIC CENTER</b><div style="margin-top:4px;color:#64748b">Laporan Kehadiran Pengajar</div></div><div style="text-align:right"><h1>Absensi Guru</h1><div>${new Date().toLocaleDateString('id-ID')}</div></div></div><div class="summary"><div>Total Data <b>${records.length}</b></div><div>Hadir <b>${hadir}</b></div><div>Tidak Hadir <b>${records.length-hadir}</b></div></div><table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Guru</th><th>Status</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Catatan</th><th>Tanda Tangan</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">Dicetak dari sistem Legacy Music Center</div><script>window.addEventListener('load',async()=>{await Promise.all(Array.from(document.images).map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.onload=resolve;img.onerror=resolve;})));window.print();});<\/script></body></html>`;
       printWindow.document.open(); printWindow.document.write(report); printWindow.document.close();
     }
 
@@ -262,7 +277,22 @@
       if (!confirm(message)) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus data siswa keluar.');
-        if (res && res.success) fetchDashboardData();
+        if (res && res.success) {
+          const idKey = String(identifier || '').trim();
+          const nameKey = String(nama || '').trim().toLowerCase();
+          if (Array.isArray(globalStudentHistory)) {
+            globalStudentHistory = globalStudentHistory.filter(item => {
+              const sameId = idKey && String(item.siswaID || '').trim() === idKey;
+              const sameName = nameKey && String(item.nama || '').trim().toLowerCase() === nameKey;
+              return !(sameId || sameName);
+            });
+          }
+          closeExitedStudentArchive?.();
+          renderStudentReports?.();
+          fetchDashboardData();
+        }
+      }).withFailureHandler(error => {
+        showAlert('alertDanger', 'Gagal menghapus data siswa keluar: ' + (error?.message || error));
       }).deleteExitedStudentRecord(identifier, currentUser.userType);
     }
 
@@ -373,6 +403,9 @@
         btn.disabled = false; btn.textContent = 'Simpan Siswa & Jadwal';
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if(res.success) {
+          if (res.initialPassword) {
+            setTimeout(()=>alert(`Siswa berhasil dibuat.\n\nPassword awal: ${res.initialPassword}\n\nBerikan password ini kepada siswa/orang tua. Saat login pertama, siswa wajib membuat password baru.`), 50);
+          }
           document.getElementById('formTambahSiswaCombined').reset();
           document.getElementById('addStudentExtraClasses').innerHTML = '';
           const now = new Date();
@@ -389,7 +422,7 @@
       if (!row || typeof row !== 'object') return null;
       const rawDate = String(row.attendance_date || row.tanggal || fallback.tanggal || '').slice(0,10);
       const dateParts = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      return {
+      const mapped = {
         absensiID: row.attendance_id || row.absensiID || '',
         namaSiswa: row.student_name_snapshot || row.namaSiswa || fallback.namaSiswa || '',
         tanggal: dateParts ? `${dateParts[3]}-${dateParts[2]}-${dateParts[1]}` : (row.tanggal || fallback.tanggal || ''),
@@ -402,6 +435,16 @@
         guruCatat: row.teacher_name_snapshot ?? row.guruCatat ?? fallback.guru ?? currentUser.userName ?? '',
         ttdSiswa: row.student_signature_data ?? row.ttdSiswa ?? fallback.ttdSiswa ?? ''
       };
+      // Google Drive signatures are stored as internal markers. The UI must use
+      // the session-checked Worker image URL, never the raw marker or a data URI
+      // from the outgoing form after a successful private upload.
+      for (const [key,kind] of [['tandaTangan','teacher'],['ttdSiswa','student']]) {
+        const value = String(mapped[key] || '');
+        if (value.startsWith('lmc-drive-signature:') && mapped.absensiID) {
+          mapped[key] = `/api/attendance-signature/${encodeURIComponent(String(mapped.absensiID))}/${kind}`;
+        }
+      }
+      return mapped;
     }
 
     function upsertAttendanceLocally(item) {
@@ -415,6 +458,8 @@
 
     function addAbsensiCombined(e) {
       e.preventDefault();
+      const saveButton = document.getElementById('btnSubmitAbsensi');
+      if (saveButton?.disabled) return false;
       
       let ttdGuruVal = '';
       let ttdSiswaVal = '';
@@ -444,8 +489,20 @@
         guru: currentUser.userName
       };
 
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.setAttribute('aria-busy', 'true');
+        saveButton.textContent = 'Sedang menyimpan...';
+      }
+      const restoreSaveButton = () => {
+        if (!saveButton) return;
+        saveButton.disabled = false;
+        saveButton.removeAttribute('aria-busy');
+        saveButton.textContent = 'Simpan Kehadiran';
+      };
       google.script.run.withSuccessHandler(res => {
-        showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
+        restoreSaveButton();
+        showAlert(res?.success ? 'alertSuccess' : 'alertDanger', res?.message || 'Tidak dapat menyimpan absensi.');
         if(res.success) {
           const localItem = mapAttendanceMutationForUi(res.attendance || res.item || null, payload);
           if (localItem) upsertAttendanceLocally(localItem);
@@ -455,8 +512,14 @@
           }
           // Do not reload the whole dashboard after one attendance mutation.
           // The local row is already visible; only the attendance module is reconciled.
-          if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
+          // Reconcile this module without touching the dashboard. The saved row
+          // stays visible immediately while the source of truth is rechecked.
+          if (typeof ensureLiveModules === 'function') ensureLiveModules(['attendance'], { force:true });
+          else if (typeof queueLiveModuleSync === 'function') queueLiveModuleSync(['attendance']);
         }
+      }).withFailureHandler(error => {
+        restoreSaveButton();
+        showAlert('alertDanger', 'Gagal menyimpan kehadiran: ' + (error?.message || String(error)));
       }).recordAbsensi(payload);
     }
 

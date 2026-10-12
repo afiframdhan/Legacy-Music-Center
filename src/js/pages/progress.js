@@ -132,7 +132,7 @@
 
       if (teacherGroup) teacherGroup.style.display = isAdmin ? 'block' : 'none';
       if (instrumentGroup) instrumentGroup.style.display = isStudent ? 'none' : 'block';
-      if (searchGroup) searchGroup.style.display = isStudent ? 'none' : 'block';
+      if (searchGroup) searchGroup.style.display = (isStudent || isAdmin) ? 'none' : 'block';
       if (studentGroup) studentGroup.style.display = isStudent ? 'none' : 'block';
 
       if (isAdmin && teacherSelect) {
@@ -178,7 +178,7 @@
       const teacherValue = isAdmin ? String(document.getElementById('lpPageTeacher')?.value || '').trim() : '';
       const instrumentValue = !isStudent ? String(document.getElementById('lpPageInstrument')?.value || '').trim() : '';
       const searchInput = document.getElementById('lpPageStudentSearch');
-      const searchTerm = !isStudent && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      const searchTerm = !isStudent && !isAdmin && searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
 
       let roleStudents = isStudent
         ? [{ nama:currentUser.userName, siswaID:currentUser.userID }]
@@ -316,7 +316,7 @@
     function openLearningProgressModal() {
       if (currentUser.userType !== 'guru') return;
       const select = document.getElementById('lpStudent');
-      const students = (globalSiswaList || []).filter(item => String(item.status || '').toLowerCase() !== 'keluar');
+      const students = (globalSiswaList || []).filter(isOperationalStudent);
       select.innerHTML = students.map(item => `<option value="${escapeTaskHtml(item.nama)}">${escapeTaskHtml(item.nama)} (${escapeTaskHtml(item.instrumen || 'Kelas Musik')})</option>`).join('');
       const selected = globalSelectedLearningProgressStudent && students.some(item => item.nama === globalSelectedLearningProgressStudent) ? globalSelectedLearningProgressStudent : (students[0] ? students[0].nama : '');
       if (!selected) { showAlert('alertDanger', 'Belum ada siswa yang dapat diisi progressnya.'); return; }

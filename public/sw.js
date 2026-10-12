@@ -1,5 +1,68 @@
 const DEFAULT_ICON = '/icons/icon-192.png';
 const DEFAULT_BADGE = '/icons/icon-192.png';
+const APP_CACHE = 'legacy-app-shell-v4';
+const APP_SHELL = [
+  '/',
+  '/index.html',
+  '/manifest.webmanifest',
+  '/css/app.bundle.css',
+  '/js/app.bundle.js',
+  '/icons/icon-192.png'
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(APP_CACHE);
+    await cache.addAll(APP_SHELL).catch(() => {});
+    await self.skipWaiting();
+  })());
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.startsWith('legacy-app-shell-') && key !== APP_CACHE).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  // API and RPC data must always come from the network so users never see stale school data.
+  if (url.pathname.startsWith('/api/')) return;
+
+  const isStatic = url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/manifest.webmanifest' ||
+    url.pathname.startsWith('/css/') || url.pathname.startsWith('/js/') || url.pathname.startsWith('/icons/') || url.pathname.startsWith('/assets/');
+  if (!isStatic) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(APP_CACHE);
+    const isVersionSensitive = url.pathname === '/' || url.pathname === '/index.html' || url.pathname.startsWith('/css/') || url.pathname.startsWith('/js/');
+
+    // HTML/CSS/JS are network-first so a newly deployed Legacy version never keeps
+    // an old UI bundle merely because the PWA cache exists. The cache is fallback only.
+    if (isVersionSensitive) {
+      try {
+        const response = await fetch(request);
+        if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
+        return response;
+      } catch (_) {
+        return (await cache.match(request)) || caches.match('/index.html');
+      }
+    }
+
+    // Icons/assets are immutable enough for cache-first and make repeat opens lighter.
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
+    return response;
+  })());
+});
 
 self.addEventListener('push', event => {
   let payload = {};

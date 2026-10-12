@@ -250,10 +250,13 @@
     function renderGuruSiswaBody(list) {
       const sBody = document.getElementById('guruSiswaBody'); sBody.innerHTML = '';
 
-      const selects = document.querySelectorAll('#absensiSiswa, #editJadwalSiswa, #tugasPilihSiswa, #penggantiSiswaSelect, #pengumumanSiswaDetailSelect');
-      let options = '<option value="">Pilih Siswa...</option>';
-      globalSiswaList.forEach(s => options += `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`);
-      selects.forEach(sel => sel.innerHTML = options);
+      const allStudentSelects = document.querySelectorAll('#editJadwalSiswa, #pengumumanSiswaDetailSelect');
+      const operationalStudentSelects = document.querySelectorAll('#absensiSiswa, #tugasPilihSiswa, #penggantiSiswaSelect');
+      const buildStudentOptions = students => '<option value="">Pilih Siswa...</option>' + students.map(s => `<option value="${s.nama}">${s.nama} (${s.instrumen || 'Gitar'})</option>`).join('');
+      const allOptions = buildStudentOptions(globalSiswaList || []);
+      const operationalOptions = buildStudentOptions((globalSiswaList || []).filter(isOperationalStudent));
+      allStudentSelects.forEach(sel => sel.innerHTML = allOptions);
+      operationalStudentSelects.forEach(sel => sel.innerHTML = operationalOptions);
 
       if (list.length === 0) {
         sBody.innerHTML = `<tr class="table-empty-row"><td class="table-empty-cell" colspan="9">Data siswa tidak ditemukan.</td></tr>`;
@@ -1307,7 +1310,7 @@
         populateStudent360TeacherFilters(reports);
         historyBox.innerHTML = reports.length
           ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(285px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, true)).join('')}</div>`
-          : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
+          : `<div class="student360-empty-state">Belum ada Laporan Lengkap yang dikirim ke siswa.</div>`;
         applyStudent360TeacherFilters();
         return;
       }
@@ -1315,7 +1318,7 @@
       if (filters) filters.style.display = 'none';
       historyBox.innerHTML = reports.length
         ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;">${reports.map(report => student360ReportCardHtml(report, false, false)).join('')}</div>`
-        : `<div style="padding:30px 18px;text-align:center;color:#8a98a9;border:1px dashed #d7e0e9;border-radius:13px;background:#fbfcfd;">Belum ada laporan perkembangan yang dikirim.</div>`;
+        : `<div class="student360-empty-state">Belum ada laporan perkembangan yang dikirim.</div>`;
     }
 
     function applyJadwalFilters() {
@@ -1473,9 +1476,98 @@
       body.innerHTML = records.length ? records.map((item, index) => {
         const statusLabel = item.statusSesudah || (String(item.jenis).toLowerCase() === 'keluar' ? 'Keluar' : 'Aktif');
         const statusClass = String(statusLabel).toLowerCase() === 'keluar' ? 'badge-danger' : (String(statusLabel).toLowerCase() === 'cuti' ? 'badge-warning' : 'badge-success');
-        const deleteAction = isExitView ? `<td data-label="Aksi"><button type="button" class="btn" style="padding:7px 10px;background:#fee2e2;color:#b91c1c;" onclick="event.stopPropagation();deleteExitedStudentRecord(decodeURIComponent('${encodeURIComponent(item.siswaID || item.nama || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Hapus Data</button></td>` : '';
+        const deleteAction = isExitView ? `<td data-label="Aksi"><div class="student-archive-actions"><button type="button" class="btn student-archive-open" onclick="event.stopPropagation();openExitedStudentArchive(decodeURIComponent('${encodeURIComponent(item.siswaID || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Lihat Arsip</button><button type="button" class="btn student-archive-delete" onclick="event.stopPropagation();deleteExitedStudentRecord(decodeURIComponent('${encodeURIComponent(item.siswaID || item.nama || '')}'),decodeURIComponent('${encodeURIComponent(item.nama || '')}'))">Hapus Data</button></div></td>` : '';
         return `<tr class="student-report-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td class="student-report-no" data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td class="student-report-name" data-label="Nama Siswa"><b>${escapeTaskHtml(item.nama || '-')}</b></td><td data-label="Jenis"><span class="badge ${String(item.jenis).toLowerCase() === 'keluar' ? 'badge-danger' : 'badge-success'}">${escapeTaskHtml(item.jenis)}</span></td><td class="student-report-instrument" data-label="Instrumen">${escapeTaskHtml(item.instrumen || '-')}</td><td data-label="Guru">${escapeTaskHtml(item.guru || '-')}</td><td class="student-report-status" data-label="Status"><span class="badge ${statusClass}">${escapeTaskHtml(statusLabel)}</span><span class="student-report-chevron">⌄</span></td><td data-label="Keterangan">${escapeTaskHtml(item.keterangan || '-')}</td>${deleteAction}</tr>`;
       }).join('') : `<tr><td class="student-report-empty" colspan="${isExitView ? 9 : 8}">Tidak ada data ${escapeTaskHtml(studentReportView.toLowerCase())} pada periode ini.</td></tr>`;
+    }
+
+    function ensureExitedStudentArchiveModal() {
+      let modal = document.getElementById('modalExitedStudentArchive');
+      if (modal) return modal;
+      modal = document.createElement('div');
+      modal.id = 'modalExitedStudentArchive';
+      modal.className = 'modal exited-student-archive-modal';
+      modal.innerHTML = `<div class="modal-content exited-student-archive-content" role="dialog" aria-modal="true" aria-labelledby="exitedStudentArchiveTitle">
+        <div class="modal-header exited-student-archive-header">
+          <div><h2 id="exitedStudentArchiveTitle" style="margin:0">Arsip Siswa</h2><div id="exitedStudentArchiveSubtitle" class="exited-student-archive-subtitle"></div></div>
+          <button type="button" class="modal-close" aria-label="Tutup arsip siswa" onclick="closeExitedStudentArchive()">&times;</button>
+        </div>
+        <div id="exitedStudentArchiveBody" class="exited-student-archive-body"><div class="archive-loading">Memuat arsip siswa...</div></div>
+        <div class="exited-student-archive-footer"><button type="button" class="btn btn-primary" onclick="closeExitedStudentArchive()">Tutup</button></div>
+      </div>`;
+      modal.addEventListener('click', event => { if (event.target === modal) closeExitedStudentArchive(); });
+      document.body.appendChild(modal);
+      return modal;
+    }
+
+    function closeExitedStudentArchive() {
+      const modal = document.getElementById('modalExitedStudentArchive');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function archiveDate(value) {
+      if (!value) return '-';
+      const raw = String(value);
+      const iso = raw.slice(0,10);
+      return formatAcademyDate(iso) || raw;
+    }
+
+    function archiveEmpty(label) {
+      return `<div class="archive-empty">Belum ada ${escapeTaskHtml(label)} yang tersimpan.</div>`;
+    }
+
+    function archiveTable(headers, rows) {
+      if (!rows || !rows.length) return '';
+      return `<div class="archive-table-wrap"><table class="archive-table"><thead><tr>${headers.map(h=>`<th>${escapeTaskHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+    }
+
+    function renderExitedStudentArchive(data) {
+      const body = document.getElementById('exitedStudentArchiveBody');
+      const subtitle = document.getElementById('exitedStudentArchiveSubtitle');
+      if (!body) return;
+      if (!data || data.success !== true) {
+        body.innerHTML = `<div class="archive-error">${escapeTaskHtml(data?.message || 'Arsip siswa tidak dapat dibuka.')}</div>`;
+        if (subtitle) subtitle.textContent = '';
+        return;
+      }
+      const p = data.profile || {};
+      if (subtitle) subtitle.textContent = `${p.nama || '-'} • ${p.instrumen || '-'} • ${p.status || 'Keluar'}`;
+      const limited = data.limited ? `<div class="archive-warning"><b>Arsip historis terbatas.</b> Data utama siswa sudah tidak ada di tabel siswa, jadi hanya data riwayat yang masih tersimpan di database yang dapat ditampilkan.</div>` : '';
+      const counts = data.counts || {};
+      const statLabels = [
+        ['Absensi','absensi'],['Tugas','tugas'],['Repertoire','repertoire'],['Progress','progress'],['Materi Latihan','materiLatihan'],['Evaluasi','evaluasi'],['Ujian','ujian'],['Laporan','laporan']
+      ];
+      const stats = statLabels.map(([label,key])=>`<div class="archive-stat"><span>${escapeTaskHtml(label)}</span><b>${Number(counts[key]||0)}</b></div>`).join('');
+      const historyRows = (data.history||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(x.jenis||'-')}</td><td>${escapeTaskHtml(x.statusSesudah||x.statusSebelum||'-')}</td><td>${escapeTaskHtml(x.keterangan||'-')}</td></tr>`);
+      const attendanceRows = (data.attendance||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(String(x.pertemuan||'-'))}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${escapeTaskHtml(x.materi||'-')}</td></tr>`);
+      const taskRows = (data.assignments||[]).map(x=>`<tr><td>${escapeTaskHtml(x.judul||'-')}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${escapeTaskHtml(archiveDate(x.deadline))}</td><td>${escapeTaskHtml(x.jawaban ? 'Ada jawaban' : '-')}</td></tr>`);
+      const repertoireRows = (data.repertoire||[]).map(x=>`<tr><td>${escapeTaskHtml(x.judul||'-')}</td><td>${escapeTaskHtml(x.status||'-')}</td><td>${Number(x.progress||0)}%</td><td>${escapeTaskHtml(x.guru||'-')}</td></tr>`);
+      const progressRows = (data.progress||[]).map(x=>`<tr><td>${escapeTaskHtml(x.periode||'-')}</td><td>${escapeTaskHtml(x.level||'-')}</td><td>${Number(x.nilai||0)}%</td><td>${escapeTaskHtml(x.guru||'-')}</td></tr>`);
+      const examRows = (data.exams||[]).map(x=>`<tr><td>${escapeTaskHtml(archiveDate(x.tanggal))}</td><td>${escapeTaskHtml(x.grade||'-')}</td><td>${Number(x.nilai||0)}</td><td>${escapeTaskHtml(x.status||x.predikat||'-')}</td></tr>`);
+      body.innerHTML = `${limited}
+        <section class="archive-profile"><div><span>Nama</span><b>${escapeTaskHtml(p.nama||'-')}</b></div><div><span>ID Siswa</span><b>${escapeTaskHtml(p.siswaID||'-')}</b></div><div><span>Instrumen</span><b>${escapeTaskHtml(p.instrumen||'-')}</b></div><div><span>Guru</span><b>${escapeTaskHtml(p.guru||'-')}</b></div><div><span>Grade</span><b>${escapeTaskHtml(p.grade||'-')}</b></div><div><span>Status</span><b>${escapeTaskHtml(p.status||'Keluar')}</b></div><div><span>Tanggal Masuk</span><b>${escapeTaskHtml(archiveDate(p.tanggalMasuk))}</b></div><div><span>Tanggal Keluar</span><b>${escapeTaskHtml(archiveDate(p.tanggalKeluar))}</b></div><div class="wide"><span>Alasan/Keterangan Keluar</span><b>${escapeTaskHtml(p.alasanKeluar||'-')}</b></div></section>
+        <div class="archive-stats">${stats}</div>
+        <details class="archive-section" open><summary>Riwayat Status (${(data.history||[]).length})</summary>${historyRows.length ? archiveTable(['Tanggal','Jenis','Status','Keterangan'],historyRows) : archiveEmpty('riwayat status')}</details>
+        <details class="archive-section"><summary>Absensi (${(data.attendance||[]).length})</summary>${attendanceRows.length ? archiveTable(['Tanggal','Pertemuan','Status','Materi'],attendanceRows) : archiveEmpty('data absensi')}</details>
+        <details class="archive-section"><summary>Tugas (${(data.assignments||[]).length})</summary>${taskRows.length ? archiveTable(['Judul','Status','Deadline','Jawaban'],taskRows) : archiveEmpty('data tugas')}</details>
+        <details class="archive-section"><summary>Repertoire (${(data.repertoire||[]).length})</summary>${repertoireRows.length ? archiveTable(['Judul','Status','Progress','Guru'],repertoireRows) : archiveEmpty('repertoire')}</details>
+        <details class="archive-section"><summary>Progress Belajar (${(data.progress||[]).length})</summary>${progressRows.length ? archiveTable(['Periode','Level','Nilai','Guru'],progressRows) : archiveEmpty('progress belajar')}</details>
+        <details class="archive-section"><summary>Ujian Tahunan (${(data.exams||[]).length})</summary>${examRows.length ? archiveTable(['Tanggal','Grade','Nilai','Status'],examRows) : archiveEmpty('ujian tahunan')}</details>`;
+    }
+
+    function openExitedStudentArchive(identifier, nama) {
+      if (currentUser.userType !== 'admin') return;
+      const modal = ensureExitedStudentArchiveModal();
+      const body = document.getElementById('exitedStudentArchiveBody');
+      const subtitle = document.getElementById('exitedStudentArchiveSubtitle');
+      if (subtitle) subtitle.textContent = nama || identifier || '';
+      if (body) body.innerHTML = '<div class="archive-loading">Memuat arsip siswa...</div>';
+      modal.style.display = 'flex';
+      google.script.run.withSuccessHandler(res => {
+        renderExitedStudentArchive(res);
+      }).withFailureHandler(error => {
+        if (body) body.innerHTML = `<div class="archive-error">${escapeTaskHtml(error?.message || String(error || 'Gagal membuka arsip siswa.'))}</div>`;
+      }).getExitedStudentArchive(identifier || '', nama || '');
     }
 
     function printStudentReport(mode) {
@@ -1671,7 +1763,7 @@
         <div class="annual-exam-card-meta"><span class="annual-exam-pill ${status==='Lulus'?'pass':'fail'}">${status}</span><span class="annual-exam-pill">${annualExamEscape(exam.predicate||annualExamPredicate(score))}</span>${published?'<span class="annual-exam-pill sent">Terkirim</span>':'<span class="annual-exam-pill draft">Draft</span>'}</div>
         <div class="annual-exam-card-actions">
           ${currentUser.userType==='guru'?`<button onclick="openAnnualExamForm('${annualExamEscape(exam.examID)}')">Edit Nilai</button>`:''}
-          ${!isStudent?`<button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">Form Nilai</button>`:''}
+          <button onclick="openAnnualExamResult('${annualExamEscape(exam.examID)}')">${isStudent?'Form Penilaian':'Form Nilai'}</button>
           <button class="primary" onclick="openAnnualExamCertificate('${annualExamEscape(exam.examID)}')">Sertifikat</button>
           ${currentUser.userType==='guru'&&!published?`<button class="success" onclick="publishAnnualExam('${annualExamEscape(exam.examID)}')">Kirim ke Siswa</button>`:''}
           ${currentUser.userType==='guru'?`<button class="danger" onclick="deleteAnnualExam('${annualExamEscape(exam.examID)}')">Hapus</button>`:''}
@@ -1760,7 +1852,7 @@
       if(currentUser.userType!=='guru')return;
       const modal=ensureAnnualExamModal(); annualExamEditingId=examId||'';
       const edit=annualExamRecords.find(x=>String(x.examID)===String(examId))||null;
-      const students=(globalSiswaList||[]).filter(s=>String(s.status||'').toLowerCase()!=='keluar');
+      const students=(globalSiswaList||[]).filter(isOperationalStudent);
       const studentOptions=students.map(s=>`<option value="${annualExamEscape(s.siswaID||'')}">${annualExamEscape(s.nama)} — ${annualExamEscape(s.instrumen||'Musik')}</option>`).join('');
       const examinerOptions=(globalGuruList||[]).map(g=>`<option value="${annualExamEscape(g.nama)}">${annualExamEscape(g.nama)}${g.instrumen?' — '+annualExamEscape(g.instrumen):''}</option>`).join('');
       const today=new Date().toISOString().slice(0,10);
@@ -1818,12 +1910,12 @@
     function annualExamRenderScoreRows(items=null){
       const inst=document.getElementById('annualExamInstrument')?.value||'Gitar';
       const source=Array.isArray(items)&&items.length?items:annualExamTemplate(inst);
-      document.getElementById('annualExamScoreBody').innerHTML=source.map((item,i)=>`<tr data-index="${i}"><td><b>${annualExamEscape(item.aspect)}</b></td><td>${annualExamEscape(item.description)}</td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-1" value="${Number(item.scoreExaminer1||0)}" oninput="annualExamRecalculate()"></td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-2" value="${Number(item.scoreExaminer2||0)}" oninput="annualExamRecalculate()"></td><td class="annual-score-avg">0</td><input type="hidden" class="annual-aspect" value="${annualExamEscape(item.aspect)}"><input type="hidden" class="annual-desc" value="${annualExamEscape(item.description)}"></tr>`).join('');
+      document.getElementById('annualExamScoreBody').innerHTML=source.map((item,i)=>`<tr data-index="${i}"><td><b>${annualExamEscape(item.aspect)}</b></td><td>${annualExamEscape(item.description)}</td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-1" value="${Number(item.scoreExaminer1||0)}" oninput="annualExamRecalculate()"></td><td><input type="number" min="0" max="20" step="0.5" class="annual-score-2" value="${Number(item.scoreExaminer2||0)}" oninput="annualExamRecalculate()"></td><td class="annual-score-avg"><span class="annual-score-avg-value">0</span></td><input type="hidden" class="annual-aspect" value="${annualExamEscape(item.aspect)}"><input type="hidden" class="annual-desc" value="${annualExamEscape(item.description)}"></tr>`).join('');
       annualExamRecalculate();
     }
     function annualExamRecalculate(){
       let total=0;
-      document.querySelectorAll('#annualExamScoreBody tr').forEach(row=>{const a=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-1').value)||0));const b=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-2').value)||0));const avg=(a+b)/2;row.querySelector('.annual-score-avg').textContent=avg.toFixed(avg%1?1:0);total+=avg;});
+      document.querySelectorAll('#annualExamScoreBody tr').forEach(row=>{const a=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-1').value)||0));const b=Math.max(0,Math.min(20,Number(row.querySelector('.annual-score-2').value)||0));const avg=(a+b)/2;(row.querySelector('.annual-score-avg-value')||row.querySelector('.annual-score-avg')).textContent=avg.toFixed(avg%1?1:0);total+=avg;});
       total=Math.round(total*10)/10; const passed=total>=60; const pred=annualExamPredicate(total); const grade=document.getElementById('annualExamGrade')?.value||'Beginner';
       document.getElementById('annualExamTotal').textContent=total;document.getElementById('annualExamPredicate').textContent=pred;document.getElementById('annualExamPassStatus').textContent=passed?'Lulus':'Belum Lulus';document.getElementById('annualExamNextGrade').textContent=annualExamNextGrade(grade,passed);document.getElementById('annualExamStatusPreview').value=`${total} • ${pred} • ${passed?'Lulus':'Belum Lulus'}`;
     }
