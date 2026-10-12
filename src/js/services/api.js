@@ -10,7 +10,7 @@
     'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
     'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addJadwalPengganti','deleteJadwalPengganti',
     'addPengumuman','deletePengumuman','recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire',
-    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile','changeOwnPassword'
+    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile','changeOwnPassword','resetStudentPassword'
   ]);
 
   async function rawRpc(method, args) {

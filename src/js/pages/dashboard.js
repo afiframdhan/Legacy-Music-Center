@@ -278,6 +278,7 @@
           <td data-label="Aksi"><div class="table-actions">
             <button class="btn-action btn-edit" onclick="openEditModal(decodeURIComponent('${encodeURIComponent(s.nama)}'))">Edit</button>
             <button class="btn-action" style="background:#fff0e9;color:#c2410c;border:1px solid #fed7c3;" onclick="event.stopPropagation();openStudent360Report(decodeURIComponent('${encodeURIComponent(s.siswaID || s.nama)}'))">Laporan Lengkap</button>
+            ${currentUser.userType === 'admin' && s.siswaID ? `<button class="btn-action" style="background:#fff4e8;color:#9a3412;border:1px solid #fed7aa;" onclick="event.stopPropagation();resetStudentPasswordAdmin(decodeURIComponent('${encodeURIComponent(s.siswaID)}'),decodeURIComponent('${encodeURIComponent(s.nama)}'),this)">Reset Password</button>` : ''}
             <button class="btn-action btn-delete" onclick="deleteSiswa(decodeURIComponent('${encodeURIComponent(s.nama)}'))">Hapus</button>
           </div>
           </td>
@@ -286,6 +287,31 @@
 
     }
 
+
+    function resetStudentPasswordAdmin(studentId, studentName, button) {
+      if (currentUser.userType !== 'admin' || !studentId || !button || button.disabled) return;
+      const password = prompt(`Masukkan password SEMENTARA baru untuk siswa "${studentName}".\nMinimal 8 karakter, mengandung huruf dan angka.\nJangan gunakan password yang sama untuk siswa lain.`);
+      if (password === null) return;
+      if (password.length < 8 || password.length > 72 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        alert('Password harus 8-72 karakter, mengandung huruf dan angka.');
+        return;
+      }
+      const confirmation = prompt('Ketik ulang password sementara untuk memastikan tidak salah ketik:');
+      if (confirmation === null) return;
+      if (password !== confirmation) { alert('Konfirmasi password tidak sama. Reset dibatalkan.'); return; }
+      if (!confirm(`Reset password siswa "${studentName}" sekarang? Password lama tidak berlaku untuk login baru dan siswa wajib mengganti password setelah login.`)) return;
+      const oldLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Mereset...';
+      LegacyAPI.rpc('resetStudentPassword', [studentId, password]).then(result => {
+        if (!result || !result.success) {
+          alert(result?.message || 'Reset password gagal.');
+          return;
+        }
+        alert(`Password sementara untuk ${studentName} berhasil diubah.\nBerikan password yang Anda buat secara pribadi kepada siswa/orang tua.\nSiswa wajib menggantinya saat login berikutnya.`);
+      }).catch(error => alert('Reset password gagal: ' + (error?.message || error)))
+        .finally(() => { button.disabled = false; button.textContent = oldLabel; });
+    }
 
     const student360ReportCache = new Map();
 

@@ -26,7 +26,7 @@ const ADMIN = new Set([
   'addJadwalPengganti', 'deleteJadwalPengganti',
   'addPengumuman', 'deletePengumuman',
   'addGuru', 'updateGuru', 'deleteGuru',
-  'recordTeacherAttendance', 'deleteTeacherAttendance',
+  'recordTeacherAttendance', 'deleteTeacherAttendance', 'resetStudentPassword',
   'deleteExitedStudentRecord', 'getExitedStudentArchive',
   'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
 ]);
@@ -36,7 +36,7 @@ const AUDIT_METHODS = new Set([
   'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
   'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addPengumuman','deletePengumuman',
   'recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','saveAnnualExam','publishAnnualExam','deleteAnnualExam',
-  'publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile'
+  'publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile','resetStudentPassword'
 ]);
 
 export default {
@@ -245,6 +245,38 @@ async function handleRpc(request, env, ctx) {
   const session = await readSession(request, env.SESSION_SECRET);
   if (!session) return json({ ok:false, error:'Sesi login tidak valid atau sudah berakhir.' }, 401);
   if (!isAllowed(session.userType, method)) return json({ ok:false, error:'Akses fungsi ditolak.' }, 403);
+
+  // Admin only: rotate a student's temporary password without exposing the stored hash.
+  if (method === 'resetStudentPassword') {
+    const studentId = String(args[0] || '').trim();
+    if (!studentId || studentId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(studentId)) {
+      return json({ ok:true, data:{ success:false, message:'ID siswa tidak valid.' } });
+    }
+    try {
+      const rows = await sbRows(env, 'students', { student_id:`eq.${studentId}`, select:'student_id,name', limit:'1' });
+      const student = Array.isArray(rows) ? rows[0] : null;
+      if (!student || student.student_id !== studentId) {
+        return json({ ok:true, data:{ success:false, message:'Akun siswa tidak ditemukan.' } });
+      }
+      const password = typeof args[1] === 'string' ? args[1] : '';
+      if (password.length < 8 || password.length > 72 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        return json({ ok:true, data:{ success:false, message:'Password harus 8-72 karakter, mengandung huruf dan angka.' } });
+      }
+      await supabaseRpc(env, 'legacy_set_account_password', {
+        p_user_id:studentId, p_role:'siswa', p_password:password, p_must_change:true
+      });
+      if (ctx) ctx.waitUntil(recordAuditLog(env, session, method,
+        [{ siswaID:studentId, nama:String(student.name || '') }],
+        { success:true, siswaID:studentId }
+      ).catch(error => console.error('Student password reset audit failed:', error)));
+      return json({ ok:true, data:{ success:true, message:'Password sementara pilihan Admin berhasil disimpan.',
+        siswaID:studentId, mustChangePassword:true } }, 200,
+        { 'cache-control':'no-store' });
+    } catch (error) {
+      console.error('Reset student password failed:', error);
+      return json({ ok:true, data:{ success:false, message:'Reset password gagal. Coba kembali atau hubungi administrator teknis.' } });
+    }
+  }
 
   if (method === 'changeOwnPassword') {
     const payload = args[0] && typeof args[0] === 'object' ? args[0] : {};
@@ -2935,7 +2967,7 @@ function auditActionMeta(method) {
     saveAnnualExam:['Ujian','Simpan Penilaian Ujian','Ujian'], publishAnnualExam:['Ujian','Terbitkan Sertifikat','Ujian'], deleteAnnualExam:['Ujian','Hapus Hasil Ujian','Ujian'],
     addPengumuman:['Pengumuman','Tambah Pengumuman','Pengumuman'], deletePengumuman:['Pengumuman','Hapus Pengumuman','Pengumuman'],
     publishStudent360Report:['Laporan','Kirim Laporan Siswa','Laporan'], deleteStudent360Report:['Laporan','Hapus Laporan Siswa','Laporan'],
-    updateUserPhoto:['Profil','Update Foto Profil','Profil'], updateSelfProfile:['Profil','Update Profil','Profil']
+    resetStudentPassword:['Siswa','Reset Password Siswa','Siswa'], updateUserPhoto:['Profil','Update Foto Profil','Profil'], updateSelfProfile:['Profil','Update Profil','Profil']
   };
   const row = map[method] || ['Sistem',method,'Sistem'];
   return { category:row[0], label:row[1], entityType:row[2] };
