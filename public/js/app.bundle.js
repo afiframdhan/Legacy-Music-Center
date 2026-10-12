@@ -709,6 +709,18 @@ let currentUser = { userType: '', userID: '', userName: '' };
       if (button) button.textContent = willOpen ? 'Selesai' : 'Perbesar';
       requestAnimationFrame(() => {
         layoutSignatureCanvas(pad, willOpen);
+        // Teacher attendance uses a very wide compact canvas. Its old aspect
+        // letterboxes the fullscreen signing area and clips pointer positions.
+        // For a BLANK teacher signature only, match the signing coordinate plane
+        // to the actual fullscreen canvas before collecting the first stroke.
+        // Existing signatures and all student signature pads remain unchanged.
+        if (willOpen && canvasId === 'canvasTtdAbsensiGuru' && isCanvasBlank(canvasId)) {
+          const bounds = pad.canvas.getBoundingClientRect();
+          if (bounds.width > 0 && bounds.height > 0) {
+            pad.aspect = bounds.width / bounds.height;
+            pad.originalWidth = bounds.width;
+          }
+        }
         requestAnimationFrame(() => resizeSignaturePad(canvasId));
       });
     }
