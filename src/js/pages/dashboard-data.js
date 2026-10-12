@@ -37,7 +37,17 @@
           saveLoginSession(currentUser);
         }
 
-        globalAbsensiList = data.absensiList || [];
+        // Boot data may be signature-light. Preserve detailed image references
+        // already resolved on the open attendance screen during background refresh.
+        const priorAttendanceById = new Map((globalAbsensiList || []).map(row => [String(row.absensiID || ''), row]));
+        globalAbsensiList = (data.absensiList || []).map(row => {
+          const prior = priorAttendanceById.get(String(row.absensiID || ''));
+          return prior ? {
+            ...row,
+            tandaTangan: row.tandaTangan || prior.tandaTangan || '',
+            ttdSiswa: row.ttdSiswa || prior.ttdSiswa || ''
+          } : row;
+        });
         if (typeof invalidateAttendanceSignatures === 'function') invalidateAttendanceSignatures();
         globalJadwalList = data.jadwal || data.schedules || [];
         globalTugasList = data.tugasList || [];

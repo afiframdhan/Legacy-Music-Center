@@ -394,6 +394,11 @@ Guru: ${props.guru}`);
       const thAksi = document.getElementById('thAbsensiAksi');
       const thTtdSiswa = document.getElementById('thAbsensiTtdSiswa');
       if(!tbody) return;
+      // Do not depend on opening the print dialog to load private Drive signatures.
+      // Only request the detailed attendance module when the history is visible.
+      if (tbody.getClientRects().length && typeof ensureAttendanceSignatures === 'function') {
+        ensureAttendanceSignatures().catch(error => console.warn('[Attendance signatures]', error));
+      }
       tbody.innerHTML = '';
 
       const isSiswa = currentUser.userType === 'siswa';
