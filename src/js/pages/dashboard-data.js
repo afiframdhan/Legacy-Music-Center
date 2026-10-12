@@ -50,7 +50,7 @@
         // the same in-memory records until getRepertoireData updates them.
         if (!Array.isArray(globalRepertoireList)) globalRepertoireList = [];
         globalStudentHistory = data.studentHistory || [];
-        globalTeacherAttendanceList = data.teacherAttendanceList || [];
+        if (Array.isArray(data.teacherAttendanceList)) globalTeacherAttendanceList = data.teacherAttendanceList;
 
         // Dashboard V3 loads only the data needed to paint the first screen quickly.
         // Historical modules can be completed lazily when their page is opened.

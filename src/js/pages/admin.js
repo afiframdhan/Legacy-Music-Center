@@ -186,7 +186,15 @@
         btn.disabled = false;
         btn.textContent = 'Simpan Absensi Guru';
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menyimpan absensi guru.');
-        if (res && res.success) { cancelEditTeacherAttendance(); fetchDashboardData(); }
+        if (res && res.success) {
+          cancelEditTeacherAttendance();
+          // Update only the teacher-attendance module, without re-fetching the entire dashboard.
+          if (typeof ensureLiveModules === 'function') {
+            ensureLiveModules(['teacher_attendance'], { force:true }).then(ok => {
+              if (!ok) showAlert('alertDanger', 'Data tersimpan, tetapi daftar belum dapat diperbarui. Coba buka ulang Absensi Guru.');
+            });
+          } else fetchDashboardData({ silent:true });
+        }
       }).withFailureHandler(error => {
         btn.disabled = false;
         btn.textContent = document.getElementById('editAbsensiGuruID').value ? 'Update Absensi Guru' : 'Simpan Absensi Guru';
@@ -228,7 +236,14 @@
       if (!confirm('Hapus catatan absensi guru ini?')) return;
       google.script.run.withSuccessHandler(res => {
         showAlert(res && res.success ? 'alertSuccess' : 'alertDanger', res && res.message ? res.message : 'Gagal menghapus absensi guru.');
-        if (res && res.success) { cancelEditTeacherAttendance(); fetchDashboardData(); }
+        if (res && res.success) {
+          cancelEditTeacherAttendance();
+          globalTeacherAttendanceList = (globalTeacherAttendanceList || []).filter(row => String(row.absensiGuruID || '') !== String(absensiGuruID));
+          renderAdminTeacherManagement();
+          if (typeof renderTeacherMonitoring === 'function') renderTeacherMonitoring();
+          // Confirm with server in the background; do not block removal from the list.
+          if (typeof ensureLiveModules === 'function') ensureLiveModules(['teacher_attendance'], { force:true });
+        }
       }).deleteTeacherAttendance(absensiGuruID, currentUser.userType);
     }
 

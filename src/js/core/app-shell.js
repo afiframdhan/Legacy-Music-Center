@@ -253,12 +253,10 @@
       if (button) button.textContent = willOpen ? 'Selesai' : 'Perbesar';
       requestAnimationFrame(() => {
         layoutSignatureCanvas(pad, willOpen);
-        // Teacher attendance uses a very wide compact canvas. Its old aspect
-        // letterboxes the fullscreen signing area and clips pointer positions.
-        // For a BLANK teacher signature only, match the signing coordinate plane
-        // to the actual fullscreen canvas before collecting the first stroke.
-        // Existing signatures and all student signature pads remain unchanged.
-        if (willOpen && canvasId === 'canvasTtdAbsensiGuru' && isCanvasBlank(canvasId)) {
+        // Any blank signature pad should use the fullscreen drawing plane.
+        // Otherwise the compact aspect letterboxes/clips pointer positions,
+        // especially on portrait phones. Fit-to-canvas remains active on close.
+        if (willOpen && isCanvasBlank(canvasId)) {
           const bounds = pad.canvas.getBoundingClientRect();
           if (bounds.width > 0 && bounds.height > 0) {
             pad.aspect = bounds.width / bounds.height;
