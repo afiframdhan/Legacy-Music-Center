@@ -10,7 +10,7 @@
     'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
     'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addJadwalPengganti','deleteJadwalPengganti',
     'addPengumuman','deletePengumuman','recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire',
-    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile','changeOwnPassword'
+    'saveAnnualExam','publishAnnualExam','deleteAnnualExam','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','publishStudent360Report','deleteStudent360Report','updateUserPhoto','updateSelfProfile','changeOwnPassword','resetStudentPassword'
   ]);
 
   async function rawRpc(method, args) {
@@ -5314,6 +5314,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
           <td data-label="Aksi"><div class="table-actions">
             <button class="btn-action btn-edit" onclick="openEditModal(decodeURIComponent('${encodeURIComponent(s.nama)}'))">Edit</button>
             <button class="btn-action" style="background:#fff0e9;color:#c2410c;border:1px solid #fed7c3;" onclick="event.stopPropagation();openStudent360Report(decodeURIComponent('${encodeURIComponent(s.siswaID || s.nama)}'))">Laporan Lengkap</button>
+            ${currentUser.userType === 'admin' && s.siswaID ? `<button class="btn-action" style="background:#fff4e8;color:#9a3412;border:1px solid #fed7aa;" onclick="event.stopPropagation();resetStudentPasswordAdmin(decodeURIComponent('${encodeURIComponent(s.siswaID)}'),decodeURIComponent('${encodeURIComponent(s.nama)}'),this)">Reset Password</button>` : ''}
             <button class="btn-action btn-delete" onclick="deleteSiswa(decodeURIComponent('${encodeURIComponent(s.nama)}'))">Hapus</button>
           </div>
           </td>
@@ -5322,6 +5323,23 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
 
     }
 
+
+    function resetStudentPasswordAdmin(studentId, studentName, button) {
+      if (currentUser.userType !== 'admin' || !studentId || !button || button.disabled) return;
+      if (!confirm(`Buat password sementara baru untuk siswa "${studentName}"? Password lama langsung tidak berlaku dan siswa perlu mengganti password saat login berikutnya.`)) return;
+      const oldLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Mereset...';
+      LegacyAPI.rpc('resetStudentPassword', [studentId]).then(result => {
+        if (!result || !result.success || !result.initialPassword) {
+          alert(result?.message || 'Reset password gagal.');
+          return;
+        }
+        // Password shown only in this confirmation. Never store in localStorage or DOM.
+        alert(`Password sementara baru untuk ${studentName}:\n\n${result.initialPassword}\n\nSalin sekarang dan berikan secara pribadi kepada siswa/orang tua. Password lama sudah tidak berlaku. Siswa wajib menggantinya saat login.`);
+      }).catch(error => alert('Reset password gagal: ' + (error?.message || error)))
+        .finally(() => { button.disabled = false; button.textContent = oldLabel; });
+    }
 
     const student360ReportCache = new Map();
 
