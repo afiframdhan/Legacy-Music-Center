@@ -1319,44 +1319,29 @@ html[data-theme="dark"] .archive-error{background:#35191d;color:#fecaca;border-c
 }
 
 
-/* Admin student class history — readable in PWA dark mode and narrow screens. */
-.lmc-class-history {display:block;width:100%;max-width:390px;min-width:0;margin-top:8px;color:var(--lmc-text,#17232d);}
-.lmc-class-history-summary {cursor:pointer;color:#c2410c;font-size:12px;font-weight:700;line-height:1.45;white-space:normal;overflow-wrap:anywhere;list-style-position:inside;}
-.lmc-class-history-panel {box-sizing:border-box;width:100%;min-width:0;margin-top:8px;padding:5px 10px;background:var(--lmc-surface,#fff);border:1px solid var(--lmc-border,#e2e8f0);border-radius:10px;color:var(--lmc-text,#17232d);}
-.lmc-class-history-row {display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:9px 0;border-bottom:1px solid var(--lmc-border,#e2e8f0);}
-.lmc-class-history-row:last-child {border-bottom:0;}
-.lmc-class-history-name {display:block;flex:1 1 auto;min-width:0;font-size:12px;line-height:1.5;overflow-wrap:anywhere;color:var(--lmc-text,#17232d);}
-.lmc-class-history-status.badge {display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:auto;max-width:none;min-width:0;white-space:nowrap;word-break:normal;overflow-wrap:normal;line-height:1.2;padding:5px 9px;border-radius:999px;font-size:11px;}
-html[data-theme="dark"] .lmc-class-history-panel {background:var(--lmc-surface,#18263b)!important;border-color:var(--lmc-border,#34465b)!important;color:var(--lmc-text,#f1f5f9)!important;}
-html[data-theme="dark"] .lmc-class-history-name {color:var(--lmc-text,#f1f5f9)!important;}
-html[data-theme="dark"] .lmc-class-history-row {border-color:var(--lmc-border,#34465b)!important;}
-html[data-theme="dark"] .lmc-class-history-summary {color:#fb923c!important;}
-@media (max-width:600px) {
-  .lmc-class-history {width:100%;max-width:100%;}
-  .lmc-class-history-panel {padding:4px 9px;}
-  .lmc-class-history-row {gap:8px;align-items:flex-start;}
-  .lmc-class-history-name {font-size:12px;line-height:1.45;}
-  .lmc-class-history-status.badge {font-size:11px;padding:5px 9px;}
-}
-
-
-/* LMC 2026-10-13 v2: explicit colors, no inherited light CSS variables. */
-.lmc-class-history {box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;}
-.lmc-class-history-summary {display:list-item!important;max-width:100%;font-size:13px!important;line-height:1.5!important;overflow-wrap:break-word!important;word-break:normal!important;}
-.lmc-class-history-panel {box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important;padding:8px 12px!important;background:#ffffff!important;color:#17232d!important;border:1px solid #dce3ed!important;border-radius:12px!important;}
-.lmc-class-history-row {display:flex!important;align-items:center!important;justify-content:space-between!important;flex-wrap:nowrap!important;gap:12px!important;min-width:0!important;padding:10px 0!important;border-color:#e2e8f0!important;}
-.lmc-class-history-name {flex:1 1 0!important;display:block!important;min-width:0!important;max-width:100%!important;color:#263445!important;font-size:13px!important;line-height:1.45!important;overflow-wrap:break-word!important;word-break:normal!important;}
-.lmc-class-history-status.badge {box-sizing:border-box!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 auto!important;inline-size:max-content!important;width:max-content!important;min-width:max-content!important;max-width:none!important;height:auto!important;white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important;line-height:1.25!important;font-size:12px!important;padding:6px 11px!important;text-align:center!important;border-radius:999px!important;}
-html[data-theme="dark"] .lmc-class-history-panel {background:#19263b!important;color:#f1f5f9!important;border-color:#394b65!important;}
-html[data-theme="dark"] .lmc-class-history-name {color:#e5edf8!important;}
-html[data-theme="dark"] .lmc-class-history-row {border-color:#34465e!important;}
-html[data-theme="dark"] .lmc-class-history-summary {color:#fb923c!important;}
-html[data-theme="dark"] .lmc-class-history-status.badge-success {background:#214a37!important;color:#b9f5cb!important;}
-html[data-theme="dark"] .lmc-class-history-status.badge-danger {background:#542733!important;color:#ffc2cc!important;}
-html[data-theme="dark"] .lmc-class-history-status.badge-warning {background:#55411b!important;color:#ffdf9a!important;}
-@media (max-width:600px) {
-  .lmc-class-history-panel {padding:6px 10px!important;}
-  .lmc-class-history-row {gap:8px!important;}
-  .lmc-class-history-name {font-size:12px!important;}
-  .lmc-class-history-status.badge {font-size:11px!important;padding:6px 9px!important;}
+/* Admin class history: single source of truth for desktop, mobile and both themes. */
+.lmc-class-history{box-sizing:border-box;width:100%;max-width:390px;min-width:0;margin-top:8px;}
+.lmc-class-history-summary{cursor:pointer;color:#c2410c;font-size:12px;font-weight:700;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-break:normal;}
+.lmc-class-history-panel{box-sizing:border-box;width:100%;min-width:0;margin-top:8px;padding:8px 12px;border:1px solid #dce3ed;border-radius:12px;background:#fff;color:#17232d;}
+.lmc-class-history-row{display:grid;grid-template-columns:minmax(0,1fr) max-content;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #e2e8f0;min-width:0;}
+.lmc-class-history-row:last-child{border-bottom:0;}
+.lmc-class-history-name{display:block;min-width:0;font-size:12px;line-height:1.5;overflow-wrap:break-word;word-break:normal;color:#263445;}
+.lmc-class-history-status.badge{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;justify-self:end;width:auto;min-width:max-content;max-width:none;white-space:nowrap;word-break:normal;overflow-wrap:normal;font-size:11px;line-height:1.2;padding:6px 10px;border-radius:999px;}
+html[data-theme="dark"] .lmc-class-history-summary{color:#fb923c!important;}
+html[data-theme="dark"] .lmc-class-history-panel{background:#19263b!important;color:#f1f5f9!important;border-color:#394b65!important;}
+html[data-theme="dark"] .lmc-class-history-name{color:#e5edf8!important;}
+html[data-theme="dark"] .lmc-class-history-row{border-color:#34465e!important;}
+html[data-theme="dark"] .lmc-class-history-status.badge-success{background:#214a37!important;color:#b9f5cb!important;}
+html[data-theme="dark"] .lmc-class-history-status.badge-danger{background:#542733!important;color:#ffc2cc!important;}
+html[data-theme="dark"] .lmc-class-history-status.badge-warning{background:#55411b!important;color:#ffdf9a!important;}
+@media(max-width:600px){
+  /* Parent student table uses td{display:grid;grid-template-columns:100px 1fr}.
+     The history details must span BOTH columns, not the 100px label column. */
+  .dashboard-student-table tbody tr.mobile-expanded td[data-label="Instrumen"] > .lmc-class-history{
+    grid-column:1 / -1!important;justify-self:stretch!important;width:100%!important;max-width:100%!important;
+  }
+  .lmc-class-history-panel{padding:7px 10px;}
+  .lmc-class-history-row{gap:8px;}
+  .lmc-class-history-name{font-size:12px;}
+  .lmc-class-history-status.badge{font-size:11px;padding:6px 9px;}
 }
