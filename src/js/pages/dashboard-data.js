@@ -390,6 +390,8 @@
       }
 
       globalSiswaList = data.siswaList || [];
+      lmcCurrentStudentClassInfo = data.userType === 'siswa' ? (data.siswaInfo || null) : null;
+      if (typeof lmcRenderStudentClassPicker === 'function') lmcRenderStudentClassPicker();
 
       const gList = globalGuruList;
       const gSelects = document.querySelectorAll('#editJadwalGuru, #addSiswaGuruSelect, #editSiswaGuruSelect, #penggantiGuruSelect');

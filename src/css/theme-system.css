@@ -299,3 +299,6 @@ html[data-theme="light"] .theme-option[aria-pressed="true"] {
   color:#c2410c;
   box-shadow:0 0 0 2px rgba(241,90,36,.10);
 }
+
+/* Student multi-class selector */
+#lmc-student-class-bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 16px;padding:12px 16px;border:1px solid var(--border-color,#45556b);border-radius:14px;background:var(--card-bg,transparent);color:inherit;max-width:100%;box-sizing:border-box}#lmc-student-class-bar label{font-size:13px;font-weight:700;white-space:nowrap}#lmc-student-class-bar select{min-width:0;flex:1 1 230px;max-width:100%;font-size:14px;padding:10px 12px;border-radius:9px;border:1px solid #75839a;background:var(--bg-primary,#fff);color:inherit}@media(max-width:600px){#lmc-student-class-bar{margin:8px 10px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr)}#lmc-student-class-bar select{width:100%}}

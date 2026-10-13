@@ -116,7 +116,7 @@
     function repertoireRoleItems() {
       let items = Array.isArray(globalRepertoireList) ? globalRepertoireList.slice() : [];
       if (currentUser.userType === 'siswa') {
-        items = items.filter(item => String(item.siswaID || '').trim() === String(currentUser.userID || '').trim());
+        items = items.filter(item => String(item.siswaID || '').trim() === String(currentUser.userID || '').trim() && lmcStudentRecordMatchesClass(item));
       }
       if (currentUser.userType === 'guru') {
         const ownId = String(currentUser.userID || '').trim();

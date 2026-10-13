@@ -57,7 +57,7 @@
     }
 
     function getCurrentLearningProgress(studentName, period, periodType) {
-      const records = globalLearningProgressList.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(studentName || '').trim().toLowerCase());
+      const records = globalLearningProgressList.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(studentName || '').trim().toLowerCase() && (currentUser.userType !== 'siswa' || lmcStudentRecordMatchesClass(item)));
       if (period) return records.find(item => String(item.periode || '') === String(period) && (!periodType || getLearningProgressPeriodType(item) === periodType)) || null;
       return records[0] || null;
     }
@@ -208,6 +208,7 @@
       const matchingNameSet = new Set(matchingNames.map(name => String(name).trim().toLowerCase()));
       const matchingRecords = (globalLearningProgressList || []).filter(item => {
         if (!matchingNameSet.has(String(item.namaSiswa || '').trim().toLowerCase())) return false;
+        if (isStudent && !lmcStudentRecordMatchesClass(item)) return false;
         return !type || getLearningProgressPeriodType(item) === type;
       });
       const periods = [...new Set(matchingRecords.map(item => item.periode).filter(Boolean))].sort().reverse();

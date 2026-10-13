@@ -151,7 +151,7 @@
     function phFilteredResources() {
       const sid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
       const q=String(document.getElementById('practiceSearch')?.value||'').trim().toLowerCase();
-      return practiceResources.filter(x => (!sid || String(x.studentID||'')===sid) && (!q || [x.title,x.description,x.studentName,x.instrument].some(v=>String(v||'').toLowerCase().includes(q))));
+      return practiceResources.filter(x => (!sid || String(x.studentID||'')===sid) && (currentUser.userType !== 'siswa' || lmcStudentRecordMatchesClass(x)) && (!q || [x.title,x.description,x.studentName,x.instrument].some(v=>String(v||'').toLowerCase().includes(q))));
     }
 
     function mediaEvalBrowseSourceItem(studentId, value) {
@@ -215,7 +215,7 @@
           x.title,x.studentName,x.instrument,x.strength,x.improvement,x.nextTarget,
           x.sourceLabel,x.teacherName,x.notes,phFormatDate(x.updatedAt||x.createdAt)
         ].map(v=>String(v||'').toLowerCase()).join(' ');
-        return (!sid || String(x.studentID||'')===sid) && mediaEvalMatchesBrowseSource(x,mediaEvalBrowseSource,sid) && (!q || haystack.includes(q));
+        return (!sid || String(x.studentID||'')===sid) && (currentUser.userType !== 'siswa' || lmcStudentRecordMatchesClass(x)) && mediaEvalMatchesBrowseSource(x,mediaEvalBrowseSource,sid) && (!q || haystack.includes(q));
       });
     }
 

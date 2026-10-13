@@ -202,6 +202,7 @@
       if(activeLink) activeLink.classList.add('active');
 
       document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+      if (typeof lmcRenderStudentClassPicker === 'function') lmcRenderStudentClassPicker();
       const sec = document.getElementById(sectionId);
       if(sec) sec.classList.add('active');
 

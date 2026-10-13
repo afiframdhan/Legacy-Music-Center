@@ -4,7 +4,7 @@
       const filterGuru = document.getElementById('filterJadwalGuru') ? document.getElementById('filterJadwalGuru').value.trim().toLowerCase() : '';
       const adminDashGuruFilter = document.getElementById('adminSelectGuruFilter') ? document.getElementById('adminSelectGuruFilter').value.trim().toLowerCase() : '';
 
-      let listJadwal = globalJadwalList;
+      let listJadwal = currentUser.userType === 'siswa' ? globalJadwalList.filter(lmcStudentRecordMatchesClass) : globalJadwalList;
 
       if (adminDashGuruFilter !== '') {
         listJadwal = listJadwal.filter(j => String(j.guru || '').trim().toLowerCase() === adminDashGuruFilter);
@@ -415,6 +415,7 @@ Guru: ${props.guru}`);
 
       let filteredList = globalAbsensiList.filter(item => {
         if (!attendanceBelongsToCurrentTeacher(item)) return false;
+        if (isSiswa && !lmcStudentRecordMatchesClass(item)) return false;
         if (isAdmin && filterGuruVal !== '') {
           if (String(item.guruCatat || '').trim().toLowerCase() !== filterGuruVal) return false;
         }
