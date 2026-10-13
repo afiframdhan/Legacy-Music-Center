@@ -1704,11 +1704,18 @@ async function purgeExitedStudentSupabase(env, identifier) {
   const id = String(student?.student_id || history?.student_id || (historyRows.length ? key : '')).trim();
   const name = String(student?.name || history?.student_name_snapshot || (!id ? key : '')).trim();
 
-  // Jika record utama sudah terhapus, anggap sebagai orphan archive dan bersihkan sisa riwayat/data.
+  // Jangan pernah melaporkan berhasil bila satu operasi penghapusan gagal.
+  // Jalankan secara berurutan agar foreign key dibersihkan sebelum siswa.
   const del = async (table, filter) => {
     if (!filter) return;
-    try { await supabaseRest(env, `/rest/v1/${table}?${filter}`, { method:'DELETE', headers:{Prefer:'return=minimal'} }); }
-    catch (e) { console.error(`Purge ${table} skipped:`, e); }
+    try {
+      await supabaseRest(env, `/rest/v1/${table}?${filter}`, {
+        method:'DELETE', headers:{ Prefer:'return=minimal' }
+      });
+    } catch (error) {
+      console.error(`Permanent student purge failed on ${table}:`, error);
+      throw new Error(`Penghapusan terhenti pada tabel ${table}: ${String(error?.message || error)}. Sebagian data mungkin sudah terhapus; jangan mengulang sebelum memeriksa penyebabnya.`);
+    }
   };
 
   if (id) {
@@ -1736,10 +1743,21 @@ async function purgeExitedStudentSupabase(env, identifier) {
     if (!id) await del('student_history', `student_name_snapshot=eq.${encodeURIComponent(name)}`);
   }
 
+  // Gunakan query ketat, bukan sbRowsSafe, agar kegagalan koneksi tidak
+  // diterjemahkan secara keliru menjadi data sudah kosong.
+  const remainingStudents = id
+    ? await sbRows(env, 'students', { student_id:`eq.${id}`, select:'student_id', limit:'1' })
+    : [];
+  const remainingHistory = id
+    ? await sbRows(env, 'student_history', { student_id:`eq.${id}`, select:'student_id', limit:'1' })
+    : (name ? await sbRows(env, 'student_history', { student_name_snapshot:`eq.${name}`, select:'student_id', limit:'1' }) : []);
+  if (remainingStudents.length || remainingHistory.length) {
+    throw new Error('Verifikasi gagal: data siswa atau riwayat keluar masih ada di Supabase. Penghapusan belum selesai.');
+  }
+
   if (!student && !historyRows.length) {
     return { success:true, alreadyDeleted:true, siswaID:key, message:'Data siswa sudah tidak ada di Supabase. Tidak ada arsip tersisa untuk dihapus.' };
   }
-
   return { success:true, siswaID:id || key, message:`${student ? `Siswa ${student.name || name || ''}` : `Arsip ${name || key}`} dan seluruh data terkait berhasil dihapus permanen.` };
 }
 
