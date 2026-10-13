@@ -4323,7 +4323,7 @@ async function buildTeacherDashboardSupabase(env, session) {
     if (student && student.student_id) studentMap.set(String(student.student_id), student);
   });
   const students = [...studentMap.values()].sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'id'));
-  const operationalSchedules = filterOperationalScheduleRows(schedules, students);
+  const operationalSchedulesByStudent = filterOperationalScheduleRows(schedules, students);
 
   const classMap = new Map();
   for (const row of teacherClasses) {
@@ -4337,12 +4337,15 @@ async function buildTeacherDashboardSupabase(env, session) {
   const studentNames = new Set();
 
   for (const student of students) {
-    // Teacher's active roster is based on ACTIVE ENROLLMENTS, not student.status
-    // or the legacy students.teacher_id (which can still reference an exited class).
-    const teacherClassesRaw = (classMap.get(String(student.student_id || '')) || [])
-      .filter(row => String(row.status || 'Aktif').trim().toLowerCase() === 'aktif');
+    // Roster guru adalah RIWAYAT keikutsertaan kelas milik guru ini:
+    // Aktif, Cuti, dan Keluar tetap terlihat. Status siswa di roster
+    // harus dihitung per kelas, bukan students.status lintas instrumen.
+    const teacherClassesRaw = classMap.get(String(student.student_id || '')) || [];
     if (!teacherClassesRaw.length) continue;
     const kelasList = teacherClassesRaw.map(row => mapClassRow(row, schedules));
+    const classStatuses = teacherClassesRaw.map(row => String(row.status || 'Aktif').trim().toLowerCase());
+    const teacherClassStatus = classStatuses.includes('aktif') ? 'Aktif'
+      : classStatuses.includes('cuti') ? 'Cuti' : 'Keluar';
     const instruments = uniqueText(kelasList.map(x => x.instrumen));
     const grades = uniqueText(kelasList.map(x => x.grade));
 
@@ -4353,18 +4356,26 @@ async function buildTeacherDashboardSupabase(env, session) {
       kelas:grades.join(', ') || student.grade || '',
       email:student.email || '',
       noHp:student.phone || '',
-      status:student.status || '',
+      status:teacherClassStatus,
       foto:student.photo_url || '',
       instrumen:instruments.join(', ') || student.instrument || 'Gitar',
       guru:teacher.name || '',
       kelasList,
       tglDaftar:formatDbDateIso(student.registered_on),
-      tglKeluar:formatDbDateIso(student.left_on)
+      tglKeluar:teacherClassStatus === 'Keluar' ? (kelasList.find(k => String(k.status).toLowerCase() === 'keluar')?.tglSelesai || formatDbDateIso(student.left_on)) : ''
     });
 
     studentIds.add(String(student.student_id || '').toLowerCase());
     studentNames.add(String(student.name || '').trim().toLowerCase());
   }
+
+  // Siswa Cuti/Keluar ada di daftar guru, tetapi jadwal operasional
+  // hanya berlaku bagi pasangan siswa + instrumen + guru yang Aktif.
+  const activeClassKeys = new Set(teacherClasses
+    .filter(c => String(c.status || '').trim().toLowerCase() === 'aktif')
+    .map(c => `${String(c.student_id || '')}|${String(c.instrument || '').trim().toLowerCase()}`));
+  const operationalSchedules = operationalSchedulesByStudent.filter(row =>
+    activeClassKeys.has(`${String(row.student_id || '')}|${String(row.instrument || '').trim().toLowerCase()}`));
 
   const todayName = jakartaWeekday();
   const todayCount = operationalSchedules.filter(row =>
