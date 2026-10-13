@@ -1688,77 +1688,87 @@ async function purgeExitedStudentSupabase(env, identifier) {
   const key = String(identifier || '').trim();
   if (!key) throw new Error('Identitas siswa kosong.');
 
-  let rows = await sbRowsSafe(env, 'students', { student_id:`eq.${key}`, limit:'1' });
-  if (!rows.length) rows = await sbRowsSafe(env, 'students', { name:`eq.${key}`, limit:'1' });
-  const student = rows[0] || null;
-
-  let historyRows = [];
-  if (!student) historyRows = await sbRowsSafe(env, 'student_history', { student_id:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
-  if (!student && !historyRows.length) historyRows = await sbRowsSafe(env, 'student_history', { student_name_snapshot:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
-
+  // Read strictly: a network/database failure must never look like a missing student.
+  const read = (table, filters) => sbRows(env, table, filters);
+  let students = await read('students', { student_id:`eq.${key}`, limit:'2' });
+  if (!students.length) students = await read('students', { name:`eq.${key}`, limit:'2' });
+  if (students.length > 1) throw new Error('Ada lebih dari satu siswa dengan nama tersebut. Hapus menggunakan ID siswa.');
+  const student = students[0] || null;
   if (student && String(student.status || '').trim().toLowerCase() !== 'keluar') {
     throw new Error('Hanya siswa berstatus Keluar yang dapat dihapus permanen.');
   }
 
-  const history = historyRows[0] || null;
-  const id = String(student?.student_id || history?.student_id || (historyRows.length ? key : '')).trim();
-  const name = String(student?.name || history?.student_name_snapshot || (!id ? key : '')).trim();
+  const id = String(student?.student_id || '').trim();
+  let archive = [];
+  if (!student) {
+    archive = await read('student_history', { student_id:`eq.${key}`, limit:'200' });
+    if (!archive.length) archive = await read('student_history', { student_name_snapshot:`eq.${key}`, limit:'200' });
+  }
+  // Do not fabricate an ID from the name: legacy archives can have student_id=NULL.
+  const archiveIds = [...new Set(archive.map(row => String(row.student_id || '').trim()).filter(Boolean))];
+  if (!student && archiveIds.length > 1) throw new Error('Riwayat mempunyai beberapa ID siswa. Tidak aman menghapus berdasarkan nama.');
+  const resolvedId = id || archiveIds[0] || '';
+  const name = String(student?.name || archive[0]?.student_name_snapshot || key).trim();
+  const nameOnlyArchive = !student && !resolvedId && archive.length > 0;
 
-  // Jangan pernah melaporkan berhasil bila satu operasi penghapusan gagal.
-  // Jalankan secara berurutan agar foreign key dibersihkan sebelum siswa.
   const del = async (table, filter) => {
-    if (!filter) return;
     try {
       await supabaseRest(env, `/rest/v1/${table}?${filter}`, {
         method:'DELETE', headers:{ Prefer:'return=minimal' }
       });
     } catch (error) {
-      console.error(`Permanent student purge failed on ${table}:`, error);
-      throw new Error(`Penghapusan terhenti pada tabel ${table}: ${String(error?.message || error)}. Sebagian data mungkin sudah terhapus; jangan mengulang sebelum memeriksa penyebabnya.`);
+      throw new Error(`Gagal menghapus ${table}: ${error?.message || error}`);
     }
   };
 
-  if (id) {
-    await del('push_delivery_events', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-    await del('push_subscriptions', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-    await del('media_evaluations', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('practice_resources', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_repertoire', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('annual_exam_assessments', `student_public_id=eq.${encodeURIComponent(id)}`);
-    await del('student_report_publications', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('learning_progress', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('assignments', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_attendance', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('schedule_overrides', `absent_student_id=eq.${encodeURIComponent(id)}`);
-    await del('schedule_overrides', `slot_student_id=eq.${encodeURIComponent(id)}`);
-    await del('replacement_schedules', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('schedules', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_classes', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
-    await del('students', `student_id=eq.${encodeURIComponent(id)}`);
+  if (nameOnlyArchive) {
+    // A different student with this same name must never lose their history.
+    const possibleStudents = await read('students', { name:`eq.${name}`, limit:'2' });
+    if (possibleStudents.length) throw new Error('Ada siswa aktif/tersimpan dengan nama sama. Arsip tanpa ID tidak boleh dihapus berdasarkan nama.');
+    const nameArchive = await read('student_history', { student_name_snapshot:`eq.${name}`, limit:'500' });
+    if (nameArchive.some(row => row.student_id !== null && String(row.student_id || '').trim())) {
+      throw new Error('Arsip nama sama mengandung ID siswa berbeda. Penghapusan berdasarkan nama dibatalkan.');
+    }
+    await del('student_history', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(name)}`);
+    const remaining = await read('student_history', { student_id:'is.null', student_name_snapshot:`eq.${name}`, limit:'1' });
+    if (remaining.length) throw new Error('Verifikasi gagal: riwayat tanpa ID masih tersimpan.');
+    return { success:true, siswaID:key, message:`Arsip siswa ${name} berhasil dihapus permanen.` };
   }
-  if (name) {
+
+  if (!resolvedId) {
+    return { success:true, alreadyDeleted:true, siswaID:key, message:'Siswa dan arsip sudah tidak ditemukan.' };
+  }
+  const eid = encodeURIComponent(resolvedId);
+  const tasks = [
+    ['push_delivery_events', `user_type=eq.siswa&user_id=eq.${eid}`],
+    ['push_subscriptions', `user_type=eq.siswa&user_id=eq.${eid}`],
+    ['media_evaluations', `student_id=eq.${eid}`],
+    ['practice_resources', `student_id=eq.${eid}`],
+    ['student_repertoire', `student_id=eq.${eid}`],
+    ['annual_exam_assessments', `student_public_id=eq.${eid}`],
+    ['student_report_publications', `student_id=eq.${eid}`],
+    ['learning_progress', `student_id=eq.${eid}`],
+    ['assignments', `student_id=eq.${eid}`],
+    ['student_attendance', `student_id=eq.${eid}`],
+    ['schedule_overrides', `absent_student_id=eq.${eid}`],
+    ['schedule_overrides', `slot_student_id=eq.${eid}`],
+    ['replacement_schedules', `student_id=eq.${eid}`],
+    ['schedules', `student_id=eq.${eid}`],
+    ['student_classes', `student_id=eq.${eid}`],
+    ['student_history', `student_id=eq.${eid}`],
+    ['audit_logs', `entity_id=eq.${eid}`],
+    ['students', `student_id=eq.${eid}`]
+  ];
+  for (const [table, filter] of tasks) await del(table, filter);
+  if (student && name) {
     await del('learning_progress', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(name)}`);
-    if (!id) await del('student_history', `student_name_snapshot=eq.${encodeURIComponent(name)}`);
+    // Do not blindly delete orphan student_history by name: names are not unique.
   }
-
-  // Gunakan query ketat, bukan sbRowsSafe, agar kegagalan koneksi tidak
-  // diterjemahkan secara keliru menjadi data sudah kosong.
-  const remainingStudents = id
-    ? await sbRows(env, 'students', { student_id:`eq.${id}`, select:'student_id', limit:'1' })
-    : [];
-  const remainingHistory = id
-    ? await sbRows(env, 'student_history', { student_id:`eq.${id}`, select:'student_id', limit:'1' })
-    : (name ? await sbRows(env, 'student_history', { student_name_snapshot:`eq.${name}`, select:'student_id', limit:'1' }) : []);
-  if (remainingStudents.length || remainingHistory.length) {
-    throw new Error('Verifikasi gagal: data siswa atau riwayat keluar masih ada di Supabase. Penghapusan belum selesai.');
+  if ((await read('students', { student_id:`eq.${resolvedId}`, limit:'1' })).length ||
+      (await read('student_history', { student_id:`eq.${resolvedId}`, limit:'1' })).length) {
+    throw new Error('Verifikasi gagal: data siswa/riwayat masih ditemukan setelah penghapusan.');
   }
-
-  if (!student && !historyRows.length) {
-    return { success:true, alreadyDeleted:true, siswaID:key, message:'Data siswa sudah tidak ada di Supabase. Tidak ada arsip tersisa untuk dihapus.' };
-  }
-  return { success:true, siswaID:id || key, message:`${student ? `Siswa ${student.name || name || ''}` : `Arsip ${name || key}`} dan seluruh data terkait berhasil dihapus permanen.` };
+  return { success:true, siswaID:resolvedId, message:`Siswa ${name} dan data terkait berhasil dihapus permanen.` };
 }
 
 // ============================================================================
