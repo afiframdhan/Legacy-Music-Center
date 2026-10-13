@@ -35,7 +35,7 @@
       return [...new Set(values)].join(', ') || '-';
     }
 
-    // Admin-only breakdown: all class statuses remain visible, while the main row stays one student.
+    // Admin class history: CSS-scoped layout to support dark mode and narrow phones.
     function renderAdminStudentClassDetails(student) {
       if (currentUser.userType !== 'admin') return '';
       const classes = getStudentClassesForUI(student);
@@ -48,10 +48,10 @@
         const status = statusName(item.status);
         const badgeClass = status === 'Keluar' ? 'badge-danger' : status === 'Cuti' ? 'badge-warning' : 'badge-success';
         const title = [item.instrumen || '-', item.guru || '-', item.grade || '-'].map(v => escapeTaskHtml(String(v))).join(' · ');
-        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #e2e8f0"><span style="font-size:12px;line-height:1.5">${title}</span><span class="badge ${badgeClass}">${escapeTaskHtml(status)}</span></div>`;
+        return `<div class="lmc-class-history-row"><span class="lmc-class-history-name">${title}</span><span class="badge ${badgeClass} lmc-class-history-status">${escapeTaskHtml(status)}</span></div>`;
       }).join('');
       const inactive = classes.filter(item => statusName(item.status) !== 'Aktif').length;
-      return `<details onclick="event.stopPropagation()" style="margin-top:6px;max-width:390px"><summary style="cursor:pointer;color:#c2410c;font-size:11px;font-weight:600;white-space:normal">Lihat semua ${classes.length} kelas${inactive ? ` · ${inactive} tidak aktif` : ''}</summary><div style="padding:5px 8px;margin-top:5px;background:var(--surface, #f8fafc);border:1px solid #e2e8f0;border-radius:8px;min-width:230px">${details}</div></details>`;
+      return `<details class="lmc-class-history" onclick="event.stopPropagation()"><summary class="lmc-class-history-summary">Lihat semua ${classes.length} kelas${inactive ? ` · ${inactive} tidak aktif` : ''}</summary><div class="lmc-class-history-panel">${details}</div></details>`;
     }
 
     function studentHasClassValue(student, field, value) {
