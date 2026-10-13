@@ -27,12 +27,12 @@ const ADMIN = new Set([
   'addPengumuman', 'deletePengumuman',
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance', 'resetStudentPassword',
-  'deleteExitedStudentRecord', 'getExitedStudentArchive',
+  'deleteExitedStudentRecord', 'getExitedStudentArchive', 'updateIndependentStudentClassStatus',
   'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
 ]);
 
 const AUDIT_METHODS = new Set([
-  'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
+  'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord','updateIndependentStudentClassStatus',
   'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
   'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addPengumuman','deletePengumuman',
   'recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','saveAnnualExam','publishAnnualExam','deleteAnnualExam',
@@ -844,6 +844,55 @@ async function handleRpc(request, env, ctx) {
 
     if (ctx && result && result.success && AUDIT_METHODS.has(method)) ctx.waitUntil(recordAuditLog(env, session, method, args, result).catch(error => console.error('Audit log write failed:', error)));
       return json({ ok:true, data:result });
+  }
+
+  // Explicit admin-only, class-scoped status update. Bypasses the generic student RPC,
+  // whose SQL definition is not included in this repository.
+  if (method === 'updateIndependentStudentClassStatus') {
+    const input = safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {};
+    const classId = String(input.classId || '').trim();
+    const status = String(input.status || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(classId) || !['Aktif','Cuti','Keluar'].includes(status)) {
+      return json({ok:true,data:{success:false,message:'ID atau status kelas tidak valid.'}});
+    }
+    try {
+      const found = await sbRows(env,'student_classes',{class_id:`eq.${classId}`,limit:'1'});
+      const target = found[0];
+      if (!target?.student_id) return json({ok:true,data:{success:false,message:'Kelas tidak ditemukan.'}});
+      const all = await sbRows(env,'student_classes',{student_id:`eq.${target.student_id}`});
+      const otherActive = all.some(item => item.class_id !== classId && item.status === 'Aktif');
+      // Preserve the global student account when any other class is active.
+      // Exit for the last active class remains handled by the existing student exit flow.
+      if (status !== 'Aktif' && target.status === 'Aktif' && !otherActive) {
+        return json({ok:true,data:{success:false,message:'Ini kelas aktif terakhir. Gunakan prosedur keluar siswa biasa untuk menutup semua kelas.'}});
+      }
+      const nowDate = new Date().toISOString().slice(0,10);
+      const update = {status,ended_on: status === 'Keluar' ? (target.ended_on || nowDate) : null};
+      await supabaseRest(env,`/rest/v1/student_classes?class_id=eq.${encodeURIComponent(classId)}&student_id=eq.${encodeURIComponent(target.student_id)}`,{
+        method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(update)
+      });
+      // Only schedules for this class's instrument + teacher are affected.
+      const schedules = await sbRows(env,'schedules',{student_id:`eq.${target.student_id}`});
+      for (const schedule of schedules) {
+        if (String(schedule.instrument||'').toLowerCase() !== String(target.instrument||'').toLowerCase()) continue;
+        if (String(schedule.teacher_id||'') !== String(target.teacher_id||'')) continue;
+        await supabaseRest(env,`/rest/v1/schedules?schedule_id=eq.${encodeURIComponent(schedule.schedule_id)}`,{
+          method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({status})
+        });
+      }
+      // If a class is reactivated, ensure the student is active again.
+      if (status === 'Aktif') {
+        await supabaseRest(env,`/rest/v1/students?student_id=eq.${encodeURIComponent(target.student_id)}`,{
+          method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({status:'Aktif',left_on:null,exit_reason:null})
+        });
+      }
+      const result = {success:true,message:`Status kelas ${target.instrument || ''} berhasil menjadi ${status}. Kelas lain tidak diubah.`};
+      if (ctx) ctx.waitUntil(recordAuditLog(env,session,method,safeArgs,result).catch(error=>console.error('Audit class status:',error)));
+      return json({ok:true,data:result});
+    } catch (error) {
+      console.error('Class scoped status update failed:',error);
+      return json({ok:true,data:{success:false,message:'Penyimpanan status kelas gagal. Periksa data di dashboard sebelum mencoba lagi.'}});
+    }
   }
 
   // PHASE 10: Siswa + Kelas + schedules are now Supabase-first.
