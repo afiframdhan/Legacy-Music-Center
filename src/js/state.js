@@ -10,14 +10,34 @@ let currentUser = { userType: '', userID: '', userName: '' };
     let lmcSelectedStudentClassKey = '';
     let lmcCurrentStudentClassInfo = null;
     function lmcClassText(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
+    // Preserve the last fully resolved class context across a PWA reload.
+    // Cache is strictly scoped to the authenticated student ID (not a display name).
+    function lmcStudentClassesCacheKey() {
+      const id = String(currentUser.userID || '').trim();
+      return currentUser.userType === 'siswa' && id ? 'lmcStudentClasses:v2:' + id : '';
+    }
     function lmcStudentClassItems() {
       if (currentUser.userType !== 'siswa') return [];
-      const student = (globalSiswaList || []).find(s => String(s.siswaID || '') === String(currentUser.userID || ''))
-        || (globalSiswaList || []).find(s => lmcClassText(s.nama) === lmcClassText(currentUser.userName));
-      const resolvedStudent = student || lmcCurrentStudentClassInfo;
-      if (!resolvedStudent) return [];
-      const entries = Array.isArray(resolvedStudent.kelasList) && resolvedStudent.kelasList.length ? resolvedStudent.kelasList
-        : [{instrumen:resolvedStudent.instrumen, guru:resolvedStudent.guru, guruID:resolvedStudent.guruID, status:resolvedStudent.status}];
+      const key = lmcStudentClassesCacheKey();
+      const record = (globalSiswaList || []).find(s => String(s.siswaID || '') === String(currentUser.userID || ''));
+      const candidates = [lmcCurrentStudentClassInfo, record].filter(Boolean);
+      // Prefer complete class arrays over legacy flattened student records.
+      const resolved = candidates.find(s => Array.isArray(s.kelasList) && s.kelasList.length > 1)
+        || candidates.find(s => Array.isArray(s.kelasList) && s.kelasList.length)
+        || candidates[0] || null;
+      let entries = Array.isArray(resolved?.kelasList) ? resolved.kelasList : [];
+      if (entries.length > 1 && key) {
+        try { sessionStorage.setItem(key, JSON.stringify(entries)); } catch (_) {}
+      }
+      // Partial dashboard refreshes may omit kelasList. Do not erase a verified
+      // multi-class selector just because one response is incomplete.
+      if (!entries.length && key) {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem(key) || '[]');
+          if (Array.isArray(cached) && cached.length > 1) entries = cached;
+        } catch (_) {}
+      }
+      if (!entries.length && resolved) entries = [{instrumen:resolved.instrumen, guru:resolved.guru, guruID:resolved.guruID, status:resolved.status}];
       return entries.map((c,index) => ({...c, _key:String(c.kelasSiswaID || c.classID || c.studentClassID || [lmcClassText(c.instrumen),lmcClassText(c.guruID || c.guru),index].join(':'))}));
     }
     function lmcStudentClassSelected() {

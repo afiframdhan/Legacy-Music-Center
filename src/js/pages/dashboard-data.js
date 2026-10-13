@@ -390,7 +390,15 @@
       }
 
       globalSiswaList = data.siswaList || [];
-      lmcCurrentStudentClassInfo = data.userType === 'siswa' ? (data.siswaInfo || null) : null;
+      if (data.userType === 'siswa') {
+        const incoming = data.siswaInfo || null;
+        const prior = lmcCurrentStudentClassInfo;
+        const incomingClasses = Array.isArray(incoming?.kelasList) ? incoming.kelasList : [];
+        const priorClasses = Array.isArray(prior?.kelasList) ? prior.kelasList : [];
+        // On a partial/restore response, retain the previously resolved classes.
+        lmcCurrentStudentClassInfo = incoming && !incomingClasses.length && priorClasses.length
+          ? {...incoming, kelasList: priorClasses} : incoming;
+      } else lmcCurrentStudentClassInfo = null;
       if (typeof lmcRenderStudentClassPicker === 'function') lmcRenderStudentClassPicker();
 
       const gList = globalGuruList;
