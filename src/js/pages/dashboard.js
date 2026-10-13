@@ -23,6 +23,18 @@
       return Array.isArray(student && student.kelasList) && student.kelasList.length ? student.kelasList : [{ instrumen:student?.instrumen || '', guru:student?.guru || '', grade:student?.kelas || '' }];
     }
 
+    // List-only projection: historical classes remain intact in kelasList for Edit and reports.
+    function getActiveStudentClassesForList(student) {
+      const classes = getStudentClassesForUI(student);
+      return classes.filter(item => String(item.status || student?.status || '').trim().toLowerCase() === 'aktif');
+    }
+
+    function getActiveStudentListText(student, field) {
+      const values = getActiveStudentClassesForList(student)
+        .map(item => String(item[field] || '').trim()).filter(Boolean);
+      return [...new Set(values)].join(', ') || '-';
+    }
+
     function studentHasClassValue(student, field, value) {
       const target = String(value || '').trim().toLowerCase();
       if (!target) return true;
@@ -160,9 +172,9 @@
         previewBody.innerHTML += `<tr class="mobile-expand-row dashboard-student-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
           <td data-label="No">${index + 1}</td>
           <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
-          <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(s.instrumen || 'Gitar')}</b></td>
-          <td data-label="Guru Pengajar">${escapeTaskHtml(s.guru || '-')}</td>
-          <td data-label="Grade">${escapeTaskHtml(s.kelas || '-')}</td>
+          <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
+          <td data-label="Guru Pengajar">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
+          <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
           <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
         </tr>`;
       });
@@ -174,7 +186,7 @@
       const teacherNames = new Set();
       if (needle) {
         (globalSiswaList || []).forEach(student => {
-          getStudentClassesForUI(student).forEach(item => {
+          getActiveStudentClassesForList(student).forEach(item => {
             if (String(item.instrumen || '').trim().toLowerCase() === needle && String(item.guru || '').trim()) {
               teacherNames.add(String(item.guru || '').trim().toLowerCase());
             }
@@ -212,8 +224,8 @@
 
       if (search) {
         result = result.filter(s => {
-          const classText = getStudentClassesForUI(s).map(item => `${item.instrumen || ''} ${item.guru || ''} ${item.grade || ''}`).join(' ');
-          const haystack = `${s.nama || ''} ${s.instrumen || ''} ${s.guru || ''} ${s.kelas || ''} ${s.email || ''} ${s.noHp || ''} ${s.status || ''} ${classText}`.toLowerCase();
+          const classText = getActiveStudentClassesForList(s).map(item => `${item.instrumen || ''} ${item.guru || ''} ${item.grade || ''}`).join(' ');
+          const haystack = `${s.nama || ''} ${s.email || ''} ${s.noHp || ''} ${s.status || ''} ${classText}`.toLowerCase();
           return haystack.includes(search);
         });
       }
@@ -223,7 +235,7 @@
         const filterGuru = document.getElementById('filterSiswaGuru') ? document.getElementById('filterSiswaGuru').value.trim().toLowerCase() : '';
 
         if (filterInst !== '' || filterGuru !== '') {
-          result = result.filter(s => getStudentClassesForUI(s).some(item => {
+          result = result.filter(s => getActiveStudentClassesForList(s).some(item => {
             const instrumentMatch = !filterInst || String(item.instrumen || '').trim().toLowerCase() === filterInst;
             const teacherMatch = !filterGuru || String(item.guru || '').trim().toLowerCase() === filterGuru;
             return instrumentMatch && teacherMatch;
@@ -269,9 +281,9 @@
         sBody.innerHTML += `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
           <td data-label="No">${index + 1}</td>
           <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
-          <td data-label="Instrumen"><b>${escapeTaskHtml(s.instrumen || 'Gitar')}</b></td>
-          <td data-label="Guru">${escapeTaskHtml(s.guru || '-')}</td>
-          <td data-label="Grade">${escapeTaskHtml(s.kelas || '-')}</td>
+          <td data-label="Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
+          <td data-label="Guru">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
+          <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
           <td data-label="Email">${escapeTaskHtml(s.email || '-')}</td>
           <td data-label="No. HP">${escapeTaskHtml(s.noHp || '-')}</td>
           <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
