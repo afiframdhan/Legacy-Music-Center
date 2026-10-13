@@ -5074,7 +5074,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function studentHasClassValue(student, field, value) {
       const target = String(value || '').trim().toLowerCase();
       if (!target) return true;
-      return getStudentClassesForUI(student).some(item => String(item[field] || '').trim().toLowerCase() === target);
+      return getActiveStudentClassesForList(student).some(item => String(item[field] || '').trim().toLowerCase() === target);
     }
 
     function getScheduleStatusPill(jamMulai, jamSelesai) {

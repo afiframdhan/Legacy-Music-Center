@@ -4337,7 +4337,11 @@ async function buildTeacherDashboardSupabase(env, session) {
   const studentNames = new Set();
 
   for (const student of students) {
-    const teacherClassesRaw = classMap.get(String(student.student_id || '')) || [];
+    // Teacher's active roster is based on ACTIVE ENROLLMENTS, not student.status
+    // or the legacy students.teacher_id (which can still reference an exited class).
+    const teacherClassesRaw = (classMap.get(String(student.student_id || '')) || [])
+      .filter(row => String(row.status || 'Aktif').trim().toLowerCase() === 'aktif');
+    if (!teacherClassesRaw.length) continue;
     const kelasList = teacherClassesRaw.map(row => mapClassRow(row, schedules));
     const instruments = uniqueText(kelasList.map(x => x.instrumen));
     const grades = uniqueText(kelasList.map(x => x.grade));
