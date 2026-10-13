@@ -302,3 +302,11 @@ html[data-theme="light"] .theme-option[aria-pressed="true"] {
 
 /* Student multi-class selector */
 #lmc-student-class-bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 16px;padding:12px 16px;border:1px solid var(--border-color,#45556b);border-radius:14px;background:var(--card-bg,transparent);color:inherit;max-width:100%;box-sizing:border-box}#lmc-student-class-bar label{font-size:13px;font-weight:700;white-space:nowrap}#lmc-student-class-bar select{min-width:0;flex:1 1 230px;max-width:100%;font-size:14px;padding:10px 12px;border-radius:9px;border:1px solid #75839a;background:var(--bg-primary,#fff);color:inherit}@media(max-width:600px){#lmc-student-class-bar{margin:8px 10px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr)}#lmc-student-class-bar select{width:100%}}
+
+/* Activity-only student class selector */
+#lmc-student-class-bar{margin:0 0 18px!important;padding:14px 16px!important;display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--card-bg,var(--bg-secondary,#fff));border:1px solid var(--border-color,#d9e1eb);border-radius:14px;color:inherit;width:100%;box-sizing:border-box}
+#lmc-student-class-bar .lmc-class-picker-label{display:flex;flex-direction:column;gap:4px;min-width:0}
+#lmc-student-class-bar .lmc-class-picker-label strong{font-size:14px;line-height:1.3}
+#lmc-student-class-bar .lmc-class-picker-label small{font-size:12px;opacity:.7;line-height:1.35}
+#lmc-student-class-bar select{flex:0 1 320px;min-width:170px;max-width:100%;width:100%;background:var(--bg-primary,var(--card-bg,#fff));color:inherit;white-space:normal}
+@media(max-width:650px){#lmc-student-class-bar{display:flex;flex-direction:column;align-items:stretch;padding:12px!important;gap:10px}#lmc-student-class-bar select{flex:auto;min-width:0;width:100%}}

@@ -41,12 +41,11 @@ let currentUser = { userType: '', userID: '', userName: '' };
       return entries.map((c,index) => ({...c, _key:String(c.kelasSiswaID || c.classID || c.studentClassID || [lmcClassText(c.instrumen),lmcClassText(c.guruID || c.guru),index].join(':'))}));
     }
     function lmcStudentClassSelected() {
-      const all = lmcStudentClassItems();
-      if (all.length < 2) return null;
-      const available = all.filter(c => lmcClassText(c.status || 'Aktif') === 'aktif');
-      const selected = all.find(c => c._key === lmcSelectedStudentClassKey);
-      const chosen = selected || available[0] || all[0];
-      lmcSelectedStudentClassKey = chosen ? chosen._key : '';
+      const available = lmcStudentClassItems().filter(c => lmcClassText(c.status || 'Aktif') === 'aktif');
+      if (!available.length) { lmcSelectedStudentClassKey = ''; return null; }
+      const selected = available.find(c => c._key === lmcSelectedStudentClassKey);
+      const chosen = selected || available[0];
+      lmcSelectedStudentClassKey = chosen._key;
       return chosen;
     }
     function lmcStudentRecordMatchesClass(item) {
@@ -66,18 +65,21 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
     function lmcRenderStudentClassPicker() {
       let node = document.getElementById('lmc-student-class-bar');
-      if (currentUser.userType !== 'siswa') { if(node) node.remove(); return; }
-      const classes = lmcStudentClassItems();
-      if (classes.length < 2) { if(node) node.remove(); return; }
-      const selected = lmcStudentClassSelected();
-      if (!node) {
-        node = document.createElement('div'); node.id = 'lmc-student-class-bar';
-        const content = document.querySelector('.content') || document.querySelector('.main-content') || document.querySelector('main') || document.getElementById('contentArea');
-        if (!content) return;
-        content.insertBefore(node, content.firstChild);
+      const section = document.querySelector('.content-section.active');
+      const activities = new Set(['section-progress','section-tugas','section-repertoire','section-practice-hub','section-learning-progress']);
+      if (currentUser.userType !== 'siswa' || !section || !activities.has(section.id)) {
+        if (node) node.remove();
+        return;
       }
-      node.innerHTML = '<label for="lmc-student-class-select">Kelas yang ditampilkan</label><select id="lmc-student-class-select" aria-label="Pilih kelas pembelajaran">' +
-        classes.map(c => '<option value="'+lmcEscapeClass(c._key)+'"'+(selected && selected._key===c._key?' selected':'')+'>'+lmcEscapeClass(c.instrumen || 'Instrumen')+' — '+lmcEscapeClass(c.guru || 'Guru')+' ('+lmcEscapeClass(c.status || 'Aktif')+')</option>').join('') + '</select>';
+      // Exited/on-leave classes remain in records but are NOT selectable as active classes.
+      const classes = lmcStudentClassItems().filter(c => lmcClassText(c.status || 'Aktif') === 'aktif');
+      if (classes.length < 2) { if (node) node.remove(); lmcStudentClassSelected(); return; }
+      const selected = lmcStudentClassSelected();
+      if (!node) { node = document.createElement('div'); node.id = 'lmc-student-class-bar'; }
+      // Move the picker INSIDE the current activity section, never above the dashboard.
+      if (node.parentElement !== section) section.insertBefore(node, section.firstChild);
+      node.innerHTML = '<div class="lmc-class-picker-label"><strong>Filter Kelas</strong><small>Materi dan aktivitas sesuai instrumen dan guru yang dipilih</small></div><select id="lmc-student-class-select" aria-label="Pilih kelas pembelajaran">' +
+        classes.map(c => '<option value="'+lmcEscapeClass(c._key)+'"'+(selected && selected._key===c._key?' selected':'')+'>'+lmcEscapeClass(c.instrumen || 'Instrumen')+' — '+lmcEscapeClass(c.guru || 'Guru')+'</option>').join('') + '</select>';
       node.querySelector('select').addEventListener('change', e => {
         lmcSelectedStudentClassKey = e.target.value;
         if (typeof renderTabelTugas === 'function') renderTabelTugas();
@@ -85,6 +87,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         if (typeof renderTabelJadwal === 'function') renderTabelJadwal();
         if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat();
         if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+        if (typeof renderPracticeHub === 'function') renderPracticeHub();
       });
     }
     function lmcEscapeClass(text) {return String(text || '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
