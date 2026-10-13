@@ -2191,7 +2191,9 @@ async function patchStudentClassDatesFromPayload(env, studentId, payload) {
     used.add(String(row.class_id));
     const patch = {};
     if (startedOn) patch.started_on = startedOn;
-    if (endedOn) patch.ended_on = endedOn;
+    // Do not propagate a global exit date to another active or paused class.
+    if (String(item.status || '').trim() === 'Keluar' && endedOn) patch.ended_on = endedOn;
+    else if (['Aktif', 'Cuti'].includes(String(item.status || '').trim())) patch.ended_on = null;
     await supabaseRest(env, `/rest/v1/student_classes?class_id=eq.${encodeURIComponent(row.class_id)}`, {
       method:'PATCH',
       headers:{'Content-Type':'application/json', Prefer:'return=minimal'},
@@ -2242,7 +2244,10 @@ async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
     grade: String(item.grade || item.kelas || '').trim(),
     status: String(item.status || payload.status || 'Aktif').trim(),
     started_on: String(item.tglMulai || item.tglDaftar || payload.tglDaftar || '').trim() || null,
-    ended_on: String(payload.tglKeluar || '').trim() || null
+    // Per-class end date must never inherit the student's global exit date.
+    ended_on: String(item.status || payload.status || 'Aktif').trim() === 'Keluar'
+      ? (String(item.tglSelesai || item.tglKeluar || '').trim() || null)
+      : null
   }));
 
   await supabaseRpc(env, 'legacy_upsert_student', {

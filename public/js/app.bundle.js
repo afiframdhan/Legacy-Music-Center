@@ -5071,6 +5071,25 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       return [...new Set(values)].join(', ') || '-';
     }
 
+    // Admin-only breakdown: all class statuses remain visible, while the main row stays one student.
+    function renderAdminStudentClassDetails(student) {
+      if (currentUser.userType !== 'admin') return '';
+      const classes = getStudentClassesForUI(student);
+      if (classes.length < 2) return '';
+      const statusName = value => {
+        const status = String(value || student.status || 'Aktif').trim();
+        return ['Aktif','Cuti','Keluar'].includes(status) ? status : 'Aktif';
+      };
+      const details = classes.map(item => {
+        const status = statusName(item.status);
+        const badgeClass = status === 'Keluar' ? 'badge-danger' : status === 'Cuti' ? 'badge-warning' : 'badge-success';
+        const title = [item.instrumen || '-', item.guru || '-', item.grade || '-'].map(v => escapeTaskHtml(String(v))).join(' · ');
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #e2e8f0"><span style="font-size:12px;line-height:1.5">${title}</span><span class="badge ${badgeClass}">${escapeTaskHtml(status)}</span></div>`;
+      }).join('');
+      const inactive = classes.filter(item => statusName(item.status) !== 'Aktif').length;
+      return `<details onclick="event.stopPropagation()" style="margin-top:6px;max-width:390px"><summary style="cursor:pointer;color:#c2410c;font-size:11px;font-weight:600;white-space:normal">Lihat semua ${classes.length} kelas${inactive ? ` · ${inactive} tidak aktif` : ''}</summary><div style="padding:5px 8px;margin-top:5px;background:var(--surface, #f8fafc);border:1px solid #e2e8f0;border-radius:8px;min-width:230px">${details}</div></details>`;
+    }
+
     function studentHasClassValue(student, field, value) {
       const target = String(value || '').trim().toLowerCase();
       if (!target) return true;
@@ -5317,7 +5336,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         sBody.innerHTML += `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
           <td data-label="No">${index + 1}</td>
           <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
-          <td data-label="Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
+          <td data-label="Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b>${renderAdminStudentClassDetails(s)}</td>
           <td data-label="Guru">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
           <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
           <td data-label="Email">${escapeTaskHtml(s.email || '-')}</td>
