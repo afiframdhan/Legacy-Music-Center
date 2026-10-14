@@ -5059,10 +5059,41 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       return Array.isArray(student && student.kelasList) && student.kelasList.length ? student.kelasList : [{ instrumen:student?.instrumen || '', guru:student?.guru || '', grade:student?.kelas || '' }];
     }
 
+    // List-only projection: historical classes remain intact in kelasList for Edit and reports.
+    function getActiveStudentClassesForList(student) {
+      const classes = getStudentClassesForUI(student);
+      return classes.filter(item => String(item.status || student?.status || '').trim().toLowerCase() === 'aktif');
+    }
+
+    function getActiveStudentListText(student, field) {
+      const values = getActiveStudentClassesForList(student)
+        .map(item => String(item[field] || '').trim()).filter(Boolean);
+      return [...new Set(values)].join(', ') || '-';
+    }
+
+    // Admin class history: CSS-scoped layout to support dark mode and narrow phones.
+    function renderAdminStudentClassDetails(student) {
+      if (currentUser.userType !== 'admin') return '';
+      const classes = getStudentClassesForUI(student);
+      if (classes.length < 2) return '';
+      const statusName = value => {
+        const status = String(value || student.status || 'Aktif').trim();
+        return ['Aktif','Cuti','Keluar'].includes(status) ? status : 'Aktif';
+      };
+      const details = classes.map(item => {
+        const status = statusName(item.status);
+        const badgeClass = status === 'Keluar' ? 'badge-danger' : status === 'Cuti' ? 'badge-warning' : 'badge-success';
+        const title = [item.instrumen || '-', item.guru || '-', item.grade || '-'].map(v => escapeTaskHtml(String(v))).join(' · ');
+        return `<div class="lmc-class-history-row"><span class="lmc-class-history-name">${title}</span><span class="badge ${badgeClass} lmc-class-history-status">${escapeTaskHtml(status)}</span></div>`;
+      }).join('');
+      const inactive = classes.filter(item => statusName(item.status) !== 'Aktif').length;
+      return `<details class="lmc-class-history" onclick="event.stopPropagation()"><summary class="lmc-class-history-summary">Lihat semua ${classes.length} kelas${inactive ? ` · ${inactive} tidak aktif` : ''}</summary><div class="lmc-class-history-panel">${details}</div></details>`;
+    }
+
     function studentHasClassValue(student, field, value) {
       const target = String(value || '').trim().toLowerCase();
       if (!target) return true;
-      return getStudentClassesForUI(student).some(item => String(item[field] || '').trim().toLowerCase() === target);
+      return getActiveStudentClassesForList(student).some(item => String(item[field] || '').trim().toLowerCase() === target);
     }
 
     function getScheduleStatusPill(jamMulai, jamSelesai) {
@@ -5196,9 +5227,9 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         previewBody.innerHTML += `<tr class="mobile-expand-row dashboard-student-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
           <td data-label="No">${index + 1}</td>
           <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
-          <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(s.instrumen || 'Gitar')}</b></td>
-          <td data-label="Guru Pengajar">${escapeTaskHtml(s.guru || '-')}</td>
-          <td data-label="Grade">${escapeTaskHtml(s.kelas || '-')}</td>
+          <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
+          <td data-label="Guru Pengajar">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
+          <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
           <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
         </tr>`;
       });
@@ -5210,7 +5241,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const teacherNames = new Set();
       if (needle) {
         (globalSiswaList || []).forEach(student => {
-          getStudentClassesForUI(student).forEach(item => {
+          getActiveStudentClassesForList(student).forEach(item => {
             if (String(item.instrumen || '').trim().toLowerCase() === needle && String(item.guru || '').trim()) {
               teacherNames.add(String(item.guru || '').trim().toLowerCase());
             }
@@ -5248,8 +5279,8 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
 
       if (search) {
         result = result.filter(s => {
-          const classText = getStudentClassesForUI(s).map(item => `${item.instrumen || ''} ${item.guru || ''} ${item.grade || ''}`).join(' ');
-          const haystack = `${s.nama || ''} ${s.instrumen || ''} ${s.guru || ''} ${s.kelas || ''} ${s.email || ''} ${s.noHp || ''} ${s.status || ''} ${classText}`.toLowerCase();
+          const classText = getActiveStudentClassesForList(s).map(item => `${item.instrumen || ''} ${item.guru || ''} ${item.grade || ''}`).join(' ');
+          const haystack = `${s.nama || ''} ${s.email || ''} ${s.noHp || ''} ${s.status || ''} ${classText}`.toLowerCase();
           return haystack.includes(search);
         });
       }
@@ -5259,7 +5290,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         const filterGuru = document.getElementById('filterSiswaGuru') ? document.getElementById('filterSiswaGuru').value.trim().toLowerCase() : '';
 
         if (filterInst !== '' || filterGuru !== '') {
-          result = result.filter(s => getStudentClassesForUI(s).some(item => {
+          result = result.filter(s => getActiveStudentClassesForList(s).some(item => {
             const instrumentMatch = !filterInst || String(item.instrumen || '').trim().toLowerCase() === filterInst;
             const teacherMatch = !filterGuru || String(item.guru || '').trim().toLowerCase() === filterGuru;
             return instrumentMatch && teacherMatch;
@@ -5305,9 +5336,9 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         sBody.innerHTML += `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
           <td data-label="No">${index + 1}</td>
           <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
-          <td data-label="Instrumen"><b>${escapeTaskHtml(s.instrumen || 'Gitar')}</b></td>
-          <td data-label="Guru">${escapeTaskHtml(s.guru || '-')}</td>
-          <td data-label="Grade">${escapeTaskHtml(s.kelas || '-')}</td>
+          <td data-label="Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b>${renderAdminStudentClassDetails(s)}</td>
+          <td data-label="Guru">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
+          <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
           <td data-label="Email">${escapeTaskHtml(s.email || '-')}</td>
           <td data-label="No. HP">${escapeTaskHtml(s.noHp || '-')}</td>
           <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
@@ -8334,6 +8365,7 @@ function normalizeTaskStatus(task) {
       if (item.ruangan && !roomValues.includes(item.ruangan)) roomValues.push(item.ruangan);
       return `<div class="student-extra-class-row" data-class-id="${escapeTaskHtml(item.kelasSiswaID || '')}" data-schedule-id="${escapeTaskHtml(item.jadwalID || '')}" style="padding:12px;margin:10px 0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b style="font-size:13px;color:#f15a24;">Kelas Tambahan</b><button type="button" class="btn-action btn-delete" onclick="this.closest('.student-extra-class-row').remove()">Hapus</button></div>
+        ${mode === 'edit' && item.kelasSiswaID ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><label>Status kelas ini</label><select class="extra-class-status">${classSelectOptions(['Aktif','Cuti','Keluar'], item.status || 'Aktif')}</select><button type="button" class="btn-action btn-edit" onclick="saveIndependentStudentClassStatus(this)">Simpan Status Kelas</button></div>` : ''}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;">
           <div class="form-group" style="margin:0;"><label>Instrumen</label><select class="extra-class-instrument" required>${classSelectOptions(studentInstrumentOptions, item.instrumen || 'Gitar')}</select></div>
           <div class="form-group" style="margin:0;"><label>Guru</label><select class="extra-class-teacher" required>${classTeacherOptions(item.guru || '')}</select></div>
@@ -8363,7 +8395,7 @@ function normalizeTaskStatus(task) {
           kelasSiswaID: row.dataset.classId || '', jadwalID: row.dataset.scheduleId || '',
           instrumen: row.querySelector('.extra-class-instrument').value,
           guru: teacherSelect.value, guruID: selectedTeacher ? (selectedTeacher.dataset.guruId || '') : '',
-          grade: row.querySelector('.extra-class-grade').value, status: status,
+          grade: row.querySelector('.extra-class-grade').value, status: row.querySelector('.extra-class-status')?.value || status,
           tglMulai: row.querySelector('.extra-class-start-date')?.value || '',
           hari: row.querySelector('.extra-class-day').value, jamMulai: row.querySelector('.extra-class-start').value,
           jamSelesai: row.querySelector('.extra-class-end').value, ruangan: row.querySelector('.extra-class-room').value
@@ -8387,6 +8419,18 @@ function normalizeTaskStatus(task) {
       document.getElementById('editSiswaTanggalKeluar').value = siswa.tglKeluar || '';
       const exitReasonEl = document.getElementById('editSiswaAlasanKeluar'); if (exitReasonEl) exitReasonEl.value = siswa.alasanKeluar || '';
       document.getElementById('editSiswaStatus').value = siswa.status;
+      // Per-class status is managed independently; never use the student's global status for it.
+      let primaryStatusBox = document.getElementById('editPrimaryClassIndependentStatus');
+      if (!primaryStatusBox) {
+        primaryStatusBox = document.createElement('div');
+        primaryStatusBox.id = 'editPrimaryClassIndependentStatus';
+        primaryStatusBox.style.cssText = 'padding:10px;margin:10px 0;border:1px solid #fed7aa;border-radius:10px';
+        document.getElementById('editSiswaGrade').closest('.form-group').after(primaryStatusBox);
+      }
+      primaryStatusBox.innerHTML = primaryClass.kelasSiswaID
+        ? `<label>Status Kelas Utama (${escapeTaskHtml(primaryClass.instrumen || 'Musik')})</label><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="editPrimaryIndependentStatus">${classSelectOptions(['Aktif','Cuti','Keluar'],primaryClass.status || 'Aktif')}</select><button type="button" class="btn-action btn-edit" onclick="saveIndependentStudentClassStatus(this, true)">Simpan Status Kelas</button></div><div style="font-size:11px;color:#64748b;margin-top:5px">Tombol ini hanya mengubah kelas yang dipilih, bukan seluruh data siswa.</div>`
+        : '';
+      primaryStatusBox.dataset.classId = primaryClass.kelasSiswaID || '';
       if (document.getElementById('editSiswaGuruSelect')) {
         document.getElementById('editSiswaGuruSelect').value = primaryClass.guru || siswa.guru || '';
       }
@@ -8396,11 +8440,34 @@ function normalizeTaskStatus(task) {
       document.getElementById('modalEditSiswa').style.display = 'flex';
     }
 
+    function saveIndependentStudentClassStatus(button, isPrimary) {
+      const row = isPrimary ? document.getElementById('editPrimaryClassIndependentStatus') : button.closest('.student-extra-class-row');
+      const classId = row?.dataset.classId || '';
+      const status = isPrimary ? document.getElementById('editPrimaryIndependentStatus')?.value : row.querySelector('.extra-class-status')?.value;
+      if (!classId || !['Aktif','Cuti','Keluar'].includes(status)) return alert('Kelas tidak valid. Muat ulang halaman.');
+      if (!confirm(`Ubah hanya kelas ini menjadi ${status}? Kelas lain akan tetap seperti semula.`)) return;
+      button.disabled = true;
+      google.script.run.withSuccessHandler(res => {
+        button.disabled = false;
+        showAlert(res?.success ? 'alertSuccess' : 'alertDanger', res?.message || 'Tidak ada respons dari server.');
+        if (res?.success) { closeEditModal(); fetchDashboardData(); }
+      }).withFailureHandler(err => {
+        button.disabled = false;
+        alert('Gagal menyimpan status kelas: ' + (err?.message || err));
+      }).updateIndependentStudentClassStatus({ classId, status });
+    }
+
     function closeEditModal() { document.getElementById('modalEditSiswa').style.display = 'none'; }
     
     function handleUpdateSiswa(e) {
       e.preventDefault();
       const status = document.getElementById('editSiswaStatus').value;
+      const existingForGuard = globalSiswaList.find(s => String(s.siswaID || '') === String(document.getElementById('editSiswaID').value || ''));
+      const existingClassesForGuard = existingForGuard?.kelasList || [];
+      if (existingClassesForGuard.length > 1) {
+        alert('Siswa memiliki beberapa kelas. Demi menjaga status masing-masing kelas, gunakan tombol "Simpan Status Kelas" untuk mengubah status kelas. Pembaruan profil siswa multikelas dinonaktifkan sementara sampai fungsi SQL penyimpanan umum diverifikasi.');
+        return false;
+      }
       const primaryTeacherSelect = document.getElementById('editSiswaGuruSelect');
       const primaryTeacherOption = primaryTeacherSelect && primaryTeacherSelect.options[primaryTeacherSelect.selectedIndex];
       const existingStudent = globalSiswaList.find(s => String(s.siswaID || '') === String(document.getElementById('editSiswaID').value || '')) || {};

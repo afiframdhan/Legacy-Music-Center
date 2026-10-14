@@ -204,6 +204,7 @@
       document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
       const sec = document.getElementById(sectionId);
       if(sec) sec.classList.add('active');
+      if (typeof lmcRenderStudentClassPicker === 'function') lmcRenderStudentClassPicker();
 
       if (sectionId === 'section-jadwal') {
         setTimeout(() => {

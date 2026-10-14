@@ -94,6 +94,20 @@
           }];
         } else globalGuruList = [];
 
+        // Student class context must initialize for BOTH login and restored sessions.
+        // This is intentionally in the common dashboard-response handler, not
+        // renderGuruOrAdmin(), which never runs for student accounts.
+        if (data.userType === 'siswa') {
+          const incoming = data.siswaInfo || null;
+          const prior = lmcCurrentStudentClassInfo;
+          const incomingClasses = Array.isArray(incoming?.kelasList) ? incoming.kelasList : [];
+          const priorClasses = Array.isArray(prior?.kelasList) ? prior.kelasList : [];
+          lmcCurrentStudentClassInfo = incoming && !incomingClasses.length && priorClasses.length
+            ? {...incoming, kelasList: priorClasses} : incoming;
+        } else {
+          lmcCurrentStudentClassInfo = null;
+        }
+        if (typeof lmcRenderStudentClassPicker === 'function') lmcRenderStudentClassPicker();
         if (data.userType === 'siswa') renderSiswa(data);
         if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
         if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);

@@ -27,12 +27,12 @@ const ADMIN = new Set([
   'addPengumuman', 'deletePengumuman',
   'addGuru', 'updateGuru', 'deleteGuru',
   'recordTeacherAttendance', 'deleteTeacherAttendance', 'resetStudentPassword',
-  'deleteExitedStudentRecord', 'getExitedStudentArchive',
+  'deleteExitedStudentRecord', 'getExitedStudentArchive', 'updateIndependentStudentClassStatus',
   'getAdminControlCenter', 'getAdminAuditLogs', 'deleteAdminAuditLog', 'clearAdminAuditLogs', 'getAdminDataQuality', 'getAdminExportBackup'
 ]);
 
 const AUDIT_METHODS = new Set([
-  'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord',
+  'addGuru','updateGuru','deleteGuru','addSiswaCombined','updateSiswa','deleteSiswa','deleteExitedStudentRecord','updateIndependentStudentClassStatus',
   'updateJadwal','deleteJadwal','recordAbsensi','updateAbsensi','deleteAbsensi','addTugasCombined','submitTugasJawaban','deleteTugas',
   'saveLearningProgress','deleteLearningProgress','saveScheduleOverride','deleteScheduleOverride','addPengumuman','deletePengumuman',
   'recordTeacherAttendance','deleteTeacherAttendance','saveStudentRepertoire','deleteStudentRepertoire','savePracticeResource','deletePracticeResource','saveMediaEvaluation','deleteMediaEvaluation','saveAnnualExam','publishAnnualExam','deleteAnnualExam',
@@ -846,6 +846,55 @@ async function handleRpc(request, env, ctx) {
       return json({ ok:true, data:result });
   }
 
+  // Explicit admin-only, class-scoped status update. Bypasses the generic student RPC,
+  // whose SQL definition is not included in this repository.
+  if (method === 'updateIndependentStudentClassStatus') {
+    const input = safeArgs[0] && typeof safeArgs[0] === 'object' ? safeArgs[0] : {};
+    const classId = String(input.classId || '').trim();
+    const status = String(input.status || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(classId) || !['Aktif','Cuti','Keluar'].includes(status)) {
+      return json({ok:true,data:{success:false,message:'ID atau status kelas tidak valid.'}});
+    }
+    try {
+      const found = await sbRows(env,'student_classes',{class_id:`eq.${classId}`,limit:'1'});
+      const target = found[0];
+      if (!target?.student_id) return json({ok:true,data:{success:false,message:'Kelas tidak ditemukan.'}});
+      const all = await sbRows(env,'student_classes',{student_id:`eq.${target.student_id}`});
+      const otherActive = all.some(item => item.class_id !== classId && item.status === 'Aktif');
+      // Preserve the global student account when any other class is active.
+      // Exit for the last active class remains handled by the existing student exit flow.
+      if (status !== 'Aktif' && target.status === 'Aktif' && !otherActive) {
+        return json({ok:true,data:{success:false,message:'Ini kelas aktif terakhir. Gunakan prosedur keluar siswa biasa untuk menutup semua kelas.'}});
+      }
+      const nowDate = new Date().toISOString().slice(0,10);
+      const update = {status,ended_on: status === 'Keluar' ? (target.ended_on || nowDate) : null};
+      await supabaseRest(env,`/rest/v1/student_classes?class_id=eq.${encodeURIComponent(classId)}&student_id=eq.${encodeURIComponent(target.student_id)}`,{
+        method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(update)
+      });
+      // Only schedules for this class's instrument + teacher are affected.
+      const schedules = await sbRows(env,'schedules',{student_id:`eq.${target.student_id}`});
+      for (const schedule of schedules) {
+        if (String(schedule.instrument||'').toLowerCase() !== String(target.instrument||'').toLowerCase()) continue;
+        if (String(schedule.teacher_id||'') !== String(target.teacher_id||'')) continue;
+        await supabaseRest(env,`/rest/v1/schedules?schedule_id=eq.${encodeURIComponent(schedule.schedule_id)}`,{
+          method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({status})
+        });
+      }
+      // If a class is reactivated, ensure the student is active again.
+      if (status === 'Aktif') {
+        await supabaseRest(env,`/rest/v1/students?student_id=eq.${encodeURIComponent(target.student_id)}`,{
+          method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({status:'Aktif',left_on:null,exit_reason:null})
+        });
+      }
+      const result = {success:true,message:`Status kelas ${target.instrument || ''} berhasil menjadi ${status}. Kelas lain tidak diubah.`};
+      if (ctx) ctx.waitUntil(recordAuditLog(env,session,method,safeArgs,result).catch(error=>console.error('Audit class status:',error)));
+      return json({ok:true,data:result});
+    } catch (error) {
+      console.error('Class scoped status update failed:',error);
+      return json({ok:true,data:{success:false,message:'Penyimpanan status kelas gagal. Periksa data di dashboard sebelum mencoba lagi.'}});
+    }
+  }
+
   // PHASE 10: Siswa + Kelas + schedules are now Supabase-first.
   // A canonical Spreadsheet shadow runs after the response for legacy Drive/App Script features.
   if (method === 'addSiswaCombined' || method === 'updateSiswa' || method === 'deleteSiswa') {
@@ -1639,59 +1688,87 @@ async function purgeExitedStudentSupabase(env, identifier) {
   const key = String(identifier || '').trim();
   if (!key) throw new Error('Identitas siswa kosong.');
 
-  let rows = await sbRowsSafe(env, 'students', { student_id:`eq.${key}`, limit:'1' });
-  if (!rows.length) rows = await sbRowsSafe(env, 'students', { name:`eq.${key}`, limit:'1' });
-  const student = rows[0] || null;
-
-  let historyRows = [];
-  if (!student) historyRows = await sbRowsSafe(env, 'student_history', { student_id:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
-  if (!student && !historyRows.length) historyRows = await sbRowsSafe(env, 'student_history', { student_name_snapshot:`eq.${key}`, order:'event_at.desc.nullslast,created_at.desc', limit:'20' });
-
+  // Read strictly: a network/database failure must never look like a missing student.
+  const read = (table, filters) => sbRows(env, table, filters);
+  let students = await read('students', { student_id:`eq.${key}`, limit:'2' });
+  if (!students.length) students = await read('students', { name:`eq.${key}`, limit:'2' });
+  if (students.length > 1) throw new Error('Ada lebih dari satu siswa dengan nama tersebut. Hapus menggunakan ID siswa.');
+  const student = students[0] || null;
   if (student && String(student.status || '').trim().toLowerCase() !== 'keluar') {
     throw new Error('Hanya siswa berstatus Keluar yang dapat dihapus permanen.');
   }
 
-  const history = historyRows[0] || null;
-  const id = String(student?.student_id || history?.student_id || (historyRows.length ? key : '')).trim();
-  const name = String(student?.name || history?.student_name_snapshot || (!id ? key : '')).trim();
+  const id = String(student?.student_id || '').trim();
+  let archive = [];
+  if (!student) {
+    archive = await read('student_history', { student_id:`eq.${key}`, limit:'200' });
+    if (!archive.length) archive = await read('student_history', { student_name_snapshot:`eq.${key}`, limit:'200' });
+  }
+  // Do not fabricate an ID from the name: legacy archives can have student_id=NULL.
+  const archiveIds = [...new Set(archive.map(row => String(row.student_id || '').trim()).filter(Boolean))];
+  if (!student && archiveIds.length > 1) throw new Error('Riwayat mempunyai beberapa ID siswa. Tidak aman menghapus berdasarkan nama.');
+  const resolvedId = id || archiveIds[0] || '';
+  const name = String(student?.name || archive[0]?.student_name_snapshot || key).trim();
+  const nameOnlyArchive = !student && !resolvedId && archive.length > 0;
 
-  // Jika record utama sudah terhapus, anggap sebagai orphan archive dan bersihkan sisa riwayat/data.
   const del = async (table, filter) => {
-    if (!filter) return;
-    try { await supabaseRest(env, `/rest/v1/${table}?${filter}`, { method:'DELETE', headers:{Prefer:'return=minimal'} }); }
-    catch (e) { console.error(`Purge ${table} skipped:`, e); }
+    try {
+      await supabaseRest(env, `/rest/v1/${table}?${filter}`, {
+        method:'DELETE', headers:{ Prefer:'return=minimal' }
+      });
+    } catch (error) {
+      throw new Error(`Gagal menghapus ${table}: ${error?.message || error}`);
+    }
   };
 
-  if (id) {
-    await del('push_delivery_events', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-    await del('push_subscriptions', `user_type=eq.siswa&user_id=eq.${encodeURIComponent(id)}`);
-    await del('media_evaluations', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('practice_resources', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_repertoire', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('annual_exam_assessments', `student_public_id=eq.${encodeURIComponent(id)}`);
-    await del('student_report_publications', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('learning_progress', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('assignments', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_attendance', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('schedule_overrides', `absent_student_id=eq.${encodeURIComponent(id)}`);
-    await del('schedule_overrides', `slot_student_id=eq.${encodeURIComponent(id)}`);
-    await del('replacement_schedules', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('schedules', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_classes', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('student_history', `student_id=eq.${encodeURIComponent(id)}`);
-    await del('audit_logs', `entity_id=eq.${encodeURIComponent(id)}`);
-    await del('students', `student_id=eq.${encodeURIComponent(id)}`);
+  if (nameOnlyArchive) {
+    // A different student with this same name must never lose their history.
+    const possibleStudents = await read('students', { name:`eq.${name}`, limit:'2' });
+    if (possibleStudents.length) throw new Error('Ada siswa aktif/tersimpan dengan nama sama. Arsip tanpa ID tidak boleh dihapus berdasarkan nama.');
+    const nameArchive = await read('student_history', { student_name_snapshot:`eq.${name}`, limit:'500' });
+    if (nameArchive.some(row => row.student_id !== null && String(row.student_id || '').trim())) {
+      throw new Error('Arsip nama sama mengandung ID siswa berbeda. Penghapusan berdasarkan nama dibatalkan.');
+    }
+    await del('student_history', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(name)}`);
+    const remaining = await read('student_history', { student_id:'is.null', student_name_snapshot:`eq.${name}`, limit:'1' });
+    if (remaining.length) throw new Error('Verifikasi gagal: riwayat tanpa ID masih tersimpan.');
+    return { success:true, siswaID:key, message:`Arsip siswa ${name} berhasil dihapus permanen.` };
   }
-  if (name) {
+
+  if (!resolvedId) {
+    return { success:true, alreadyDeleted:true, siswaID:key, message:'Siswa dan arsip sudah tidak ditemukan.' };
+  }
+  const eid = encodeURIComponent(resolvedId);
+  const tasks = [
+    ['push_delivery_events', `user_type=eq.siswa&user_id=eq.${eid}`],
+    ['push_subscriptions', `user_type=eq.siswa&user_id=eq.${eid}`],
+    ['media_evaluations', `student_id=eq.${eid}`],
+    ['practice_resources', `student_id=eq.${eid}`],
+    ['student_repertoire', `student_id=eq.${eid}`],
+    ['annual_exam_assessments', `student_public_id=eq.${eid}`],
+    ['student_report_publications', `student_id=eq.${eid}`],
+    ['learning_progress', `student_id=eq.${eid}`],
+    ['assignments', `student_id=eq.${eid}`],
+    ['student_attendance', `student_id=eq.${eid}`],
+    ['schedule_overrides', `absent_student_id=eq.${eid}`],
+    ['schedule_overrides', `slot_student_id=eq.${eid}`],
+    ['replacement_schedules', `student_id=eq.${eid}`],
+    ['schedules', `student_id=eq.${eid}`],
+    ['student_classes', `student_id=eq.${eid}`],
+    ['student_history', `student_id=eq.${eid}`],
+    ['audit_logs', `entity_id=eq.${eid}`],
+    ['students', `student_id=eq.${eid}`]
+  ];
+  for (const [table, filter] of tasks) await del(table, filter);
+  if (student && name) {
     await del('learning_progress', `student_id=is.null&student_name_snapshot=eq.${encodeURIComponent(name)}`);
-    if (!id) await del('student_history', `student_name_snapshot=eq.${encodeURIComponent(name)}`);
+    // Do not blindly delete orphan student_history by name: names are not unique.
   }
-
-  if (!student && !historyRows.length) {
-    return { success:true, alreadyDeleted:true, siswaID:key, message:'Data siswa sudah tidak ada di Supabase. Tidak ada arsip tersisa untuk dihapus.' };
+  if ((await read('students', { student_id:`eq.${resolvedId}`, limit:'1' })).length ||
+      (await read('student_history', { student_id:`eq.${resolvedId}`, limit:'1' })).length) {
+    throw new Error('Verifikasi gagal: data siswa/riwayat masih ditemukan setelah penghapusan.');
   }
-
-  return { success:true, siswaID:id || key, message:`${student ? `Siswa ${student.name || name || ''}` : `Arsip ${name || key}`} dan seluruh data terkait berhasil dihapus permanen.` };
+  return { success:true, siswaID:resolvedId, message:`Siswa ${name} dan data terkait berhasil dihapus permanen.` };
 }
 
 // ============================================================================
@@ -2142,7 +2219,9 @@ async function patchStudentClassDatesFromPayload(env, studentId, payload) {
     used.add(String(row.class_id));
     const patch = {};
     if (startedOn) patch.started_on = startedOn;
-    if (endedOn) patch.ended_on = endedOn;
+    // Do not propagate a global exit date to another active or paused class.
+    if (String(item.status || '').trim() === 'Keluar' && endedOn) patch.ended_on = endedOn;
+    else if (['Aktif', 'Cuti'].includes(String(item.status || '').trim())) patch.ended_on = null;
     await supabaseRest(env, `/rest/v1/student_classes?class_id=eq.${encodeURIComponent(row.class_id)}`, {
       method:'PATCH',
       headers:{'Content-Type':'application/json', Prefer:'return=minimal'},
@@ -2193,7 +2272,10 @@ async function mirrorStudentMutationToSupabase(env, method, args, gasResult) {
     grade: String(item.grade || item.kelas || '').trim(),
     status: String(item.status || payload.status || 'Aktif').trim(),
     started_on: String(item.tglMulai || item.tglDaftar || payload.tglDaftar || '').trim() || null,
-    ended_on: String(payload.tglKeluar || '').trim() || null
+    // Per-class end date must never inherit the student's global exit date.
+    ended_on: String(item.status || payload.status || 'Aktif').trim() === 'Keluar'
+      ? (String(item.tglSelesai || item.tglKeluar || '').trim() || null)
+      : null
   }));
 
   await supabaseRpc(env, 'legacy_upsert_student', {
@@ -4274,7 +4356,7 @@ async function buildTeacherDashboardSupabase(env, session) {
     if (student && student.student_id) studentMap.set(String(student.student_id), student);
   });
   const students = [...studentMap.values()].sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'id'));
-  const operationalSchedules = filterOperationalScheduleRows(schedules, students);
+  const operationalSchedulesByStudent = filterOperationalScheduleRows(schedules, students);
 
   const classMap = new Map();
   for (const row of teacherClasses) {
@@ -4288,8 +4370,15 @@ async function buildTeacherDashboardSupabase(env, session) {
   const studentNames = new Set();
 
   for (const student of students) {
+    // Roster guru adalah RIWAYAT keikutsertaan kelas milik guru ini:
+    // Aktif, Cuti, dan Keluar tetap terlihat. Status siswa di roster
+    // harus dihitung per kelas, bukan students.status lintas instrumen.
     const teacherClassesRaw = classMap.get(String(student.student_id || '')) || [];
+    if (!teacherClassesRaw.length) continue;
     const kelasList = teacherClassesRaw.map(row => mapClassRow(row, schedules));
+    const classStatuses = teacherClassesRaw.map(row => String(row.status || 'Aktif').trim().toLowerCase());
+    const teacherClassStatus = classStatuses.includes('aktif') ? 'Aktif'
+      : classStatuses.includes('cuti') ? 'Cuti' : 'Keluar';
     const instruments = uniqueText(kelasList.map(x => x.instrumen));
     const grades = uniqueText(kelasList.map(x => x.grade));
 
@@ -4300,18 +4389,26 @@ async function buildTeacherDashboardSupabase(env, session) {
       kelas:grades.join(', ') || student.grade || '',
       email:student.email || '',
       noHp:student.phone || '',
-      status:student.status || '',
+      status:teacherClassStatus,
       foto:student.photo_url || '',
       instrumen:instruments.join(', ') || student.instrument || 'Gitar',
       guru:teacher.name || '',
       kelasList,
       tglDaftar:formatDbDateIso(student.registered_on),
-      tglKeluar:formatDbDateIso(student.left_on)
+      tglKeluar:teacherClassStatus === 'Keluar' ? (kelasList.find(k => String(k.status).toLowerCase() === 'keluar')?.tglSelesai || formatDbDateIso(student.left_on)) : ''
     });
 
     studentIds.add(String(student.student_id || '').toLowerCase());
     studentNames.add(String(student.name || '').trim().toLowerCase());
   }
+
+  // Siswa Cuti/Keluar ada di daftar guru, tetapi jadwal operasional
+  // hanya berlaku bagi pasangan siswa + instrumen + guru yang Aktif.
+  const activeClassKeys = new Set(teacherClasses
+    .filter(c => String(c.status || '').trim().toLowerCase() === 'aktif')
+    .map(c => `${String(c.student_id || '')}|${String(c.instrument || '').trim().toLowerCase()}`));
+  const operationalSchedules = operationalSchedulesByStudent.filter(row =>
+    activeClassKeys.has(`${String(row.student_id || '')}|${String(row.instrument || '').trim().toLowerCase()}`));
 
   const todayName = jakartaWeekday();
   const todayCount = operationalSchedules.filter(row =>

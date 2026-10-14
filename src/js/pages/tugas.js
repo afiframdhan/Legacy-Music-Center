@@ -243,9 +243,10 @@ function normalizeTaskStatus(task) {
       const container = document.getElementById('tugasTableBody');
       if(!container) return;
 
-      const total = globalTugasList.length;
-      const done = globalTugasList.filter(t => String(t.status || '').toLowerCase() === 'selesai').length;
-      const late = globalTugasList.filter(isTaskLate).length;
+      const taskClassItems = currentUser.userType === 'siswa' ? globalTugasList.filter(lmcStudentRecordMatchesClass) : globalTugasList;
+      const total = taskClassItems.length;
+      const done = taskClassItems.filter(t => String(t.status || '').toLowerCase() === 'selesai').length;
+      const late = taskClassItems.filter(isTaskLate).length;
       document.getElementById('taskStatTotal').textContent = total;
       document.getElementById('taskStatOpen').textContent = total - done;
       document.getElementById('taskStatDone').textContent = done;
@@ -263,7 +264,7 @@ function normalizeTaskStatus(task) {
       const filter = document.getElementById('taskStatusFilter')?.value || 'semua';
       const student = document.getElementById('taskStudentFilter')?.value || 'semua';
       const sort = document.getElementById('taskSortFilter')?.value || 'terbaru';
-      let filtered = globalTugasList.filter(task => {
+      let filtered = taskClassItems.filter(task => {
         const haystack = `${task.judulTugas || ''} ${task.namaSiswa || ''} ${task.deskripsi || ''}`.toLowerCase();
         const isDone = String(task.status || '').toLowerCase() === 'selesai';
         const statusMatch = filter === 'semua' || (filter === 'Terlambat' ? isTaskLate(task) : (filter === 'Selesai' ? isDone : !isDone && !isTaskLate(task)));

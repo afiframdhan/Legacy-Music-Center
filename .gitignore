@@ -3,3 +3,28 @@ node_modules/
 .dev.vars
 .DS_Store
 public/.DS_Store
+# ==================================
+# LEGACY MUSIC CENTER - LOCAL TEST
+# ==================================
+
+# Konfigurasi Worker lokal
+wrangler.local.jsonc
+
+# Script khusus MacBook
+Start_LMC_DEV_LOCAL_TEST.command
+Cek_LMC_DEV_LOCAL_TEST.command
+
+# Worker dan file pendukung lokal
+/local-dev/
+
+# Konfigurasi rahasia Google Drive TEST
+/local-dev/drive-test.private.json
+
+# Password dan environment lokal
+.dev.vars
+.dev.vars.*
+!*.example
+
+# File petunjuk lokal
+PETUNJUK_LOCAL_DEV_V2.txt
+.gitignore.local-dev.TAMBAHKAN_KE_GITIGNORE.txt

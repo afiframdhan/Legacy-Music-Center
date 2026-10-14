@@ -299,3 +299,74 @@ html[data-theme="light"] .theme-option[aria-pressed="true"] {
   color:#c2410c;
   box-shadow:0 0 0 2px rgba(241,90,36,.10);
 }
+
+/* Student class filter — uses canonical Legacy theme tokens. */
+#lmc-student-class-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1px solid var(--lmc-border);
+  background-color: var(--lmc-surface);
+  color: var(--lmc-text);
+}
+#lmc-student-class-bar .lmc-class-picker-label {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 210px;
+  min-width: 0;
+  gap: 4px;
+  color: var(--lmc-text);
+}
+#lmc-student-class-bar .lmc-class-picker-label strong {
+  color: var(--lmc-text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+#lmc-student-class-bar .lmc-class-picker-label small {
+  color: var(--lmc-text-2);
+  opacity: 1;
+  font-size: 12px;
+  line-height: 1.45;
+}
+#lmc-student-class-bar select {
+  flex: 1 1 230px;
+  min-width: 0;
+  width: 100%;
+  max-width: 360px;
+  min-height: 44px;
+  padding: 10px 36px 10px 12px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid var(--lmc-border-strong);
+  background-color: var(--lmc-input);
+  color: var(--lmc-text);
+  font-size: 14px;
+  line-height: 1.35;
+  color-scheme: inherit;
+}
+#lmc-student-class-bar select option {
+  background-color: var(--lmc-input);
+  color: var(--lmc-text);
+}
+@media (max-width: 650px) {
+  #lmc-student-class-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px;
+    gap: 12px;
+  }
+  #lmc-student-class-bar .lmc-class-picker-label,
+  #lmc-student-class-bar select {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
+  }
+}
