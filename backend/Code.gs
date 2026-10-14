@@ -2837,6 +2837,17 @@ function lmcTrashPrivateSignature(fileId) {
 
 function legacyDispatchRpc_(method, args) {
   switch (method) {
+    // Drive upload fallback shared by Tasks, Student Answers, and Practice Materials.
+    // Accessible only via the authenticated doPost gateway (LEGACY_API_TOKEN).
+    case 'phase10UploadTaskFiles':
+      var files = Array.isArray(args[0]) ? args[0] : [];
+      if (files.length > 5) return {success:false, message:'Maksimal 5 file per pengiriman.'};
+      var allowedFolders = ['LegacyGuitarClass_Tugas', 'LegacyGuitarClass_Jawaban', 'LegacyMusicCenter_MateriLatihan'];
+      var folderName = String(args[1] || 'LegacyGuitarClass_Tugas');
+      if (allowedFolders.indexOf(folderName) === -1) throw new Error('Folder upload tidak diizinkan.');
+      var attachments = uploadTaskFiles(files, folderName);
+      if (attachments.length !== files.length) return {success:false, message:'Sebagian file tidak valid atau gagal diproses.'};
+      return {success:true, attachments:attachments};
     case 'lmcUploadPrivateSignature': return lmcUploadPrivateSignature.apply(null, args);
     case 'lmcReadPrivateSignature': return lmcReadPrivateSignature.apply(null, args);
     case 'lmcTrashPrivateSignature': return lmcTrashPrivateSignature.apply(null, args);
