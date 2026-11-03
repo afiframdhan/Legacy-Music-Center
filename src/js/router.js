@@ -239,7 +239,19 @@
       }
 
       if (sectionId === 'section-absensi-guru' && currentUser.userType === 'admin') {
-        setTimeout(() => { initSignaturePads(); resizeSignaturePad('canvasTtdAbsensiGuru'); }, 80);
+        setTimeout(() => {
+          initSignaturePads();
+          resizeSignaturePad('canvasTtdAbsensiGuru');
+          if (typeof renderAdminTeacherManagement === 'function') renderAdminTeacherManagement(true);
+        }, 80);
+      }
+
+      if (sectionId === 'section-daftar-guru' && currentUser.userType === 'admin') {
+        setTimeout(() => { if (typeof renderAdminTeacherManagement === 'function') renderAdminTeacherManagement(true); }, 0);
+      }
+
+      if (sectionId === 'section-siswa' && currentUser.userType === 'admin') {
+        setTimeout(() => { if (typeof initializeStudentReports === 'function') initializeStudentReports(true); }, 0);
       }
 
       if (sectionId === 'section-audit-log' && currentUser.userType === 'admin') {
@@ -254,16 +266,19 @@
         setTimeout(() => initAdminExportBackup(), 0);
       }
 
-      if (sectionId === 'section-progress' && currentUser.userType === 'guru') {
-        setTimeout(() => {
-          Object.keys(sigCanvases).forEach(id => {
-            const canvas = sigCanvases[id].canvas;
-            if (canvas) {
-              const rect = canvas.parentElement.getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0) resizeSignaturePad(id);
-            }
-          });
-        }, 200);
+      if (sectionId === 'section-progress') {
+        setTimeout(() => { if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat(true); }, 0);
+        if (currentUser.userType === 'guru') {
+          setTimeout(() => {
+            Object.keys(sigCanvases).forEach(id => {
+              const canvas = sigCanvases[id].canvas;
+              if (canvas) {
+                const rect = canvas.parentElement.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) resizeSignaturePad(id);
+              }
+            });
+          }, 200);
+        }
       }
 
       if (sectionId === 'section-monitoring-guru' && currentUser.userType === 'admin') {
@@ -312,7 +327,7 @@
 
     function getSiswaAvatarHtml(nama, fotoUrl) {
       if (fotoUrl && fotoUrl.length > 5) {
-        return `<img src="${fotoUrl}" class="siswa-avatar">`;
+        return `<img src="${fotoUrl}" class="siswa-avatar" loading="lazy" alt="${escapeTaskHtml(nama || 'Foto')}">`;
       }
       const initial = (nama || 'S').charAt(0).toUpperCase();
       return `<div class="siswa-avatar-initial">${initial}</div>`;

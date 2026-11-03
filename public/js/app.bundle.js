@@ -279,6 +279,91 @@ let currentUser = { userType: '', userID: '', userName: '' };
     function isOperationalStudent(student) {
       return String(student?.status || '').trim().toLowerCase() === 'aktif';
     }
+    // Student class context: presentation only; never mutates server records.
+    let lmcSelectedStudentClassKey = '';
+    let lmcCurrentStudentClassInfo = null;
+    function lmcClassText(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
+    // Preserve the last fully resolved class context across a PWA reload.
+    // Cache is strictly scoped to the authenticated student ID (not a display name).
+    function lmcStudentClassesCacheKey() {
+      const id = String(currentUser.userID || '').trim();
+      return currentUser.userType === 'siswa' && id ? 'lmcStudentClasses:v2:' + id : '';
+    }
+    function lmcStudentClassItems() {
+      if (currentUser.userType !== 'siswa') return [];
+      const key = lmcStudentClassesCacheKey();
+      const record = (globalSiswaList || []).find(s => String(s.siswaID || '') === String(currentUser.userID || ''));
+      const candidates = [lmcCurrentStudentClassInfo, record].filter(Boolean);
+      // Prefer complete class arrays over legacy flattened student records.
+      const resolved = candidates.find(s => Array.isArray(s.kelasList) && s.kelasList.length > 1)
+        || candidates.find(s => Array.isArray(s.kelasList) && s.kelasList.length)
+        || candidates[0] || null;
+      let entries = Array.isArray(resolved?.kelasList) ? resolved.kelasList : [];
+      if (entries.length > 1 && key) {
+        try { sessionStorage.setItem(key, JSON.stringify(entries)); } catch (_) {}
+      }
+      // Partial dashboard refreshes may omit kelasList. Do not erase a verified
+      // multi-class selector just because one response is incomplete.
+      if (!entries.length && key) {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem(key) || '[]');
+          if (Array.isArray(cached) && cached.length > 1) entries = cached;
+        } catch (_) {}
+      }
+      if (!entries.length && resolved) entries = [{instrumen:resolved.instrumen, guru:resolved.guru, guruID:resolved.guruID, status:resolved.status}];
+      return entries.map((c,index) => ({...c, _key:String(c.kelasSiswaID || c.classID || c.studentClassID || [lmcClassText(c.instrumen),lmcClassText(c.guruID || c.guru),index].join(':'))}));
+    }
+    function lmcStudentClassSelected() {
+      const available = lmcStudentClassItems().filter(c => lmcClassText(c.status || 'Aktif') === 'aktif');
+      if (!available.length) { lmcSelectedStudentClassKey = ''; return null; }
+      const selected = available.find(c => c._key === lmcSelectedStudentClassKey);
+      const chosen = selected || available[0];
+      lmcSelectedStudentClassKey = chosen._key;
+      return chosen;
+    }
+    function lmcStudentRecordMatchesClass(item) {
+      if (currentUser.userType !== 'siswa') return true;
+      const selected = lmcStudentClassSelected();
+      if (!selected) return true;
+      const instrument = lmcClassText(item.instrumen || item.instrument || item.namaInstrumen);
+      const teacher = lmcClassText(item.guru || item.guruCatat || item.teacherName || item.teacher || item.namaGuru);
+      const teacherId = lmcClassText(item.guruID || item.teacherID || item.teacherId);
+      const classId = lmcClassText(item.kelasSiswaID || item.studentClassID || item.student_class_id);
+      if (classId && selected.kelasSiswaID) return classId === lmcClassText(selected.kelasSiswaID);
+      if (instrument && instrument !== lmcClassText(selected.instrumen)) return false;
+      if (teacherId && selected.guruID && teacherId !== lmcClassText(selected.guruID)) return false;
+      if (teacher && selected.guru && teacher !== lmcClassText(selected.guru)) return false;
+      // Ambiguous legacy records with no class/teacher/instrument are not assigned to a random class.
+      return !!(classId || instrument || teacherId || teacher);
+    }
+    function lmcRenderStudentClassPicker() {
+      let node = document.getElementById('lmc-student-class-bar');
+      const section = document.querySelector('.content-section.active');
+      const activities = new Set(['section-progress','section-tugas','section-repertoire','section-practice-hub','section-learning-progress']);
+      if (currentUser.userType !== 'siswa' || !section || !activities.has(section.id)) {
+        if (node) node.remove();
+        return;
+      }
+      // Exited/on-leave classes remain in records but are NOT selectable as active classes.
+      const classes = lmcStudentClassItems().filter(c => lmcClassText(c.status || 'Aktif') === 'aktif');
+      if (classes.length < 2) { if (node) node.remove(); lmcStudentClassSelected(); return; }
+      const selected = lmcStudentClassSelected();
+      if (!node) { node = document.createElement('div'); node.id = 'lmc-student-class-bar'; }
+      // Move the picker INSIDE the current activity section, never above the dashboard.
+      if (node.parentElement !== section) section.insertBefore(node, section.firstChild);
+      node.innerHTML = '<div class="lmc-class-picker-label"><strong>Filter Kelas</strong><small>Materi dan aktivitas sesuai instrumen dan guru yang dipilih</small></div><select id="lmc-student-class-select" aria-label="Pilih kelas pembelajaran">' +
+        classes.map(c => '<option value="'+lmcEscapeClass(c._key)+'"'+(selected && selected._key===c._key?' selected':'')+'>'+lmcEscapeClass(c.instrumen || 'Instrumen')+' — '+lmcEscapeClass(c.guru || 'Guru')+'</option>').join('') + '</select>';
+      node.querySelector('select').addEventListener('change', e => {
+        lmcSelectedStudentClassKey = e.target.value;
+        if (typeof renderTabelTugas === 'function') renderTabelTugas();
+        if (typeof renderRepertoirePage === 'function') renderRepertoirePage();
+        if (typeof renderTabelJadwal === 'function') renderTabelJadwal();
+        if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat();
+        if (typeof renderLearningProgressViews === 'function') renderLearningProgressViews();
+        if (typeof renderPracticeHub === 'function') renderPracticeHub();
+      });
+    }
+    function lmcEscapeClass(text) {return String(text || '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
     let globalAbsensiList = [];
     let globalTugasList = [];
     let globalGuruList = [];
@@ -517,6 +602,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
           };
         }
 
+        let drawFrameId = null;
         function startDrawing(e) {
           e.preventDefault();
           if (pad.fitAfterFullscreen) pad.fitAfterFullscreen = false;
@@ -530,10 +616,20 @@ let currentUser = { userType: '', userID: '', userName: '' };
           if (!pad.drawing || !pad.activeStroke) return;
           e.preventDefault();
           pad.activeStroke.push(getPos(e));
-          redrawSignaturePad(pad);
+          if (!drawFrameId) {
+            drawFrameId = requestAnimationFrame(() => {
+              drawFrameId = null;
+              redrawSignaturePad(pad);
+            });
+          }
         }
 
-        function stopDrawing() { pad.drawing = false; pad.activeStroke = null; }
+        function stopDrawing() {
+          if (drawFrameId) { cancelAnimationFrame(drawFrameId); drawFrameId = null; }
+          pad.drawing = false;
+          pad.activeStroke = null;
+          redrawSignaturePad(pad);
+        }
 
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mousemove', draw);
@@ -643,7 +739,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const pad = sigCanvases[canvasId];
       const aspect = pad.aspect || 3;
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = 700;
+      tempCanvas.width = 480;
       tempCanvas.height = Math.max(1, Math.round(tempCanvas.width / aspect));
       const tCtx = tempCanvas.getContext('2d');
       tCtx.fillStyle = '#FFFFFF';
@@ -666,7 +762,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
         pad.aspect = rect.width / rect.height;
         pad.originalWidth = rect.width;
       }
-      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       pad.canvas.width = Math.max(1, Math.round(rect.width * dpr));
       pad.canvas.height = Math.max(1, Math.round(rect.height * dpr));
       pad.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1572,6 +1668,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
       const sec = document.getElementById(sectionId);
       if(sec) sec.classList.add('active');
+      if (typeof lmcRenderStudentClassPicker === 'function') lmcRenderStudentClassPicker();
 
       if (sectionId === 'section-jadwal') {
         setTimeout(() => {
@@ -1606,7 +1703,19 @@ let currentUser = { userType: '', userID: '', userName: '' };
       }
 
       if (sectionId === 'section-absensi-guru' && currentUser.userType === 'admin') {
-        setTimeout(() => { initSignaturePads(); resizeSignaturePad('canvasTtdAbsensiGuru'); }, 80);
+        setTimeout(() => {
+          initSignaturePads();
+          resizeSignaturePad('canvasTtdAbsensiGuru');
+          if (typeof renderAdminTeacherManagement === 'function') renderAdminTeacherManagement(true);
+        }, 80);
+      }
+
+      if (sectionId === 'section-daftar-guru' && currentUser.userType === 'admin') {
+        setTimeout(() => { if (typeof renderAdminTeacherManagement === 'function') renderAdminTeacherManagement(true); }, 0);
+      }
+
+      if (sectionId === 'section-siswa' && currentUser.userType === 'admin') {
+        setTimeout(() => { if (typeof initializeStudentReports === 'function') initializeStudentReports(true); }, 0);
       }
 
       if (sectionId === 'section-audit-log' && currentUser.userType === 'admin') {
@@ -1621,16 +1730,19 @@ let currentUser = { userType: '', userID: '', userName: '' };
         setTimeout(() => initAdminExportBackup(), 0);
       }
 
-      if (sectionId === 'section-progress' && currentUser.userType === 'guru') {
-        setTimeout(() => {
-          Object.keys(sigCanvases).forEach(id => {
-            const canvas = sigCanvases[id].canvas;
-            if (canvas) {
-              const rect = canvas.parentElement.getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0) resizeSignaturePad(id);
-            }
-          });
-        }, 200);
+      if (sectionId === 'section-progress') {
+        setTimeout(() => { if (typeof renderTabelRiwayat === 'function') renderTabelRiwayat(true); }, 0);
+        if (currentUser.userType === 'guru') {
+          setTimeout(() => {
+            Object.keys(sigCanvases).forEach(id => {
+              const canvas = sigCanvases[id].canvas;
+              if (canvas) {
+                const rect = canvas.parentElement.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) resizeSignaturePad(id);
+              }
+            });
+          }, 200);
+        }
       }
 
       if (sectionId === 'section-monitoring-guru' && currentUser.userType === 'admin') {
@@ -1679,7 +1791,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
 
     function getSiswaAvatarHtml(nama, fotoUrl) {
       if (fotoUrl && fotoUrl.length > 5) {
-        return `<img src="${fotoUrl}" class="siswa-avatar">`;
+        return `<img src="${fotoUrl}" class="siswa-avatar" loading="lazy" alt="${escapeTaskHtml(nama || 'Foto')}">`;
       }
       const initial = (nama || 'S').charAt(0).toUpperCase();
       return `<div class="siswa-avatar-initial">${initial}</div>`;
@@ -1829,6 +1941,20 @@ let currentUser = { userType: '', userID: '', userName: '' };
           }];
         } else globalGuruList = [];
 
+        // Student class context must initialize for BOTH login and restored sessions.
+        // This is intentionally in the common dashboard-response handler, not
+        // renderGuruOrAdmin(), which never runs for student accounts.
+        if (data.userType === 'siswa') {
+          const incoming = data.siswaInfo || null;
+          const prior = lmcCurrentStudentClassInfo;
+          const incomingClasses = Array.isArray(incoming?.kelasList) ? incoming.kelasList : [];
+          const priorClasses = Array.isArray(prior?.kelasList) ? prior.kelasList : [];
+          lmcCurrentStudentClassInfo = incoming && !incomingClasses.length && priorClasses.length
+            ? {...incoming, kelasList: priorClasses} : incoming;
+        } else {
+          lmcCurrentStudentClassInfo = null;
+        }
+        if (typeof lmcRenderStudentClassPicker === 'function') lmcRenderStudentClassPicker();
         if (data.userType === 'siswa') renderSiswa(data);
         if (data.userType === 'guru' || data.userType === 'admin') renderGuruOrAdmin(data);
         if ((data.userType === 'guru' || data.userType === 'admin') && typeof renderStudent360Access === 'function') renderStudent360Access(data);
@@ -2225,7 +2351,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
     }
 
     function getCurrentLearningProgress(studentName, period, periodType) {
-      const records = globalLearningProgressList.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(studentName || '').trim().toLowerCase());
+      const records = globalLearningProgressList.filter(item => String(item.namaSiswa || '').trim().toLowerCase() === String(studentName || '').trim().toLowerCase() && (currentUser.userType !== 'siswa' || lmcStudentRecordMatchesClass(item)));
       if (period) return records.find(item => String(item.periode || '') === String(period) && (!periodType || getLearningProgressPeriodType(item) === periodType)) || null;
       return records[0] || null;
     }
@@ -2376,6 +2502,7 @@ let currentUser = { userType: '', userID: '', userName: '' };
       const matchingNameSet = new Set(matchingNames.map(name => String(name).trim().toLowerCase()));
       const matchingRecords = (globalLearningProgressList || []).filter(item => {
         if (!matchingNameSet.has(String(item.namaSiswa || '').trim().toLowerCase())) return false;
+        if (isStudent && !lmcStudentRecordMatchesClass(item)) return false;
         return !type || getLearningProgressPeriodType(item) === type;
       });
       const periods = [...new Set(matchingRecords.map(item => item.periode).filter(Boolean))].sort().reverse();
@@ -3073,12 +3200,12 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         const name = `${item.siswaAsli || ''} ${item.siswaPengganti || ''}`.toLowerCase();
         return (!searchFilter || name.includes(searchFilter)) && (!instrumentFilter || instrument === instrumentFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
       });
-      overrides.forEach(item => {
+      const overrideCards = overrides.map(item => {
         const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || { hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '', guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik' };
         const slotText = item.siswaPengganti ? `${escapeTaskHtml(item.siswaPengganti)} memakai slot ${escapeTaskHtml(item.siswaAsli || '-')}` : `Slot ${escapeTaskHtml(item.siswaAsli || '-')} dikosongkan`;
         const makeupText = item.tanggalMakeup ? `${escapeTaskHtml(formatAcademyDate(item.tanggalMakeup))} • ${escapeTaskHtml(item.jamMulaiMakeup || '-')}–${escapeTaskHtml(item.jamSelesaiMakeup || '-')} • ${escapeTaskHtml(item.ruanganMakeup || '-')}` : 'Belum dijadwalkan';
         const actionButtons = isAdmin ? `<div class="academy-card-actions"><button class="btn-action btn-edit" onclick="openEditScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Edit</button><button class="btn-action btn-delete" onclick="handleDeleteScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Hapus</button></div>` : '';
-        container.innerHTML += `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${actionButtons}</article>`;
+        return `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${actionButtons}</article>`;
       });
 
       const list = (globalJadwalPenggantiList || []).filter(item => {
@@ -3094,10 +3221,12 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
         return;
       }
 
-      list.forEach(item => {
+      const listCards = list.map(item => {
         const deleteButton = isAdmin ? `<button class="btn-action btn-delete" onclick="handleDeleteJadwalPengganti('${escapeTaskHtml(item.penggantiID)}')">Hapus</button>` : '';
-        container.innerHTML += `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">↻</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.namaSiswa || '-')}</strong><span>${escapeTaskHtml(item.hariPelaksanaan || '')}, ${escapeTaskHtml(formatAcademyDate(item.tanggalPelaksanaan))}</span></div><span class="badge badge-success">${escapeTaskHtml(item.status || 'Aktif')}</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Waktu</span><strong>${escapeTaskHtml(item.jamMulai || '-')} – ${escapeTaskHtml(item.jamSelesai || '-')}</strong></div><div class="academy-meta"><span>Ruangan</span><strong>${escapeTaskHtml(item.ruangan || '-')}</strong></div><div class="academy-meta"><span>Guru</span><strong>${escapeTaskHtml(item.guru || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
+        return `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">↻</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.namaSiswa || '-')}</strong><span>${escapeTaskHtml(item.hariPelaksanaan || '')}, ${escapeTaskHtml(formatAcademyDate(item.tanggalPelaksanaan))}</span></div><span class="badge badge-success">${escapeTaskHtml(item.status || 'Aktif')}</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Waktu</span><strong>${escapeTaskHtml(item.jamMulai || '-')} – ${escapeTaskHtml(item.jamSelesai || '-')}</strong></div><div class="academy-meta"><span>Ruangan</span><strong>${escapeTaskHtml(item.ruangan || '-')}</strong></div><div class="academy-meta"><span>Guru</span><strong>${escapeTaskHtml(item.guru || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
       });
+
+      container.innerHTML = [...overrideCards, ...listCards].join('');
     }
 
     function handleDeleteJadwalPengganti(id) {
@@ -3196,12 +3325,12 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
 
       const isAdmin = currentUser.userType === 'admin';
 
-      globalPengumumanList.forEach(item => {
+      container.innerHTML = globalPengumumanList.map(item => {
         const deleteBtn = isAdmin ? `<button class="btn-action btn-delete" onclick="handleDeletePengumuman('${escapeTaskHtml(item.pengumumanID)}')">Hapus</button>` : '';
         const targetLabel = getAnnouncementTargetLabel(item);
         const adminMeta = isAdmin ? `<div class="academy-meta-grid"><div class="academy-meta"><span>Penerima</span><strong>${escapeTaskHtml(targetLabel)}</strong></div><div class="academy-meta"><span>Status</span><strong>${escapeTaskHtml(item.status || 'Terbit')}</strong></div></div>` : '';
-        container.innerHTML += `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">📢</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.judul || '-')}</strong><span>${escapeTaskHtml(item.tanggalKirim || '-')} • ${escapeTaskHtml(item.pembuat || 'Admin')}</span></div></div><div class="academy-card-content">${escapeTaskHtml(item.isi || '-')}</div>${adminMeta}${deleteBtn ? `<div class="academy-card-actions">${deleteBtn}</div>` : ''}</article>`;
-      });
+        return `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">📢</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.judul || '-')}</strong><span>${escapeTaskHtml(item.tanggalKirim || '-')} • ${escapeTaskHtml(item.pembuat || 'Admin')}</span></div></div><div class="academy-card-content">${escapeTaskHtml(item.isi || '-')}</div>${adminMeta}${deleteBtn ? `<div class="academy-card-actions">${deleteBtn}</div>` : ''}</article>`;
+      }).join('');
     }
 
     function handleDeletePengumuman(id) {
@@ -3466,7 +3595,7 @@ function fitPaper(){var p=document.getElementById('paper'),v=document.getElement
     function repertoireRoleItems() {
       let items = Array.isArray(globalRepertoireList) ? globalRepertoireList.slice() : [];
       if (currentUser.userType === 'siswa') {
-        items = items.filter(item => String(item.siswaID || '').trim() === String(currentUser.userID || '').trim());
+        items = items.filter(item => String(item.siswaID || '').trim() === String(currentUser.userID || '').trim() && lmcStudentRecordMatchesClass(item));
       }
       if (currentUser.userType === 'guru') {
         const ownId = String(currentUser.userID || '').trim();
@@ -4012,7 +4141,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
     function phFilteredResources() {
       const sid=String(document.getElementById('practiceStudentFilter')?.value||'').trim();
       const q=String(document.getElementById('practiceSearch')?.value||'').trim().toLowerCase();
-      return practiceResources.filter(x => (!sid || String(x.studentID||'')===sid) && (!q || [x.title,x.description,x.studentName,x.instrument].some(v=>String(v||'').toLowerCase().includes(q))));
+      return practiceResources.filter(x => (!sid || String(x.studentID||'')===sid) && (currentUser.userType !== 'siswa' || lmcStudentRecordMatchesClass(x)) && (!q || [x.title,x.description,x.studentName,x.instrument].some(v=>String(v||'').toLowerCase().includes(q))));
     }
 
     function mediaEvalBrowseSourceItem(studentId, value) {
@@ -4076,7 +4205,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
           x.title,x.studentName,x.instrument,x.strength,x.improvement,x.nextTarget,
           x.sourceLabel,x.teacherName,x.notes,phFormatDate(x.updatedAt||x.createdAt)
         ].map(v=>String(v||'').toLowerCase()).join(' ');
-        return (!sid || String(x.studentID||'')===sid) && mediaEvalMatchesBrowseSource(x,mediaEvalBrowseSource,sid) && (!q || haystack.includes(q));
+        return (!sid || String(x.studentID||'')===sid) && (currentUser.userType !== 'siswa' || lmcStudentRecordMatchesClass(x)) && mediaEvalMatchesBrowseSource(x,mediaEvalBrowseSource,sid) && (!q || haystack.includes(q));
       });
     }
 
@@ -5136,7 +5265,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       const barColors = ['bar-orange', 'bar-cyan', 'bar-purple', 'bar-red'];
 
       if (todaySchedules.length > 0) {
-        todaySchedules.forEach((j, index) => {
+        scheduleContainer.innerHTML = todaySchedules.map((j, index) => {
           const sObj = displayedSiswa.find(s => String(s.nama).trim().toLowerCase() === String(j.namaSiswa).trim().toLowerCase());
           const avatarHtml = getSiswaAvatarHtml(j.namaSiswa, sObj ? sObj.foto : '');
           const durationStr = calculateDurationMinutes(j.jamMulai, j.jamSelesai);
@@ -5145,7 +5274,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
           const barClass = barColors[index % barColors.length];
           const gradeText = sObj && sObj.kelas ? sObj.kelas : 'Kelas Privat';
 
-          scheduleContainer.innerHTML += `
+          return `
             <div class="today-schedule-item ${barClass}" onclick="handleDashboardScheduleClick(event,this,'${j.jadwalID}')" role="button" tabindex="0" aria-expanded="false">
               <div class="sched-time-block">
                 <div class="sched-time-text">${j.jamMulai} - ${j.jamSelesai}</div>
@@ -5164,7 +5293,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
                 <span class="sched-arrow">❯</span>
               </div>
             </div>`;
-        });
+        }).join('');
       } else {
         scheduleContainer.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Tidak ada jadwal mengajar hari ini (${todayHariName}).</div>`;
       }
@@ -5220,19 +5349,21 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         ongoingClassWidgetAdmin.innerHTML = `<div style="font-size:13px; color:#64748b;">Tidak ada kelas yang sedang berlangsung saat ini.</div>`;
       }
       
-      const previewBody = document.getElementById('dashSiswaPreviewBody'); previewBody.innerHTML = '';
-      displayedSiswa.slice(0, 3).forEach((s, index) => {
-        let badgeClass = s.status === 'Cuti' ? 'badge-warning' : (s.status === 'Keluar' ? 'badge-danger' : 'badge-success');
-        let avatarHtml = getSiswaAvatarHtml(s.nama, s.foto);
-        previewBody.innerHTML += `<tr class="mobile-expand-row dashboard-student-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
-          <td data-label="No">${index + 1}</td>
-          <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
-          <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
-          <td data-label="Guru Pengajar">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
-          <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
-          <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
-        </tr>`;
-      });
+      const previewBody = document.getElementById('dashSiswaPreviewBody');
+      if (previewBody) {
+        previewBody.innerHTML = displayedSiswa.slice(0, 3).map((s, index) => {
+          let badgeClass = s.status === 'Cuti' ? 'badge-warning' : (s.status === 'Keluar' ? 'badge-danger' : 'badge-success');
+          let avatarHtml = getSiswaAvatarHtml(s.nama, s.foto);
+          return `<tr class="mobile-expand-row dashboard-student-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
+            <td data-label="No">${index + 1}</td>
+            <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
+            <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
+            <td data-label="Guru Pengajar">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
+            <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
+            <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
+          </tr>`;
+        }).join('');
+      }
       restoreDashboardWidgetStates();
     }
 
@@ -5330,10 +5461,10 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
         return;
       }
 
-      list.forEach((s, index) => {
+      sBody.innerHTML = list.map((s, index) => {
         let badgeClass = s.status === 'Cuti' ? 'badge-warning' : (s.status === 'Keluar' ? 'badge-danger' : 'badge-success');
         let avatarHtml = getSiswaAvatarHtml(s.nama, s.foto);
-        sBody.innerHTML += `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
+        return `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
           <td data-label="No">${index + 1}</td>
           <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
           <td data-label="Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b>${renderAdminStudentClassDetails(s)}</td>
@@ -5350,7 +5481,7 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
           </div>
           </td>
         </tr>`;
-      });
+      }).join('');
 
     }
 
@@ -6436,9 +6567,12 @@ async function lmcPrintDoc(targetId,orientation,filename,button){if(!lmcIsIOS())
       openEditJadwalModal(jadwalID);
     }
 
-    function initializeStudentReports() {
+    function initializeStudentReports(force = false) {
       const monthInput = document.getElementById('studentReportMonth');
       if (!monthInput) return;
+      const siswaSection = document.getElementById('section-siswa');
+      const isVisible = siswaSection && siswaSection.classList.contains('active');
+      if (!force && !isVisible) return;
       if (!monthInput.value) {
         const now = new Date();
         monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -7173,7 +7307,7 @@ window.addEventListener('load',function(){fitText(document.getElementById('stude
       const filterGuru = document.getElementById('filterJadwalGuru') ? document.getElementById('filterJadwalGuru').value.trim().toLowerCase() : '';
       const adminDashGuruFilter = document.getElementById('adminSelectGuruFilter') ? document.getElementById('adminSelectGuruFilter').value.trim().toLowerCase() : '';
 
-      let listJadwal = globalJadwalList;
+      let listJadwal = currentUser.userType === 'siswa' ? globalJadwalList.filter(lmcStudentRecordMatchesClass) : globalJadwalList;
 
       if (adminDashGuruFilter !== '') {
         listJadwal = listJadwal.filter(j => String(j.guru || '').trim().toLowerCase() === adminDashGuruFilter);
@@ -7337,7 +7471,7 @@ Guru: ${props.guru}`);
         return;
       }
 
-      listJadwal.forEach(j => {
+      jBody.innerHTML = listJadwal.map(j => {
         let badgeClass = j.status === 'Cuti' ? 'badge-warning' : (j.status === 'Keluar' ? 'badge-danger' : 'badge-success');
         let namaDisplayed = j.namaSiswa || currentUser.userName;
         let sObj = globalSiswaList.find(s => String(s.nama).trim().toLowerCase() === String(namaDisplayed).trim().toLowerCase());
@@ -7360,8 +7494,8 @@ Guru: ${props.guru}`);
           </div></td>`;
         }
         rowHtml += `</tr>`;
-        jBody.innerHTML += rowHtml;
-      });
+        return rowHtml;
+      }).join('');
     }
 
     function toggleExportMonthHint() {
@@ -7558,14 +7692,17 @@ Guru: ${props.guru}`);
       return !!recordedName && !!loggedName && recordedName === loggedName;
     }
 
-    function renderTabelRiwayat() {
+    function renderTabelRiwayat(force = false) {
       const tbody = document.getElementById('riwayatAbsensiBody'); 
       const thAksi = document.getElementById('thAbsensiAksi');
       const thTtdSiswa = document.getElementById('thAbsensiTtdSiswa');
       if(!tbody) return;
+      const progressSection = document.getElementById('section-progress');
+      const isVisible = progressSection && progressSection.classList.contains('active');
+      if (!force && !isVisible) return;
       // Do not depend on opening the print dialog to load private Drive signatures.
       // Only request the detailed attendance module when the history is visible.
-      if (tbody.getClientRects().length && typeof ensureAttendanceSignatures === 'function') {
+      if (typeof ensureAttendanceSignatures === 'function') {
         ensureAttendanceSignatures().catch(error => console.warn('[Attendance signatures]', error));
       }
       tbody.innerHTML = '';
@@ -7584,6 +7721,7 @@ Guru: ${props.guru}`);
 
       let filteredList = globalAbsensiList.filter(item => {
         if (!attendanceBelongsToCurrentTeacher(item)) return false;
+        if (isSiswa && !lmcStudentRecordMatchesClass(item)) return false;
         if (isAdmin && filterGuruVal !== '') {
           if (String(item.guruCatat || '').trim().toLowerCase() !== filterGuruVal) return false;
         }
@@ -7602,26 +7740,30 @@ Guru: ${props.guru}`);
         return true;
       });
 
+      let colCount = 8;
+      if (isGuru) colCount = 10;
+      else if (isAdmin) colCount = 9;
+
       if (filteredList.length === 0) {
-        let colCount = 8;
-        if (isGuru) colCount = 10;
-        else if (isAdmin) colCount = 9;
         tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; color:#999; padding:20px;">Belum ada riwayat absensi / progress sesuai filter.</td></tr>`;
         return;
       }
 
-      filteredList.forEach(item => {
+      const MAX_DISPLAY = 60;
+      const displayedList = filteredList.slice(0, MAX_DISPLAY);
+
+      let rowsHtml = displayedList.map(item => {
         let badgeClass = item.status === 'Masuk' ? 'badge-success' : (item.status === 'Alpa' ? 'badge-danger' : 'badge-warning');
         let displayName = item.namaSiswa || currentUser.userName;
 
         let ttdGuruHtml = item.tandaTangan || '-';
         if (item.tandaTangan && (item.tandaTangan.startsWith('data:image') || item.tandaTangan.startsWith('/api/attendance-signature/'))) {
-          ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">`;
+          ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru" loading="lazy" width="90" height="32" style="aspect-ratio:3/1;object-fit:contain;">`;
         }
 
         let ttdSiswaHtml = item.ttdSiswa || '-';
         if (item.ttdSiswa && (item.ttdSiswa.startsWith('data:image') || item.ttdSiswa.startsWith('/api/attendance-signature/'))) {
-          ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa">`;
+          ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa" loading="lazy" width="90" height="32" style="aspect-ratio:3/1;object-fit:contain;">`;
         }
 
         let rowHtml = `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
@@ -7646,8 +7788,14 @@ Guru: ${props.guru}`);
           </td>`;
         }
         rowHtml += `</tr>`;
-        tbody.innerHTML += rowHtml;
-      });
+        return rowHtml;
+      }).join('');
+
+      if (filteredList.length > MAX_DISPLAY) {
+        rowsHtml += `<tr><td colspan="${colCount}" style="text-align:center; font-size:12px; color:#64748b; padding:12px; background:#f8fafc;">Menampilkan ${MAX_DISPLAY} dari ${filteredList.length} riwayat absensi. Gunakan filter di atas untuk melihat data spesifik.</td></tr>`;
+      }
+
+      tbody.innerHTML = rowsHtml;
     }
 
     function parseAbsensiRecordDate(value) {
@@ -8082,9 +8230,10 @@ function normalizeTaskStatus(task) {
       const container = document.getElementById('tugasTableBody');
       if(!container) return;
 
-      const total = globalTugasList.length;
-      const done = globalTugasList.filter(t => String(t.status || '').toLowerCase() === 'selesai').length;
-      const late = globalTugasList.filter(isTaskLate).length;
+      const taskClassItems = currentUser.userType === 'siswa' ? globalTugasList.filter(lmcStudentRecordMatchesClass) : globalTugasList;
+      const total = taskClassItems.length;
+      const done = taskClassItems.filter(t => String(t.status || '').toLowerCase() === 'selesai').length;
+      const late = taskClassItems.filter(isTaskLate).length;
       document.getElementById('taskStatTotal').textContent = total;
       document.getElementById('taskStatOpen').textContent = total - done;
       document.getElementById('taskStatDone').textContent = done;
@@ -8102,7 +8251,7 @@ function normalizeTaskStatus(task) {
       const filter = document.getElementById('taskStatusFilter')?.value || 'semua';
       const student = document.getElementById('taskStudentFilter')?.value || 'semua';
       const sort = document.getElementById('taskSortFilter')?.value || 'terbaru';
-      let filtered = globalTugasList.filter(task => {
+      let filtered = taskClassItems.filter(task => {
         const haystack = `${task.judulTugas || ''} ${task.namaSiswa || ''} ${task.deskripsi || ''}`.toLowerCase();
         const isDone = String(task.status || '').toLowerCase() === 'selesai';
         const statusMatch = filter === 'semua' || (filter === 'Terlambat' ? isTaskLate(task) : (filter === 'Selesai' ? isDone : !isDone && !isTaskLate(task)));
@@ -8658,8 +8807,13 @@ function normalizeTaskStatus(task) {
       return [...select.selectedOptions].map(option => option.value).filter(Boolean).join(', ');
     }
 
-    function renderAdminTeacherManagement() {
+    function renderAdminTeacherManagement(force = false) {
       if (currentUser.userType !== 'admin') return;
+      const secAbsensi = document.getElementById('section-absensi-guru');
+      const secGuru = document.getElementById('section-daftar-guru');
+      const isVisible = (secAbsensi && secAbsensi.classList.contains('active')) || (secGuru && secGuru.classList.contains('active'));
+      if (!force && !isVisible) return;
+
       const teacherSearch = String(document.getElementById('teacherSearchInput')?.value || '').trim().toLowerCase();
       const displayedTeachers = teacherSearch ? globalGuruList.filter(guru => {
         const haystack = `${guru.nama || ''} ${guru.instrumen || ''} ${guru.email || ''} ${guru.noHp || ''} ${guru.status || ''}`.toLowerCase();
@@ -8721,12 +8875,18 @@ function normalizeTaskStatus(task) {
 
       const attendanceBody = document.getElementById('adminTeacherAttendanceBody');
       if (attendanceBody) {
-        attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map((item, index) => {
+        const MAX_TEACHER_ATT = 50;
+        const displayed = filteredAttendance.slice(0, MAX_TEACHER_ATT);
+        let rowsHtml = displayed.length ? displayed.map((item, index) => {
           const statusKey = String(item.status || '').toLowerCase();
           const badgeClass = statusKey === 'hadir' ? 'badge-success' : (statusKey === 'alpa' ? 'badge-danger' : 'badge-warning');
-          const signature = item.tandaTangan && (String(item.tandaTangan).startsWith('data:image') || (String(item.tandaTangan).startsWith('/api/attendance-signature/') || String(item.tandaTangan).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
+          const signature = item.tandaTangan && (String(item.tandaTangan).startsWith('data:image') || (String(item.tandaTangan).startsWith('/api/attendance-signature/') || String(item.tandaTangan).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru" loading="lazy" width="90" height="32" style="aspect-ratio:3/1;object-fit:contain;">` : '-';
           return `<tr class="teacher-attendance-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td data-label="Status"><span><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Jam Masuk">${escapeTaskHtml(item.jamMasuk || '-')}</td><td data-label="Jam Keluar">${escapeTaskHtml(item.jamKeluar || '-')}</td><td data-label="Catatan">${escapeTaskHtml(item.catatan || '-')}</td><td data-label="TTD">${signature}</td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditTeacherAttendance(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteTeacherAttendanceRecord(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Hapus</button></div></td></tr>`;
         }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Tidak ada absensi guru sesuai filter.</td></tr>';
+        if (filteredAttendance.length > MAX_TEACHER_ATT) {
+          rowsHtml += `<tr><td colspan="9" style="text-align:center; font-size:12px; color:#64748b; padding:12px; background:#f8fafc;">Menampilkan ${MAX_TEACHER_ATT} dari ${filteredAttendance.length} absensi guru. Gunakan filter untuk mencari data tertentu.</td></tr>`;
+        }
+        attendanceBody.innerHTML = rowsHtml;
       }
     }
 

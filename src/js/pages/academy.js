@@ -337,12 +337,12 @@
         const name = `${item.siswaAsli || ''} ${item.siswaPengganti || ''}`.toLowerCase();
         return (!searchFilter || name.includes(searchFilter)) && (!instrumentFilter || instrument === instrumentFilter) && (!teacherFilter || teacher === teacherFilter) && (!dayFilter || day === dayFilter);
       });
-      overrides.forEach(item => {
+      const overrideCards = overrides.map(item => {
         const schedule = (globalJadwalList || []).find(row => String(row.jadwalID || '') === String(item.jadwalID || '')) || { hari:item.hariAsli || '', jamMulai:item.jamMulaiAsli || '', jamSelesai:item.jamSelesaiAsli || '', guru:item.guruAsli || '', ruangan:item.ruanganAsli || '', instrumen:item.instrumenAsli || 'Musik' };
         const slotText = item.siswaPengganti ? `${escapeTaskHtml(item.siswaPengganti)} memakai slot ${escapeTaskHtml(item.siswaAsli || '-')}` : `Slot ${escapeTaskHtml(item.siswaAsli || '-')} dikosongkan`;
         const makeupText = item.tanggalMakeup ? `${escapeTaskHtml(formatAcademyDate(item.tanggalMakeup))} • ${escapeTaskHtml(item.jamMulaiMakeup || '-')}–${escapeTaskHtml(item.jamSelesaiMakeup || '-')} • ${escapeTaskHtml(item.ruanganMakeup || '-')}` : 'Belum dijadwalkan';
         const actionButtons = isAdmin ? `<div class="academy-card-actions"><button class="btn-action btn-edit" onclick="openEditScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Edit</button><button class="btn-action btn-delete" onclick="handleDeleteScheduleOverride('${escapeTaskHtml(item.overrideID)}')">Hapus</button></div>` : '';
-        container.innerHTML += `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${actionButtons}</article>`;
+        return `<article class="academy-card schedule-override-card"><div class="academy-card-head"><div class="academy-card-icon">⇄</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.siswaAsli || '-')}</strong><span>${escapeTaskHtml(formatAcademyDate(item.tanggalAsli))} • ${escapeTaskHtml(schedule.jamMulai || '-')}–${escapeTaskHtml(schedule.jamSelesai || '-')}</span></div><span class="badge badge-warning">Pergantian</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Slot asli</span><strong>${slotText}</strong></div><div class="academy-meta"><span>Make-up</span><strong>${makeupText}</strong></div><div class="academy-meta"><span>Guru / Ruang</span><strong>${escapeTaskHtml(item.guruMakeup || schedule.guru || '-')} • ${escapeTaskHtml(item.ruanganMakeup || schedule.ruangan || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${item.catatan ? `<div class="academy-card-content">${escapeTaskHtml(item.catatan)}</div>` : ''}${actionButtons}</article>`;
       });
 
       const list = (globalJadwalPenggantiList || []).filter(item => {
@@ -358,10 +358,12 @@
         return;
       }
 
-      list.forEach(item => {
+      const listCards = list.map(item => {
         const deleteButton = isAdmin ? `<button class="btn-action btn-delete" onclick="handleDeleteJadwalPengganti('${escapeTaskHtml(item.penggantiID)}')">Hapus</button>` : '';
-        container.innerHTML += `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">↻</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.namaSiswa || '-')}</strong><span>${escapeTaskHtml(item.hariPelaksanaan || '')}, ${escapeTaskHtml(formatAcademyDate(item.tanggalPelaksanaan))}</span></div><span class="badge badge-success">${escapeTaskHtml(item.status || 'Aktif')}</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Waktu</span><strong>${escapeTaskHtml(item.jamMulai || '-')} – ${escapeTaskHtml(item.jamSelesai || '-')}</strong></div><div class="academy-meta"><span>Ruangan</span><strong>${escapeTaskHtml(item.ruangan || '-')}</strong></div><div class="academy-meta"><span>Guru</span><strong>${escapeTaskHtml(item.guru || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
+        return `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">↻</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.namaSiswa || '-')}</strong><span>${escapeTaskHtml(item.hariPelaksanaan || '')}, ${escapeTaskHtml(formatAcademyDate(item.tanggalPelaksanaan))}</span></div><span class="badge badge-success">${escapeTaskHtml(item.status || 'Aktif')}</span></div><div class="academy-meta-grid"><div class="academy-meta"><span>Waktu</span><strong>${escapeTaskHtml(item.jamMulai || '-')} – ${escapeTaskHtml(item.jamSelesai || '-')}</strong></div><div class="academy-meta"><span>Ruangan</span><strong>${escapeTaskHtml(item.ruangan || '-')}</strong></div><div class="academy-meta"><span>Guru</span><strong>${escapeTaskHtml(item.guru || '-')}</strong></div><div class="academy-meta"><span>Alasan</span><strong>${escapeTaskHtml(item.alasan || '-')}</strong></div></div>${deleteButton ? `<div class="academy-card-actions">${deleteButton}</div>` : ''}</article>`;
       });
+
+      container.innerHTML = [...overrideCards, ...listCards].join('');
     }
 
     function handleDeleteJadwalPengganti(id) {
@@ -460,12 +462,12 @@
 
       const isAdmin = currentUser.userType === 'admin';
 
-      globalPengumumanList.forEach(item => {
+      container.innerHTML = globalPengumumanList.map(item => {
         const deleteBtn = isAdmin ? `<button class="btn-action btn-delete" onclick="handleDeletePengumuman('${escapeTaskHtml(item.pengumumanID)}')">Hapus</button>` : '';
         const targetLabel = getAnnouncementTargetLabel(item);
         const adminMeta = isAdmin ? `<div class="academy-meta-grid"><div class="academy-meta"><span>Penerima</span><strong>${escapeTaskHtml(targetLabel)}</strong></div><div class="academy-meta"><span>Status</span><strong>${escapeTaskHtml(item.status || 'Terbit')}</strong></div></div>` : '';
-        container.innerHTML += `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">📢</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.judul || '-')}</strong><span>${escapeTaskHtml(item.tanggalKirim || '-')} • ${escapeTaskHtml(item.pembuat || 'Admin')}</span></div></div><div class="academy-card-content">${escapeTaskHtml(item.isi || '-')}</div>${adminMeta}${deleteBtn ? `<div class="academy-card-actions">${deleteBtn}</div>` : ''}</article>`;
-      });
+        return `<article class="academy-card"><div class="academy-card-head"><div class="academy-card-icon">📢</div><div class="academy-card-title"><strong>${escapeTaskHtml(item.judul || '-')}</strong><span>${escapeTaskHtml(item.tanggalKirim || '-')} • ${escapeTaskHtml(item.pembuat || 'Admin')}</span></div></div><div class="academy-card-content">${escapeTaskHtml(item.isi || '-')}</div>${adminMeta}${deleteBtn ? `<div class="academy-card-actions">${deleteBtn}</div>` : ''}</article>`;
+      }).join('');
     }
 
     function handleDeletePengumuman(id) {

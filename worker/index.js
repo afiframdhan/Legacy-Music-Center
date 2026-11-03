@@ -118,7 +118,7 @@ export default {
         const result = await gasRpc(env, 'lmcReadPrivateSignature', [match[1]]);
         if (!result || !result.success || !/^data:image\/png;base64,/.test(result.dataUrl || '')) throw new Error('Invalid private signature response');
         const bytes = Uint8Array.from(atob(result.dataUrl.split(',')[1]), ch=>ch.charCodeAt(0));
-        return new Response(bytes, {status:200, headers:{'content-type':'image/png','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+        return new Response(bytes, {status:200, headers:{'content-type':'image/png','cache-control':'private, max-age=86400, stale-while-revalidate=604800','x-content-type-options':'nosniff'}});
       } catch (error) {
         console.error('Private attendance signature fetch failed:', String(error && error.message || error));
         return new Response('Signature temporarily unavailable', {status:502});
@@ -143,7 +143,7 @@ export default {
         const result = await gasRpc(env,'lmcReadPrivateSignature',[match[1]]);
         if (!result?.success || !/^data:image\/png;base64,/.test(result.dataUrl || '')) throw new Error('Invalid Drive signature response');
         const bytes = Uint8Array.from(atob(result.dataUrl.split(',')[1]),c=>c.charCodeAt(0));
-        return new Response(bytes,{status:200,headers:{'content-type':'image/png','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+        return new Response(bytes,{status:200,headers:{'content-type':'image/png','cache-control':'private, max-age=86400, stale-while-revalidate=604800','x-content-type-options':'nosniff'}});
       } catch(error) {
         console.error('05G teacher signature read failed:',String(error?.message || error));
         return new Response('Signature unavailable',{status:502});
@@ -2856,9 +2856,10 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       const [snapshotRows, signatureRows] = await Promise.all([
         sbPagedRows(env, 'student_attendance', { ...baseParams, select:lightweightSelect }),
         attendanceDetailRequested
-          ? sbPagedRows(env, 'student_attendance', {
+          ? sbRowsSafe(env, 'student_attendance', {
               ...baseParams,
-              select:'attendance_id,teacher_signature_data,student_signature_data'
+              select:'attendance_id,teacher_signature_data,student_signature_data',
+              limit:'100'
             })
           : sbRows(env, 'student_attendance', { ...baseParams, select:'*', limit:'8' })
       ]);
@@ -2900,10 +2901,10 @@ async function getLiveModuleDataSupabase(env, session, requestedModules) {
       return;
     }
     if (module === 'teacher_attendance') {
-      const params = { order:'attendance_date.desc,created_at.desc' };
+      const params = { order:'attendance_date.desc,created_at.desc', limit:'100' };
       if (session.userType === 'guru') params.teacher_id = `eq.${session.userID}`;
       if (session.userType === 'siswa') { out.teacherAttendance = []; return; }
-      out.teacherAttendance = (await sbPagedRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
+      out.teacherAttendance = (await sbRowsSafe(env, 'teacher_attendance', params)).map(mapTeacherAttendance);
       return;
     }
     if (module === 'repertoire') {
@@ -4489,7 +4490,7 @@ async function buildAdminDashboardSupabase(env, session) {
       dashboardTimedQuery(env, 'admin', 'replacement_schedules', () => sbRowsSafe(env, 'replacement_schedules', { order:'scheduled_date.desc.nullslast,created_at.desc' })),
       dashboardTimedQuery(env, 'admin', 'announcements', () => sbRowsSafe(env, 'announcements', { order:'sent_at.desc.nullslast,created_at.desc' })),
       dashboardTimedQuery(env, 'admin', 'student_history', () => sbRowsSafe(env, 'student_history', { order:'event_at.desc.nullslast,created_at.desc', limit:'300' })),
-      dashboardTimedQuery(env, 'admin', 'teacher_attendance', () => sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc', limit:'220' })),
+      dashboardTimedQuery(env, 'admin', 'teacher_attendance', () => sbRowsSafe(env, 'teacher_attendance', { order:'attendance_date.desc,created_at.desc', limit:'100' })),
       dashboardTimedQuery(env, 'admin', 'schedule_overrides', () => getScheduleOverrideRowsForSession(env, session)),
       dashboardTimedQuery(env, 'admin', 'student_report_publications', () => sbRowsSafe(env, 'student_report_publications', { active:'eq.true', order:'sent_at.desc', limit:'220' })),
     ]);

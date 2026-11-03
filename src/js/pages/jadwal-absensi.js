@@ -168,7 +168,7 @@ Guru: ${props.guru}`);
         return;
       }
 
-      listJadwal.forEach(j => {
+      jBody.innerHTML = listJadwal.map(j => {
         let badgeClass = j.status === 'Cuti' ? 'badge-warning' : (j.status === 'Keluar' ? 'badge-danger' : 'badge-success');
         let namaDisplayed = j.namaSiswa || currentUser.userName;
         let sObj = globalSiswaList.find(s => String(s.nama).trim().toLowerCase() === String(namaDisplayed).trim().toLowerCase());
@@ -191,8 +191,8 @@ Guru: ${props.guru}`);
           </div></td>`;
         }
         rowHtml += `</tr>`;
-        jBody.innerHTML += rowHtml;
-      });
+        return rowHtml;
+      }).join('');
     }
 
     function toggleExportMonthHint() {
@@ -389,14 +389,17 @@ Guru: ${props.guru}`);
       return !!recordedName && !!loggedName && recordedName === loggedName;
     }
 
-    function renderTabelRiwayat() {
+    function renderTabelRiwayat(force = false) {
       const tbody = document.getElementById('riwayatAbsensiBody'); 
       const thAksi = document.getElementById('thAbsensiAksi');
       const thTtdSiswa = document.getElementById('thAbsensiTtdSiswa');
       if(!tbody) return;
+      const progressSection = document.getElementById('section-progress');
+      const isVisible = progressSection && progressSection.classList.contains('active');
+      if (!force && !isVisible) return;
       // Do not depend on opening the print dialog to load private Drive signatures.
       // Only request the detailed attendance module when the history is visible.
-      if (tbody.getClientRects().length && typeof ensureAttendanceSignatures === 'function') {
+      if (typeof ensureAttendanceSignatures === 'function') {
         ensureAttendanceSignatures().catch(error => console.warn('[Attendance signatures]', error));
       }
       tbody.innerHTML = '';
@@ -434,26 +437,30 @@ Guru: ${props.guru}`);
         return true;
       });
 
+      let colCount = 8;
+      if (isGuru) colCount = 10;
+      else if (isAdmin) colCount = 9;
+
       if (filteredList.length === 0) {
-        let colCount = 8;
-        if (isGuru) colCount = 10;
-        else if (isAdmin) colCount = 9;
         tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; color:#999; padding:20px;">Belum ada riwayat absensi / progress sesuai filter.</td></tr>`;
         return;
       }
 
-      filteredList.forEach(item => {
+      const MAX_DISPLAY = 60;
+      const displayedList = filteredList.slice(0, MAX_DISPLAY);
+
+      let rowsHtml = displayedList.map(item => {
         let badgeClass = item.status === 'Masuk' ? 'badge-success' : (item.status === 'Alpa' ? 'badge-danger' : 'badge-warning');
         let displayName = item.namaSiswa || currentUser.userName;
 
         let ttdGuruHtml = item.tandaTangan || '-';
         if (item.tandaTangan && (item.tandaTangan.startsWith('data:image') || item.tandaTangan.startsWith('/api/attendance-signature/'))) {
-          ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">`;
+          ttdGuruHtml = `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru" loading="lazy" width="90" height="32" style="aspect-ratio:3/1;object-fit:contain;">`;
         }
 
         let ttdSiswaHtml = item.ttdSiswa || '-';
         if (item.ttdSiswa && (item.ttdSiswa.startsWith('data:image') || item.ttdSiswa.startsWith('/api/attendance-signature/'))) {
-          ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa">`;
+          ttdSiswaHtml = `<img src="${item.ttdSiswa}" class="sig-img-preview" alt="TTD Siswa" loading="lazy" width="90" height="32" style="aspect-ratio:3/1;object-fit:contain;">`;
         }
 
         let rowHtml = `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
@@ -478,8 +485,14 @@ Guru: ${props.guru}`);
           </td>`;
         }
         rowHtml += `</tr>`;
-        tbody.innerHTML += rowHtml;
-      });
+        return rowHtml;
+      }).join('');
+
+      if (filteredList.length > MAX_DISPLAY) {
+        rowsHtml += `<tr><td colspan="${colCount}" style="text-align:center; font-size:12px; color:#64748b; padding:12px; background:#f8fafc;">Menampilkan ${MAX_DISPLAY} dari ${filteredList.length} riwayat absensi. Gunakan filter di atas untuk melihat data spesifik.</td></tr>`;
+      }
+
+      tbody.innerHTML = rowsHtml;
     }
 
     function parseAbsensiRecordDate(value) {

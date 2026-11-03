@@ -47,8 +47,13 @@
       return [...select.selectedOptions].map(option => option.value).filter(Boolean).join(', ');
     }
 
-    function renderAdminTeacherManagement() {
+    function renderAdminTeacherManagement(force = false) {
       if (currentUser.userType !== 'admin') return;
+      const secAbsensi = document.getElementById('section-absensi-guru');
+      const secGuru = document.getElementById('section-daftar-guru');
+      const isVisible = (secAbsensi && secAbsensi.classList.contains('active')) || (secGuru && secGuru.classList.contains('active'));
+      if (!force && !isVisible) return;
+
       const teacherSearch = String(document.getElementById('teacherSearchInput')?.value || '').trim().toLowerCase();
       const displayedTeachers = teacherSearch ? globalGuruList.filter(guru => {
         const haystack = `${guru.nama || ''} ${guru.instrumen || ''} ${guru.email || ''} ${guru.noHp || ''} ${guru.status || ''}`.toLowerCase();
@@ -110,12 +115,18 @@
 
       const attendanceBody = document.getElementById('adminTeacherAttendanceBody');
       if (attendanceBody) {
-        attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map((item, index) => {
+        const MAX_TEACHER_ATT = 50;
+        const displayed = filteredAttendance.slice(0, MAX_TEACHER_ATT);
+        let rowsHtml = displayed.length ? displayed.map((item, index) => {
           const statusKey = String(item.status || '').toLowerCase();
           const badgeClass = statusKey === 'hadir' ? 'badge-success' : (statusKey === 'alpa' ? 'badge-danger' : 'badge-warning');
-          const signature = item.tandaTangan && (String(item.tandaTangan).startsWith('data:image') || (String(item.tandaTangan).startsWith('/api/attendance-signature/') || String(item.tandaTangan).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru">` : '-';
+          const signature = item.tandaTangan && (String(item.tandaTangan).startsWith('data:image') || (String(item.tandaTangan).startsWith('/api/attendance-signature/') || String(item.tandaTangan).startsWith('/api/teacher-attendance-signature/'))) ? `<img src="${item.tandaTangan}" class="sig-img-preview" alt="TTD Guru" loading="lazy" width="90" height="32" style="aspect-ratio:3/1;object-fit:contain;">` : '-';
           return `<tr class="teacher-attendance-mobile-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false"><td data-label="No">${index + 1}</td><td data-label="Tanggal">${escapeTaskHtml(formatAcademyDate(item.tanggal))}</td><td data-label="Nama Guru"><b>${escapeTaskHtml(item.namaGuru || '-')}</b></td><td data-label="Status"><span><span class="badge ${badgeClass}">${escapeTaskHtml(item.status || '-')}</span><span class="teacher-row-chevron">⌄</span></span></td><td data-label="Jam Masuk">${escapeTaskHtml(item.jamMasuk || '-')}</td><td data-label="Jam Keluar">${escapeTaskHtml(item.jamKeluar || '-')}</td><td data-label="Catatan">${escapeTaskHtml(item.catatan || '-')}</td><td data-label="TTD">${signature}</td><td data-label="Aksi"><div class="table-actions"><button type="button" class="btn-action btn-edit" onclick="openEditTeacherAttendance(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Edit</button><button type="button" class="btn-action btn-delete" onclick="deleteTeacherAttendanceRecord(decodeURIComponent('${encodeURIComponent(item.absensiGuruID || '')}'))">Hapus</button></div></td></tr>`;
         }).join('') : '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">Tidak ada absensi guru sesuai filter.</td></tr>';
+        if (filteredAttendance.length > MAX_TEACHER_ATT) {
+          rowsHtml += `<tr><td colspan="9" style="text-align:center; font-size:12px; color:#64748b; padding:12px; background:#f8fafc;">Menampilkan ${MAX_TEACHER_ATT} dari ${filteredAttendance.length} absensi guru. Gunakan filter untuk mencari data tertentu.</td></tr>`;
+        }
+        attendanceBody.innerHTML = rowsHtml;
       }
     }
 

@@ -100,7 +100,7 @@
       const barColors = ['bar-orange', 'bar-cyan', 'bar-purple', 'bar-red'];
 
       if (todaySchedules.length > 0) {
-        todaySchedules.forEach((j, index) => {
+        scheduleContainer.innerHTML = todaySchedules.map((j, index) => {
           const sObj = displayedSiswa.find(s => String(s.nama).trim().toLowerCase() === String(j.namaSiswa).trim().toLowerCase());
           const avatarHtml = getSiswaAvatarHtml(j.namaSiswa, sObj ? sObj.foto : '');
           const durationStr = calculateDurationMinutes(j.jamMulai, j.jamSelesai);
@@ -109,7 +109,7 @@
           const barClass = barColors[index % barColors.length];
           const gradeText = sObj && sObj.kelas ? sObj.kelas : 'Kelas Privat';
 
-          scheduleContainer.innerHTML += `
+          return `
             <div class="today-schedule-item ${barClass}" onclick="handleDashboardScheduleClick(event,this,'${j.jadwalID}')" role="button" tabindex="0" aria-expanded="false">
               <div class="sched-time-block">
                 <div class="sched-time-text">${j.jamMulai} - ${j.jamSelesai}</div>
@@ -128,7 +128,7 @@
                 <span class="sched-arrow">❯</span>
               </div>
             </div>`;
-        });
+        }).join('');
       } else {
         scheduleContainer.innerHTML = `<div style="font-size:13px; color:#94a3b8; text-align:center; padding:25px 0; background:#fafafa; border-radius:12px;">Tidak ada jadwal mengajar hari ini (${todayHariName}).</div>`;
       }
@@ -184,19 +184,21 @@
         ongoingClassWidgetAdmin.innerHTML = `<div style="font-size:13px; color:#64748b;">Tidak ada kelas yang sedang berlangsung saat ini.</div>`;
       }
       
-      const previewBody = document.getElementById('dashSiswaPreviewBody'); previewBody.innerHTML = '';
-      displayedSiswa.slice(0, 3).forEach((s, index) => {
-        let badgeClass = s.status === 'Cuti' ? 'badge-warning' : (s.status === 'Keluar' ? 'badge-danger' : 'badge-success');
-        let avatarHtml = getSiswaAvatarHtml(s.nama, s.foto);
-        previewBody.innerHTML += `<tr class="mobile-expand-row dashboard-student-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
-          <td data-label="No">${index + 1}</td>
-          <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
-          <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
-          <td data-label="Guru Pengajar">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
-          <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
-          <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
-        </tr>`;
-      });
+      const previewBody = document.getElementById('dashSiswaPreviewBody');
+      if (previewBody) {
+        previewBody.innerHTML = displayedSiswa.slice(0, 3).map((s, index) => {
+          let badgeClass = s.status === 'Cuti' ? 'badge-warning' : (s.status === 'Keluar' ? 'badge-danger' : 'badge-success');
+          let avatarHtml = getSiswaAvatarHtml(s.nama, s.foto);
+          return `<tr class="mobile-expand-row dashboard-student-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
+            <td data-label="No">${index + 1}</td>
+            <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
+            <td data-label="Kelas / Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b></td>
+            <td data-label="Guru Pengajar">${escapeTaskHtml(getActiveStudentListText(s, 'guru'))}</td>
+            <td data-label="Grade">${escapeTaskHtml(getActiveStudentListText(s, 'grade'))}</td>
+            <td data-label="Status"><span class="badge ${badgeClass}">${escapeTaskHtml(s.status || '-')}</span></td>
+          </tr>`;
+        }).join('');
+      }
       restoreDashboardWidgetStates();
     }
 
@@ -294,10 +296,10 @@
         return;
       }
 
-      list.forEach((s, index) => {
+      sBody.innerHTML = list.map((s, index) => {
         let badgeClass = s.status === 'Cuti' ? 'badge-warning' : (s.status === 'Keluar' ? 'badge-danger' : 'badge-success');
         let avatarHtml = getSiswaAvatarHtml(s.nama, s.foto);
-        sBody.innerHTML += `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
+        return `<tr class="mobile-expand-row" onclick="toggleMobileTableRow(event,this)" aria-expanded="false">
           <td data-label="No">${index + 1}</td>
           <td data-label="Nama Siswa"><div style="display:flex; align-items:center; gap:10px;">${avatarHtml} <b>${escapeTaskHtml(s.nama)}</b></div></td>
           <td data-label="Instrumen"><b>${escapeTaskHtml(getActiveStudentListText(s, 'instrumen'))}</b>${renderAdminStudentClassDetails(s)}</td>
@@ -314,7 +316,7 @@
           </div>
           </td>
         </tr>`;
-      });
+      }).join('');
 
     }
 
@@ -1400,9 +1402,12 @@
       openEditJadwalModal(jadwalID);
     }
 
-    function initializeStudentReports() {
+    function initializeStudentReports(force = false) {
       const monthInput = document.getElementById('studentReportMonth');
       if (!monthInput) return;
+      const siswaSection = document.getElementById('section-siswa');
+      const isVisible = siswaSection && siswaSection.classList.contains('active');
+      if (!force && !isVisible) return;
       if (!monthInput.value) {
         const now = new Date();
         monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

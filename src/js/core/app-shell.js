@@ -61,6 +61,7 @@
           };
         }
 
+        let drawFrameId = null;
         function startDrawing(e) {
           e.preventDefault();
           if (pad.fitAfterFullscreen) pad.fitAfterFullscreen = false;
@@ -74,10 +75,20 @@
           if (!pad.drawing || !pad.activeStroke) return;
           e.preventDefault();
           pad.activeStroke.push(getPos(e));
-          redrawSignaturePad(pad);
+          if (!drawFrameId) {
+            drawFrameId = requestAnimationFrame(() => {
+              drawFrameId = null;
+              redrawSignaturePad(pad);
+            });
+          }
         }
 
-        function stopDrawing() { pad.drawing = false; pad.activeStroke = null; }
+        function stopDrawing() {
+          if (drawFrameId) { cancelAnimationFrame(drawFrameId); drawFrameId = null; }
+          pad.drawing = false;
+          pad.activeStroke = null;
+          redrawSignaturePad(pad);
+        }
 
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mousemove', draw);
@@ -187,7 +198,7 @@
       const pad = sigCanvases[canvasId];
       const aspect = pad.aspect || 3;
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = 700;
+      tempCanvas.width = 480;
       tempCanvas.height = Math.max(1, Math.round(tempCanvas.width / aspect));
       const tCtx = tempCanvas.getContext('2d');
       tCtx.fillStyle = '#FFFFFF';
@@ -210,7 +221,7 @@
         pad.aspect = rect.width / rect.height;
         pad.originalWidth = rect.width;
       }
-      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       pad.canvas.width = Math.max(1, Math.round(rect.width * dpr));
       pad.canvas.height = Math.max(1, Math.round(rect.height * dpr));
       pad.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
