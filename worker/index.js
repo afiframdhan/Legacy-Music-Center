@@ -2199,7 +2199,10 @@ async function patchStudentClassDatesFromPayload(env, studentId, payload) {
     const item = classes[index] || {};
     const startedOn = String(item.tglMulai || item.tglDaftar || (index === 0 ? payload.tglDaftar : '') || '').trim();
     const endedOn = String(item.tglSelesai || item.tglKeluar || (index === 0 ? payload.tglKeluar : '') || '').trim();
-    if (!startedOn && !endedOn) continue;
+    const classStatus = ['Aktif', 'Cuti', 'Keluar'].includes(String(item.status || '').trim())
+      ? String(item.status).trim()
+      : 'Aktif';
+
     let row = null;
     const classId = String(item.kelasSiswaID || '').trim();
     if (classId) row = rows.find(candidate => String(candidate.class_id || '') === classId) || null;
@@ -2214,18 +2217,84 @@ async function patchStudentClassDatesFromPayload(env, studentId, payload) {
         return sameInstrument && sameTeacher && sameGrade;
       }) || null;
     }
-    if (!row) row = rows[index] || null;
-    if (!row?.class_id) continue;
+
+    if (!row?.class_id) {
+      // Kelas baru belum ada di database: buat entri student_classes baru
+      const newClassId = `KLS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      const insertClassPayload = {
+        class_id: newClassId,
+        student_id: studentId,
+        student_name_snapshot: String(payload.nama || '').trim(),
+        instrument: String(item.instrumen || 'Gitar').trim(),
+        teacher_id: String(item.guruID || '').trim() || null,
+        teacher_name_snapshot: String(item.guru || '').trim() || '-',
+        grade: String(item.grade || item.kelas || 'Beginner').trim(),
+        status: classStatus,
+        started_on: startedOn || new Date().toISOString().slice(0, 10),
+        ended_on: classStatus === 'Keluar' ? (endedOn || new Date().toISOString().slice(0, 10)) : null
+      };
+      await supabaseRest(env, '/rest/v1/student_classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify(insertClassPayload)
+      });
+      used.add(newClassId);
+
+      // Buat entri jadwal baru bila hari & jam diisi
+      if (item.hari && item.jamMulai && item.jamSelesai) {
+        const newScheduleId = `JDW-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        const insertSchedulePayload = {
+          schedule_id: newScheduleId,
+          student_id: studentId,
+          student_name: String(payload.nama || '').trim(),
+          day_name: String(item.hari).trim(),
+          start_time: normalizeApiTime(item.jamMulai),
+          end_time: normalizeApiTime(item.jamSelesai),
+          teacher_id: String(item.guruID || '').trim() || null,
+          teacher_name: String(item.guru || '').trim() || '-',
+          room: String(item.ruangan || '').trim() || '-',
+          status: classStatus,
+          instrument: String(item.instrumen || 'Gitar').trim()
+        };
+        await supabaseRest(env, '/rest/v1/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify(insertSchedulePayload)
+        });
+      }
+      continue;
+    }
+
     used.add(String(row.class_id));
     const patch = {};
     if (startedOn) patch.started_on = startedOn;
-    // Do not propagate a global exit date to another active or paused class.
-    if (String(item.status || '').trim() === 'Keluar' && endedOn) patch.ended_on = endedOn;
-    else if (['Aktif', 'Cuti'].includes(String(item.status || '').trim())) patch.ended_on = null;
+    patch.status = classStatus;
+    if (classStatus === 'Keluar' && endedOn) patch.ended_on = endedOn;
+    else if (['Aktif', 'Cuti'].includes(classStatus)) patch.ended_on = null;
+
     await supabaseRest(env, `/rest/v1/student_classes?class_id=eq.${encodeURIComponent(row.class_id)}`, {
       method:'PATCH',
       headers:{'Content-Type':'application/json', Prefer:'return=minimal'},
       body:JSON.stringify(patch)
+    });
+
+    // Update status jadwal terkait kelas ini
+    const classSchedules = await sbRows(env, 'schedules', { student_id:`eq.${studentId}` });
+    for (const schedule of classSchedules) {
+      if (String(schedule.instrument || '').toLowerCase() !== String(row.instrument || item.instrumen || '').toLowerCase()) continue;
+      if (row.teacher_id && String(schedule.teacher_id || '') !== String(row.teacher_id)) continue;
+      await supabaseRest(env, `/rest/v1/schedules?schedule_id=eq.${encodeURIComponent(schedule.schedule_id)}`, {
+        method:'PATCH', headers:{'Content-Type':'application/json', Prefer:'return=minimal'}, body:JSON.stringify({ status:classStatus })
+      });
+    }
+  }
+
+  // Jika setidaknya ada satu kelas Aktif, pastikan status siswa Aktif
+  const anyActive = classes.some(c => String(c.status || '').trim().toLowerCase() === 'aktif');
+  if (anyActive) {
+    await supabaseRest(env, `/rest/v1/students?student_id=eq.${encodeURIComponent(studentId)}`, {
+      method:'PATCH', headers:{'Content-Type':'application/json', Prefer:'return=minimal'},
+      body:JSON.stringify({ status:'Aktif', left_on:null })
     });
   }
 }

@@ -10,14 +10,20 @@
       item = item || {};
       const roomValues = studentRoomOptions.slice();
       if (item.ruangan && !roomValues.includes(item.ruangan)) roomValues.push(item.ruangan);
+      const defaultDate = item.tglMulai || item.tglDaftar || new Date().toISOString().slice(0, 10);
       return `<div class="student-extra-class-row" data-class-id="${escapeTaskHtml(item.kelasSiswaID || '')}" data-schedule-id="${escapeTaskHtml(item.jadwalID || '')}" style="padding:12px;margin:10px 0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b style="font-size:13px;color:#f15a24;">Kelas Tambahan</b><button type="button" class="btn-action btn-delete" onclick="this.closest('.student-extra-class-row').remove()">Hapus</button></div>
-        ${mode === 'edit' && item.kelasSiswaID ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><label>Status kelas ini</label><select class="extra-class-status">${classSelectOptions(['Aktif','Cuti','Keluar'], item.status || 'Aktif')}</select><button type="button" class="btn-action btn-edit" onclick="saveIndependentStudentClassStatus(this)">Simpan Status Kelas</button></div>` : ''}
+        ${mode === 'edit'
+          ? (item.kelasSiswaID
+              ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><label>Status kelas ini</label><select class="extra-class-status">${classSelectOptions(['Aktif','Cuti','Keluar'], item.status || 'Aktif')}</select><button type="button" class="btn-action btn-edit" onclick="saveIndependentStudentClassStatus(this)">Simpan Status Kelas</button></div>`
+              : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><label>Status kelas ini</label><select class="extra-class-status">${classSelectOptions(['Aktif','Cuti','Keluar'], item.status || 'Aktif')}</select><span style="font-size:11px;color:#b45309;background:#fef3c7;padding:3px 8px;border-radius:6px;font-weight:500;">Kelas baru &bull; Tersimpan saat menekan tombol &ldquo;Update Data Siswa&rdquo; di bawah</span></div>`
+            )
+          : `<div style="display:none;"><select class="extra-class-status"><option value="Aktif" selected>Aktif</option></select></div>`}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;">
           <div class="form-group" style="margin:0;"><label>Instrumen</label><select class="extra-class-instrument" required>${classSelectOptions(studentInstrumentOptions, item.instrumen || 'Gitar')}</select></div>
           <div class="form-group" style="margin:0;"><label>Guru</label><select class="extra-class-teacher" required>${classTeacherOptions(item.guru || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Grade</label><select class="extra-class-grade" required>${classSelectOptions(studentGradeOptions, item.grade || 'Beginner')}</select></div>
-          <div class="form-group" style="margin:0;"><label>Tanggal Mulai Kelas</label><input class="extra-class-start-date" type="date" value="${escapeTaskHtml(item.tglMulai || item.tglDaftar || '')}" required></div>
+          <div class="form-group" style="margin:0;"><label>Tanggal Mulai Kelas</label><input class="extra-class-start-date" type="date" value="${escapeTaskHtml(defaultDate)}" required></div>
           <div class="form-group" style="margin:0;"><label>Hari</label><select class="extra-class-day">${classSelectOptions([''].concat(studentDayOptions), item.hari || '')}</select></div>
           <div class="form-group" style="margin:0;"><label>Jam Mulai</label><input class="extra-class-start" type="time" value="${escapeTaskHtml(item.jamMulai || '')}"></div>
           <div class="form-group" style="margin:0;"><label>Jam Selesai</label><input class="extra-class-end" type="time" value="${escapeTaskHtml(item.jamSelesai || '')}"></div>
@@ -108,27 +114,39 @@
     
     function handleUpdateSiswa(e) {
       e.preventDefault();
-      const status = document.getElementById('editSiswaStatus').value;
-      const existingForGuard = globalSiswaList.find(s => String(s.siswaID || '') === String(document.getElementById('editSiswaID').value || ''));
-      const existingClassesForGuard = existingForGuard?.kelasList || [];
-      if (existingClassesForGuard.length > 1) {
-        alert('Siswa memiliki beberapa kelas. Demi menjaga status masing-masing kelas, gunakan tombol "Simpan Status Kelas" untuk mengubah status kelas. Pembaruan profil siswa multikelas dinonaktifkan sementara sampai fungsi SQL penyimpanan umum diverifikasi.');
-        return false;
-      }
+      const statusInput = document.getElementById('editSiswaStatus').value;
       const primaryTeacherSelect = document.getElementById('editSiswaGuruSelect');
       const primaryTeacherOption = primaryTeacherSelect && primaryTeacherSelect.options[primaryTeacherSelect.selectedIndex];
       const existingStudent = globalSiswaList.find(s => String(s.siswaID || '') === String(document.getElementById('editSiswaID').value || '')) || {};
       const existingPrimary = Array.isArray(existingStudent.kelasList) && existingStudent.kelasList.length ? existingStudent.kelasList[0] : {};
+
+      const primaryStatusEl = document.getElementById('editPrimaryIndependentStatus');
+      const primaryClassStatus = primaryStatusEl ? primaryStatusEl.value : (existingPrimary.status || statusInput);
+
       const primaryClass = {
         kelasSiswaID: existingPrimary.kelasSiswaID || '', jadwalID: existingPrimary.jadwalID || '',
         instrumen: document.getElementById('editSiswaInstrumen').value,
-        grade: document.getElementById('editSiswaGrade').value, status: status,
+        grade: document.getElementById('editSiswaGrade').value, status: primaryClassStatus,
         guru: primaryTeacherSelect ? primaryTeacherSelect.value : currentUser.userName,
         guruID: primaryTeacherOption ? (primaryTeacherOption.dataset.guruId || '') : currentUser.userID,
         tglMulai: document.getElementById('editSiswaTanggalMasuk').value,
         hari: existingPrimary.hari || '', jamMulai: existingPrimary.jamMulai || '', jamSelesai: existingPrimary.jamSelesai || '', ruangan: existingPrimary.ruangan || ''
       };
-      const kelasList = [primaryClass].concat(currentUser.userType === 'admin' ? collectStudentExtraClasses('editStudentExtraClasses', status) : []);
+      const extraClasses = currentUser.userType === 'admin' ? collectStudentExtraClasses('editStudentExtraClasses', statusInput) : [];
+      const kelasList = [primaryClass].concat(extraClasses);
+
+      // Pastikan status siswa global sinkron dengan status kelas-kelasnya
+      const hasActiveClass = kelasList.some(k => String(k.status || '').trim().toLowerCase() === 'aktif');
+      const hasCutiClass = kelasList.some(k => String(k.status || '').trim().toLowerCase() === 'cuti');
+      let effectiveStatus = statusInput;
+      if (hasActiveClass) {
+        effectiveStatus = 'Aktif';
+      } else if (hasCutiClass && statusInput !== 'Keluar') {
+        effectiveStatus = 'Cuti';
+      } else if (!hasActiveClass && !hasCutiClass) {
+        effectiveStatus = 'Keluar';
+      }
+
       const payload = {
         siswaID: document.getElementById('editSiswaID').value,
         oldNama: document.getElementById('editOldNama').value,
@@ -140,16 +158,24 @@
         tglDaftar: document.getElementById('editSiswaTanggalMasuk').value,
         tglKeluar: document.getElementById('editSiswaTanggalKeluar').value,
         alasanKeluar: document.getElementById('editSiswaAlasanKeluar')?.value.trim() || '',
-        status: status,
+        status: effectiveStatus,
         guru: primaryClass.guru,
         guruID: primaryClass.guruID,
         kelasList: kelasList,
         currentUserType: currentUser.userType,
         currentUserID: currentUser.userID
       };
+
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Menyimpan...'; }
+
       google.script.run.withSuccessHandler(res => {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update Data Siswa'; }
         showAlert(res.success ? 'alertSuccess' : 'alertDanger', res.message);
         if(res.success) { closeEditModal(); fetchDashboardData(); }
+      }).withFailureHandler(err => {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update Data Siswa'; }
+        alert('Gagal memperbarui data siswa: ' + (err?.message || err));
       }).updateSiswa(payload);
     }
 
